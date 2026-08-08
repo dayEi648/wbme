@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { NextFunction, Request, Response } from 'express';
+import type { DataScope } from '@wbme/contracts';
 
 /**
  * 请求上下文（主 PRD §9.6）：requestId/traceId、服务名与请求起始时间。
@@ -9,6 +10,15 @@ import type { NextFunction, Request, Response } from 'express';
  * 客户端携带的 X-Request-Id 仅当为合法 UUID 时沿用，否则服务端重新生成，
  * 不信任客户端提供的任意追踪值。
  */
+
+/** 当前路由声明功能的授权数据范围（函数权限守卫写入，主 PRD §3.1/§9.6） */
+export interface GrantedFunctionContext {
+  /** 路由声明的稳定功能编码 */
+  code: string;
+  /** 当前用户对该功能的有效数据范围（多档位授权按最宽合并）；
+   * null = 不受数据范围限制（超级管理员豁免，仅针对访问控制） */
+  dataScope: DataScope | null;
+}
 
 export interface RequestContext {
   /** 请求追踪标识：响应头 X-Request-Id 返回同一值 */
@@ -21,6 +31,9 @@ export interface RequestContext {
   readonly service: string;
   /** 认证后的当前用户标识（由认证守卫写入） */
   userId?: number;
+  /** 当前路由的授权功能与数据范围（由函数权限守卫写入；业务层据此做行级过滤，
+   * 范围外记录视为不存在以 404 呈现；未声明功能要求的路由不写入） */
+  grantedFunction?: GrantedFunctionContext;
 }
 
 /** 全局请求上下文存储 */
@@ -66,5 +79,16 @@ export function setRequestUserId(userId: number): void {
   const context = REQUEST_CONTEXT_STORAGE.getStore();
   if (context) {
     context.userId = userId;
+  }
+}
+
+/**
+ * 写入当前路由的授权功能与数据范围（由函数权限守卫在功能校验通过后写入，主 PRD §9.6）。
+ * 业务层只读：按 dataScope 做行级过滤，范围外记录视为不存在（404 呈现）。
+ */
+export function setGrantedFunction(granted: GrantedFunctionContext): void {
+  const context = REQUEST_CONTEXT_STORAGE.getStore();
+  if (context) {
+    context.grantedFunction = granted;
   }
 }

@@ -15,7 +15,7 @@ import { SESSION_ID_BYTES } from './session-constants';
 export interface SessionData {
   /** 用户 ID */
   u: number;
-  /** 会话建立时的账号 session_version */
+  /** 会话建立时的账号 session_version（改密/重置/换绑/注销后递增，旧会话因版本不一致失效） */
   sv: number;
   /** 权限版本（T3-4 比较） */
   pv: number;
@@ -29,11 +29,12 @@ export interface SessionData {
   rm: boolean;
   /** 绝对过期时间点（epoch ms）：独立于空闲续期 */
   abs: number;
+  /** 会话建立/最近一次旋转时间（epoch ms）：提权旋转标记比较用；早期会话缺省视为 0 */
+  iat?: number;
 }
 
 /** 会话创建参数 */
-export interface CreateSessionOptions {
-  userId: number;
+export interface CreateSessionOptions {  userId: number;
   /** 当前账号 session_version（改密/重置/换绑/注销后递增，旧会话因版本不一致失效） */
   sessionVersion: number;
   /** 是否"记住我"（延长空闲与绝对时限） */
@@ -51,6 +52,9 @@ export interface TouchResult {
   /** 新的过期时间点（epoch ms） */
   expiresAt: number;
 }
+
+/** 提权旋转标记 TTL（毫秒）：覆盖最长会话绝对过期（"记住我"默认 90 天，base PRD §3）取 100 天 */
+const ELEVATION_MARK_TTL_MS = 100 * 24 * 60 * 60 * 1000;
 
 /**
  * 服务端会话服务（主 PRD §9.8、base PRD §3）。
@@ -79,6 +83,7 @@ export class SessionService {
       dv: 0,
       rm: options.rememberMe,
       abs: now + options.absoluteTimeoutMs,
+      iat: now,
     };
     const ttlMs = Math.min(options.idleTimeoutMs, options.absoluteTimeoutMs);
     await this.redis.set(redisKey(REDIS_NAMESPACE.SESSION, sessionId), JSON.stringify(data), 'PX', ttlMs);
@@ -132,5 +137,58 @@ export class SessionService {
   ): Promise<{ sessionId: string; expiresAt: number }> {
     await this.destroy(oldSessionId);
     return this.create(options);
+  }
+
+  /**
+   * 提权旋转标记（base PRD §3：权限或站点角色提升后必须更换会话标识）。
+   *
+   * 提权场景（被授予"权限管理"功能、被任命为超级管理员）由授权服务在授权事务
+   * 提交后调用；目标用户的各个会话在下次请求时由守卫透明旋转（rotateIfElevated），
+   * 不强制重新登录。普通功能授权的授予/撤销不标记（撤权即时生效由守卫每次请求
+   * 按当前账号与授权实时读取保证，无需旋转）。
+   *
+   * 标记随 TTL 自然过期：覆盖最长会话绝对过期（"记住我"默认 90 天，base PRD §3），
+   * 取 100 天；同一用户多次提权只刷新标记时间。
+   *
+   * @param userId 被提权的用户 id
+   */
+  async markElevation(userId: number): Promise<void> {
+    await this.redis.set(
+      redisKey(REDIS_NAMESPACE.SESSION, 'elevate', userId),
+      String(Date.now()),
+      'PX',
+      ELEVATION_MARK_TTL_MS,
+    );
+  }
+
+  /**
+   * 提权旋转检查（会话守卫每次已通过账号校验的请求调用）。
+   *
+   * 用户存在提权标记且本会话建立（或上次旋转）早于标记时间时，旋转会话标识：
+   * 新 sessionId + 数据平移（保留 rememberMe/绝对过期/会话版本）+ 旧键删除；
+   * 同一用户多个会话各自在其下次请求旋转（按会话建立时间与标记时间比较，
+   * 旋转后 iat 晚于标记即不再重复旋转）。
+   *
+   * @param sessionId 当前会话标识
+   * @param data 当前会话数据（守卫已读取并校验）
+   * @returns （可能轮换后的）会话标识与数据；调用方在标识变化时向响应写入新会话 Cookie
+   */
+  async rotateIfElevated(sessionId: string, data: SessionData): Promise<{ sessionId: string; data: SessionData }> {
+    const markedAt = await this.redis.get(redisKey(REDIS_NAMESPACE.SESSION, 'elevate', data.u));
+    // 会话建立（或上次旋转）晚于标记时间才跳过；同毫秒命中按安全侧旋转一次（旋转后 iat 更新即不再重复）
+    if (!markedAt || (data.iat ?? 0) > Number(markedAt)) {
+      return { sessionId, data };
+    }
+    const sessionKey = redisKey(REDIS_NAMESPACE.SESSION, sessionId);
+    const pttl = await this.redis.pttl(sessionKey);
+    if (pttl <= 0) {
+      // 恰好在读取后到期：不旋转，交给正常过期路径
+      return { sessionId, data };
+    }
+    const nextData: SessionData = { ...data, iat: Date.now() };
+    const nextSessionId = randomBytes(SESSION_ID_BYTES).toString('base64url');
+    await this.redis.set(redisKey(REDIS_NAMESPACE.SESSION, nextSessionId), JSON.stringify(nextData), 'PX', pttl);
+    await this.redis.del(sessionKey);
+    return { sessionId: nextSessionId, data: nextData };
   }
 }

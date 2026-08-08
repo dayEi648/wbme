@@ -91,6 +91,14 @@ export const frameworkErrors = {
     httpStatus: 503,
     message: '系统维护中，请稍后再试',
   },
+  /** 目标系统未开放（product_status ≠ OPEN）：入口可见不等于可进入（主 PRD §9.6 系统可用性校验、base PRD §5） */
+  SYSTEM_NOT_OPEN: {
+    code: 'SYSTEM_NOT_OPEN',
+    type: 'DEPENDENCY',
+    httpStatus: 503,
+    message: '系统尚未开放，暂不可进入',
+    detailsFields: ['system'],
+  },
   /** 无法可靠分类的异常（主 PRD §9.5：SYSTEM 500 通用安全文案） */
   INTERNAL_ERROR: {
     code: 'INTERNAL_ERROR',

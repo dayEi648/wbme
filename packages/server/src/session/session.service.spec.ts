@@ -100,4 +100,64 @@ describe.skipIf(!REDIS_URL)('SessionService（主 PRD §9.8、base PRD §3）', 
     const data = await session.read(rotated.sessionId);
     expect(data?.sv).toBe(1);
   });
+
+  it('提权旋转：标记后旧会话透明轮换（数据平移），同一会话不重复旋转（base PRD §3）', async () => {
+    const { sessionId } = await session.create(opts);
+    const before = await session.read(sessionId);
+    // 无标记：不旋转
+    const untouched = await session.rotateIfElevated(sessionId, before!);
+    expect(untouched.sessionId).toBe(sessionId);
+
+    await session.markElevation(1);
+    // 跨过毫秒边界，保证旋转后的 iat 严格晚于标记时间（同毫秒命中按安全侧会再旋转一次）
+    await new Promise((r) => setTimeout(r, 2));
+    const rotated = await session.rotateIfElevated(sessionId, before!);
+    expect(rotated.sessionId).not.toBe(sessionId);
+    // 旧标识失效，数据平移（rm/abs 不变，iat 刷新）
+    expect(await session.read(sessionId)).toBeNull();
+    expect(rotated.data.u).toBe(1);
+    expect(rotated.data.rm).toBe(false);
+    expect(rotated.data.abs).toBe(before!.abs);
+    expect(rotated.data.iat).toBeGreaterThanOrEqual(before!.iat ?? 0);
+    expect(await session.read(rotated.sessionId)).not.toBeNull();
+    // 旋转后 iat 晚于标记：同一会话不重复旋转
+    const again = await session.rotateIfElevated(rotated.sessionId, rotated.data);
+    expect(again.sessionId).toBe(rotated.sessionId);
+  });
+
+  it('提权旋转：标记早于会话建立时间不旋转；其它用户的标记不影响', async () => {
+    await session.markElevation(1);
+    // 跨过毫秒边界，保证后续会话的建立时间严格晚于标记时间
+    await new Promise((r) => setTimeout(r, 2));
+    // 标记之后建立的会话（iat > 标记时间）：不旋转
+    const { sessionId } = await session.create(opts);
+    const data = await session.read(sessionId);
+    const result = await session.rotateIfElevated(sessionId, data!);
+    expect(result.sessionId).toBe(sessionId);
+    // 其它用户（userId=2）的会话不受 userId=1 的标记影响
+    const other = await session.create({ ...opts, userId: 2 });
+    // 先把 userId=2 的会话 iat 调到标记之前来模拟"标记前建立"：直接重建一个无 iat 的旧会话数据
+    await client.del(redisKey(REDIS_NAMESPACE.SESSION, other.sessionId));
+    await client.set(
+      redisKey(REDIS_NAMESPACE.SESSION, other.sessionId),
+      JSON.stringify({ u: 2, sv: 0, pv: 0, ov: 0, otv: 0, dv: 0, rm: false, abs: Date.now() + 3600_000 }),
+      'PX',
+      3_600_000,
+    );
+    const legacy = await session.read(other.sessionId);
+    const untouched = await session.rotateIfElevated(other.sessionId, legacy!);
+    expect(untouched.sessionId).toBe(other.sessionId);
+    // 而 userId=1 的无 iat 旧会话（缺省视为 0，早于标记）会被旋转一次
+    const legacyOfMarked = await session.create({ ...opts });
+    await client.del(redisKey(REDIS_NAMESPACE.SESSION, legacyOfMarked.sessionId));
+    await client.set(
+      redisKey(REDIS_NAMESPACE.SESSION, legacyOfMarked.sessionId),
+      JSON.stringify({ u: 1, sv: 0, pv: 0, ov: 0, otv: 0, dv: 0, rm: false, abs: Date.now() + 3600_000 }),
+      'PX',
+      3_600_000,
+    );
+    const legacyData = await session.read(legacyOfMarked.sessionId);
+    const rotated = await session.rotateIfElevated(legacyOfMarked.sessionId, legacyData!);
+    expect(rotated.sessionId).not.toBe(legacyOfMarked.sessionId);
+  });
 });

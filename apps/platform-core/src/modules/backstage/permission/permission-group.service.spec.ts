@@ -13,8 +13,11 @@ try {
 import { PrismaService } from '../../../prisma.service';
 import { GrantService } from './grant.service';
 import { PermissionGroupService } from './permission-group.service';
+import { SessionService } from '@wbme/server';
+import Redis from 'ioredis';
 
 const DATABASE_URL = process.env.DATABASE_URL;
+const REDIS_URL = process.env.REDIS_URL;
 
 /** 测试数据统一前缀（账号姓名/手机号、组名），便于隔离与清理 */
 const TEST_NAME_PREFIX = 'T33_';
@@ -28,10 +31,11 @@ const KEY_PREFIX = 't33-';
  * 验收核心 = 快照语义：组展开授权后修改/删除组，员工授权不受影响。
  * 测试组与账号使用统一前缀，结束后统一清理（含软删除组的物理清理）。
  */
-describe.skipIf(!DATABASE_URL)('权限组（T3-3 CRUD/展开/快照语义）', () => {
+describe.skipIf(!DATABASE_URL || !REDIS_URL)('权限组（T3-3 CRUD/展开/快照语义）', () => {
   let prisma: PrismaService;
   let groups: PermissionGroupService;
   let grants: GrantService;
+  let redis: Redis;
   let phoneSeq = 0;
 
   let superOp: { id: number; name: string };
@@ -40,7 +44,8 @@ describe.skipIf(!DATABASE_URL)('权限组（T3-3 CRUD/展开/快照语义）', (
   beforeAll(async () => {
     prisma = new PrismaService();
     groups = new PermissionGroupService(prisma);
-    grants = new GrantService(prisma);
+    redis = new Redis(REDIS_URL ?? 'redis://localhost:6379');
+    grants = new GrantService(prisma, new SessionService(redis));
     await cleanupLeftovers();
     superOp = await createUser({ name: `${TEST_NAME_PREFIX}超管`, isSuperAdmin: true });
     permAdmin = await createUser({ name: `${TEST_NAME_PREFIX}权管` });
@@ -52,6 +57,7 @@ describe.skipIf(!DATABASE_URL)('权限组（T3-3 CRUD/展开/快照语义）', (
   afterAll(async () => {
     await cleanupLeftovers();
     await prisma.client.$disconnect();
+    await redis.quit();
   });
 
   /** 清理本规格产生的组（含软删除）、授权行、操作日志与测试账号 */

@@ -42,6 +42,17 @@ export const DATA_SCOPE_LABELS: Record<DataScope, string> = {
 /** 数据范围宽严顺序：公司 > 部门 > 本人（主 PRD §3.1「按最宽范围生效」） */
 const DATA_SCOPE_RANK: Record<DataScope, number> = { SELF: 0, DEPARTMENT: 1, COMPANY: 2 };
 
+/** 最宽数据范围（公司 > 部门 > 本人，主 PRD §3.1 多档位授权合并）；空数组返回 null */
+export function widestScope(scopes: readonly DataScope[]): DataScope | null {
+  let widest: DataScope | null = null;
+  for (const scope of scopes) {
+    if (widest === null || DATA_SCOPE_RANK[scope] > DATA_SCOPE_RANK[widest]) {
+      widest = scope;
+    }
+  }
+  return widest;
+}
+
 /** 授权（功能编码, 数据范围）对键 */
 export function grantKey(functionCode: string, dataScope: string): string {
   return `${functionCode} ${dataScope}`;

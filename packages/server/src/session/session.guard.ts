@@ -7,8 +7,9 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { BusinessException, accountErrors, frameworkErrors } from '@wbme/contracts';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { getRequestContext, setRequestUserId } from '../request-context';
+import { sessionCookieOptions } from './cookie';
 import { ACTIVE_INTERACTION_HEADER, SESSION_COOKIE } from './session-constants';
 import { SessionService } from './session.service';
 import type { SessionUser, SessionUserLoader } from './session-user.loader';
@@ -43,7 +44,8 @@ export function Public(): MethodDecorator & ClassDecorator {
  *
  * 流程：解析会话 Cookie → Redis 校验（不存在/过期 → 401 SESSION_EXPIRED）→
  * 注入的 loader 加载账号（不存在/软删/非 ACTIVE → 拒绝并删会话）→
- * 会话版本与账号版本一致才放行 → 写请求上下文 userId → 有效交互标记则滑动续期。
+ * 会话版本与账号版本一致才放行 → 提权标记命中则透明旋转会话标识（下发新 Cookie）→
+ * 写请求上下文 userId → 有效交互标记则滑动续期。
  * Redis 故障时本守卫路径自然返回 DEPENDENCY_UNAVAILABLE（主 PRD §9.8）。
  */
 @Injectable()
@@ -90,13 +92,30 @@ export class SessionGuard implements CanActivate {
       throw new BusinessException(accountErrors.ACCOUNT_PENDING_ACTIVATION);
     }
 
+    // 提权旋转（base PRD §3：权限/站点角色提升后必须更换会话标识）：
+    // 授权服务在用户被提权时写入标记，此处透明轮换并向响应下发新会话 Cookie（不强制重新登录）
+    const rotated = await this.session.rotateIfElevated(sessionId, data);
+    const activeSessionId = rotated.sessionId;
+    const sessionData = rotated.data;
+    if (activeSessionId !== sessionId) {
+      const response = context.switchToHttp().getResponse<Response>();
+      const maxAgeSeconds = sessionData.rm
+        ? Math.max(1, Math.ceil((sessionData.abs - Date.now()) / 1000))
+        : undefined;
+      response.cookie(
+        SESSION_COOKIE,
+        activeSessionId,
+        sessionCookieOptions(process.env.COOKIE_SECURE !== 'false', maxAgeSeconds),
+      );
+    }
+
     setRequestUserId(user.id);
 
     // 仅"有效交互"续期：前端写请求默认带标记，读请求仅页面导航/查询带；轮询/预取/静默刷新不带
     const active = request.headers[ACTIVE_INTERACTION_HEADER];
     if (active === '1' || active === 'true') {
-      const idleTimeoutMs = await this.idleTimeoutProvider(data.rm);
-      const result = await this.session.touch(sessionId, data, idleTimeoutMs);
+      const idleTimeoutMs = await this.idleTimeoutProvider(sessionData.rm);
+      const result = await this.session.touch(activeSessionId, sessionData, idleTimeoutMs);
       if (!result.valid) {
         throw new BusinessException(frameworkErrors.SESSION_EXPIRED);
       }

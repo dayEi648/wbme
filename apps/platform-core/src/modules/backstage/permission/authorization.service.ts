@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { DataScope } from '@wbme/contracts';
 import { PrismaService } from '../../../prisma.service';
+import { widestScope } from './catalog-registry.util';
 
 /** 一条有效功能授权（功能编码 + 数据范围） */
 export interface EffectiveGrant {
@@ -49,31 +50,75 @@ export class AuthorizationService {
 
   /**
    * 校验员工是否持有指定功能的有效授权（超管豁免；目录外功能授权不生效）。
+   * 功能未注册于目录时任何人（含超管）不可用——移除的功能不参与入口与守卫判断（主 PRD §3.1）。
    *
    * @param userId 员工账号 id
    * @param functionCode 稳定功能编码
-   * @returns 持有（或超管）返回 true
+   * @returns 持有（或超管且功能仍注册）返回 true
    */
   async hasFunction(userId: number, functionCode: string): Promise<boolean> {
+    const access = await this.getFunctionAccess(userId, functionCode);
+    return access.allowed;
+  }
+
+  /**
+   * 功能访问上下文（函数权限守卫的单一取数口，主 PRD §9.6 守卫链：
+   * 系统可用性 → 功能权限 → 粗粒度数据范围）。
+   *
+   * @param userId 员工账号 id
+   * @param functionCode 路由声明的稳定功能编码
+   * @returns 访问上下文：
+   *   - registered：功能是否仍注册于目录（false = 路由声明了不存在的编码，代码/部署缺陷）；
+   *   - systemOpen：所属系统 product_status 是否为 OPEN（base/backstage 恒 OPEN；
+   *     未开放系统对所有人（含超管）不可进入，base PRD §5 入口可见≠可进入）；
+   *   - allowed：是否放行（超管豁免；目录外功能授权不生效）；
+   *   - dataScope：有效数据范围（多档位授权按最宽合并，公司 > 部门 > 本人）；
+   *     null = 不受数据范围限制（超管豁免，仅针对访问控制）
+   */
+  async getFunctionAccess(
+    userId: number,
+    functionCode: string,
+  ): Promise<{
+    registered: boolean;
+    systemCode: string | null;
+    systemName: string | null;
+    systemOpen: boolean;
+    allowed: boolean;
+    dataScope: DataScope | null;
+  }> {
+    const fn = await this.prisma.client.function.findUnique({
+      where: { code: functionCode },
+      select: {
+        system: { select: { code: true, name: true, productStatus: true } },
+      },
+    });
+    if (!fn) {
+      return { registered: false, systemCode: null, systemName: null, systemOpen: false, allowed: false, dataScope: null };
+    }
+    const base = {
+      registered: true,
+      systemCode: fn.system.code,
+      systemName: fn.system.name,
+      systemOpen: fn.system.productStatus === 'OPEN',
+    };
     const user = await this.prisma.client.user.findUnique({
       where: { id: userId },
       select: { isSuperAdmin: true, deletedAt: true },
     });
     if (!user || user.deletedAt !== null) {
-      return false;
+      return { ...base, allowed: false, dataScope: null };
     }
     if (user.isSuperAdmin) {
-      return true;
+      return { ...base, allowed: true, dataScope: null };
     }
-    const grant = await this.prisma.client.employeeGrant.findFirst({
+    const grants = await this.prisma.client.employeeGrant.findMany({
       where: { userId, functionCode },
-      select: { id: true },
+      select: { dataScope: true },
     });
-    if (!grant) {
-      return false;
+    if (grants.length === 0) {
+      return { ...base, allowed: false, dataScope: null };
     }
-    const registered = await this.registeredFunctionCodes([functionCode]);
-    return registered.has(functionCode);
+    return { ...base, allowed: true, dataScope: widestScope(grants.map((grant) => grant.dataScope)) };
   }
 
   /**

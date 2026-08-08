@@ -36,7 +36,7 @@
 | 路径 | 用途 |
 | --- | --- |
 | `packages/contracts/` | 共享契约：错误码目录、BusinessException、DTO 基类、枚举、功能权限目录权威定义（`src/permission/catalog.ts`，主 PRD §3.1）、金额/时区约定 |
-| `packages/server/` | NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器、Redis、健康探针、内部 REST |
+| `packages/server/` | NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器、Redis、健康探针、内部 REST、会话/CSRF（含提权旋转标记与透明轮换） |
 | `packages/approval/` | 统一审批内核（T5 实现） |
 | `packages/logging/` | 操作日志模板与集中日志受限语句（T4 实现） |
 | `packages/tasks/` | 统一后台任务受限接口（T4 实现） |

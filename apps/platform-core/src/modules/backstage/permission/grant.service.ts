@@ -8,6 +8,7 @@ import {
   permissionErrors,
   type UserStatus,
 } from '@wbme/contracts';
+import { SessionService } from '@wbme/server';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 import {
@@ -41,7 +42,12 @@ import type { BatchGrantDto, BatchRevokeDto, SaveEmployeeGrantsDto, SearchEmploy
  *   「操作者 + 系统 + 幂等作用域 + 幂等键」部分唯一约束为唯一事实（见 operation-log.util.ts）；
  * - 目录中已移除功能的授权行不生效、不参与"完整状态"替换（保留为审计数据）；
  * - 批量授权支持权限组展开（T3-3）：组内失效项（功能已移除/档位已失效）跳过不计入授权，
- *   展开结果为员工功能授权快照，与组不产生关联（之后改组/删组不影响已授权员工）。
+ *   展开结果为员工功能授权快照，与组不产生关联（之后改组/删组不影响已授权员工）；
+ * - 提权旋转（base PRD §3）：员工新获得"权限管理"功能（含组展开获得）时在授权事务提交后
+ *   调用 SessionService.markElevation，其各会话下次请求由守卫透明旋转标识；
+ *   站点角色提升（任命超管，T3-6）复用同一标记。普通功能授权的授予/撤销不旋转——
+ *   防固定针对的是进入委派链/站点角色的特权等级变化，且守卫每次请求实时读取授权，
+ *   撤权无需旋转即即时生效。
  */
 
 /** 操作日志幂等作用域（同一操作者 + 作用域 + 幂等键唯一，主 PRD §3.3） */
@@ -87,7 +93,10 @@ interface GroupExpansion {
 
 @Injectable()
 export class GrantService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly session: SessionService,
+  ) {}
 
   /**
    * 员工检索（backstage PRD §4）：姓名/手机号模糊搜索，分页遵循主 PRD §9.5。
@@ -228,7 +237,9 @@ export class GrantService {
       permissionVersion: dto.permissionVersion,
       grants: dto.grants,
     });
-    return executeIdempotentOperation(this.prisma.client, {
+    // 提权标记：目标新获得"权限管理"功能时置位（授权事务提交后标记会话旋转；重放不进入 run，不重复标记）
+    let elevated = false;
+    const result = await executeIdempotentOperation(this.prisma.client, {
       operator,
       scope: IDEMPOTENCY_SCOPE.GRANTS_SAVE,
       idempotencyKey: dto.idempotencyKey,
@@ -271,6 +282,8 @@ export class GrantService {
         const currentKeys = new Set(current.map((row) => grantKey(row.functionCode, row.dataScope)));
         const toDelete = current.filter((row) => inScope(row) && !requested.has(grantKey(row.functionCode, row.dataScope)));
         const toCreate = dto.grants.filter((item) => !currentKeys.has(grantKey(item.functionCode, item.dataScope)));
+        // 新获得"权限管理"功能 = 进入委派链（提权），提交后标记会话旋转（base PRD §3）
+        elevated = toCreate.some((item) => item.functionCode === PERMISSION_MANAGE_FUNCTION_CODE);
         if (toDelete.length > 0) {
           await tx.employeeGrant.deleteMany({ where: { id: { in: toDelete.map((row) => row.id) } } });
         }
@@ -295,6 +308,11 @@ export class GrantService {
         };
       },
     });
+    // 授权事务已提交：提权标记（目标会话下次请求由守卫透明旋转标识）
+    if (elevated) {
+      await this.session.markElevation(targetUserId);
+    }
+    return result;
   }
 
   /**
@@ -325,7 +343,9 @@ export class GrantService {
     const catalog = await loadCatalogMap(this.prisma.client);
 
     const fingerprint = fingerprintPayload({ userIds: dto.userIds, grants: dto.grants, groupIds: dto.groupIds });
-    return executeIdempotentOperation(this.prisma.client, {
+    // 提权标记：新获得"权限管理"功能的目标（提交后统一标记会话旋转；重放不进入 run，不重复标记）
+    const elevatedUserIds: number[] = [];
+    const result = await executeIdempotentOperation(this.prisma.client, {
       operator,
       scope: IDEMPOTENCY_SCOPE.BATCH_GRANT,
       idempotencyKey: dto.idempotencyKey,
@@ -349,6 +369,10 @@ export class GrantService {
           if (additions.length === 0) {
             // 增量授权对该目标无变化：不递增版本、不写日志（不制造空变更）
             continue;
+          }
+          // 新获得"权限管理"功能 = 进入委派链（提权），提交后标记会话旋转（base PRD §3）
+          if (additions.some((item) => item.functionCode === PERMISSION_MANAGE_FUNCTION_CODE)) {
+            elevatedUserIds.push(target.id);
           }
           await tx.employeeGrant.createMany({
             data: additions.map((item) => ({
@@ -387,6 +411,11 @@ export class GrantService {
         };
       },
     });
+    // 授权事务已提交：逐人提权标记（目标会话下次请求由守卫透明旋转标识）
+    for (const userId of elevatedUserIds) {
+      await this.session.markElevation(userId);
+    }
+    return result;
   }
 
   /**

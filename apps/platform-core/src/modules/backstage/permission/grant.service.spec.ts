@@ -13,8 +13,13 @@ try {
 import { PrismaService } from '../../../prisma.service';
 import { AuthorizationService } from './authorization.service';
 import { GrantService } from './grant.service';
+import { FunctionPermissionGuard, REQUIRED_FUNCTION_KEY } from './function-permission.guard';
+import { Reflector } from '@nestjs/core';
+import { SessionService, REQUEST_CONTEXT_STORAGE, getRequestContext, type RequestContext } from '@wbme/server';
+import Redis from 'ioredis';
 
 const DATABASE_URL = process.env.DATABASE_URL;
+const REDIS_URL = process.env.REDIS_URL;
 
 /** 测试账号统一前缀（姓名/手机号），便于隔离与清理 */
 const TEST_NAME_PREFIX = 'T32_';
@@ -28,10 +33,11 @@ const KEY_PREFIX = 't32-';
  * 测试账号使用统一姓名/手机号前缀，afterAll 统一清理授权行、操作日志与账号；
  * 不触碰真实目录与既有账号。
  */
-describe.skipIf(!DATABASE_URL)('员工授权 CRUD（T3-2 版本/整批/幂等/委派）', () => {
+describe.skipIf(!DATABASE_URL || !REDIS_URL)('员工授权 CRUD（T3-2 版本/整批/幂等/委派）', () => {
   let prisma: PrismaService;
   let service: GrantService;
   let authorization: AuthorizationService;
+  let redis: Redis;
   let phoneSeq = 0;
   const testUserIds: number[] = [];
 
@@ -42,7 +48,8 @@ describe.skipIf(!DATABASE_URL)('员工授权 CRUD（T3-2 版本/整批/幂等/�
 
   beforeAll(async () => {
     prisma = new PrismaService();
-    service = new GrantService(prisma);
+    redis = new Redis(REDIS_URL ?? 'redis://localhost:6379');
+    service = new GrantService(prisma, new SessionService(redis));
     authorization = new AuthorizationService(prisma);
     await cleanupLeftovers();
     superOp = await createUser({ name: `${TEST_NAME_PREFIX}超管`, isSuperAdmin: true });
@@ -55,9 +62,10 @@ describe.skipIf(!DATABASE_URL)('员工授权 CRUD（T3-2 版本/整批/幂等/�
   afterAll(async () => {
     await cleanupLeftovers();
     await prisma.client.$disconnect();
+    await redis.quit();
   });
 
-  /** 清理本规格产生的授权行、操作日志与测试账号（按前缀识别） */
+  /** 清理本规格产生的授权行、操作日志与测试账号（按前缀识别），以及提权旋转标记 */
   async function cleanupLeftovers(): Promise<void> {
     const legacy = await prisma.client.user.findMany({
       where: { phone: { startsWith: TEST_PHONE_PREFIX } },
@@ -68,7 +76,18 @@ describe.skipIf(!DATABASE_URL)('员工授权 CRUD（T3-2 版本/整批/幂等/�
       await prisma.client.employeeGrant.deleteMany({ where: { OR: [{ userId: { in: ids } }, { grantedBy: { in: ids } }] } });
       await prisma.client.backstageOperationLog.deleteMany({ where: { operatorId: { in: ids } } });
       await prisma.client.user.deleteMany({ where: { id: { in: ids } } });
+      await redis.del(...ids.map((id) => elevationKey(id)));
     }
+  }
+
+  /** 提权旋转标记键（与 SessionService.markElevation 一致） */
+  function elevationKey(userId: number): string {
+    return `session:elevate:${userId}`;
+  }
+
+  /** 读取提权旋转标记（不存在返回 null） */
+  async function elevationMarkedAt(userId: number): Promise<string | null> {
+    return redis.get(elevationKey(userId));
   }
 
   /** 创建测试账号（ACTIVE 默认；CHECK 约束要求 ACTIVE 必须有密码哈希） */
@@ -420,8 +439,82 @@ describe.skipIf(!DATABASE_URL)('员工授权 CRUD（T3-2 版本/整批/幂等/�
     expect(effective.isSuperAdmin).toBe(false);
     expect(effective.grants).toHaveLength(0);
 
-    expect(await authorization.hasFunction(superOp.id, 'ghost_function')).toBe(true);
+    // 超管豁免针对"仍注册的功能"的授权约束：未授予但生效
+    expect(await authorization.hasFunction(superOp.id, 'permission_manage')).toBe(true);
+    // 目录外（未注册/已移除）功能不参与守卫判断：任何人（含超管）不可用
+    expect(await authorization.hasFunction(superOp.id, 'ghost_function')).toBe(false);
     expect(await authorization.hasFunction(permAdmin.id, 'permission_manage')).toBe(true);
     expect(await authorization.hasFunction(ghost.id, 'permission_manage')).toBe(false);
+  });
+
+  it('守卫链即时生效：授予→放行（注入数据范围）→撤销→同用户下一请求 403（T3-4）', async () => {
+    const target = await createUser({ name: `${TEST_NAME_PREFIX}即时` });
+    const handler = (): void => undefined;
+    const context = { getHandler: () => handler, getClass: () => class {} } as never;
+    // 用 BACKSTAGE（恒 OPEN）的功能做链路验证：ASSET/HR/FIN 未开放时守卫按系统可用性拦截
+    const reflector = {
+      get: (key: string, metaTarget: unknown) =>
+        key === REQUIRED_FUNCTION_KEY && metaTarget === handler ? 'operation_log_view' : undefined,
+    } as unknown as Reflector;
+    const guard = new FunctionPermissionGuard(reflector, authorization);
+    const runGuard = (userId: number): Promise<{ allowed: boolean; granted: unknown }> =>
+      REQUEST_CONTEXT_STORAGE.run(
+        { requestId: 'r', traceId: 't', startedAt: 0, service: 'test', userId } as RequestContext,
+        async () => {
+          const allowed = await guard.canActivate(context);
+          return { allowed, granted: getRequestContext()?.grantedFunction };
+        },
+      );
+
+    // 授予前：403
+    await expect(runGuard(target.id)).rejects.toMatchObject({ entry: { code: 'FORBIDDEN' } });
+    // 授予后：放行并注入有效数据范围（无授权缓存，实时读取）
+    await service.batchGrant(superOp.id, {
+      userIds: [target.id],
+      grants: [{ functionCode: 'operation_log_view', dataScope: 'DEPARTMENT' }],
+    });
+    await expect(runGuard(target.id)).resolves.toEqual({
+      allowed: true,
+      granted: { code: 'operation_log_view', dataScope: 'DEPARTMENT' },
+    });
+    // 撤销后：同一用户下一次守卫校验立即 403（撤权即时生效，不等待会话/缓存过期）
+    await service.batchRevoke(superOp.id, { userIds: [target.id] });
+    await expect(runGuard(target.id)).rejects.toMatchObject({ entry: { code: 'FORBIDDEN' } });
+    // 超管豁免：数据范围上下文为 null（不受限，仅针对访问控制）
+    await expect(runGuard(superOp.id)).resolves.toEqual({ allowed: true, granted: { code: 'operation_log_view', dataScope: null } });
+  });
+
+  it('提权旋转接线：新授予"权限管理"功能标记会话旋转；普通授予与撤销不标记（base PRD §3）', async () => {
+    const target = await createUser({ name: `${TEST_NAME_PREFIX}提权` });
+    // 普通功能授予：不标记（不过度旋转）
+    await service.batchGrant(superOp.id, { userIds: [target.id], grants: [{ functionCode: 'my_assets', dataScope: 'SELF' }] });
+    expect(await elevationMarkedAt(target.id)).toBeNull();
+    // 保存新获得"权限管理"功能（进入委派链）：标记
+    await service.saveEmployeeGrants(superOp.id, target.id, {
+      permissionVersion: 1,
+      grants: [
+        { functionCode: 'my_assets', dataScope: 'SELF' },
+        { functionCode: 'permission_manage', dataScope: 'COMPANY' },
+      ],
+    });
+    expect(await elevationMarkedAt(target.id)).not.toBeNull();
+    // 撤销（含权限管理）：不新增标记
+    await redis.del(elevationKey(target.id));
+    await service.batchRevoke(superOp.id, { userIds: [target.id] });
+    expect(await elevationMarkedAt(target.id)).toBeNull();
+    // 批量授予含"权限管理"：逐人标记
+    const targetB = await createUser({ name: `${TEST_NAME_PREFIX}提权乙` });
+    await service.batchGrant(superOp.id, {
+      userIds: [targetB.id],
+      grants: [{ functionCode: 'permission_manage', dataScope: 'COMPANY' }],
+    });
+    expect(await elevationMarkedAt(targetB.id)).not.toBeNull();
+    // 已持有者再次经批量授权获得同一功能（无变化跳过）：不重复标记
+    await redis.del(elevationKey(targetB.id));
+    await service.batchGrant(superOp.id, {
+      userIds: [targetB.id],
+      grants: [{ functionCode: 'permission_manage', dataScope: 'COMPANY' }],
+    });
+    expect(await elevationMarkedAt(targetB.id)).toBeNull();
   });
 });
