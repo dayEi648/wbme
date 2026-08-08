@@ -15,7 +15,7 @@ import { SESSION_ID_BYTES } from './session-constants';
 export interface SessionData {
   /** 用户 ID */
   u: number;
-  /** 会话建立时的账号 session_version（改密/重置/换绑/注销后递增，旧会话因版本不一致失效） */
+  /** 会话建立时的账号 session_version（改密/重置/注销后递增，旧会话因版本不一致失效） */
   sv: number;
   /** 权限版本（T3-4 比较） */
   pv: number;
@@ -35,7 +35,7 @@ export interface SessionData {
 
 /** 会话创建参数 */
 export interface CreateSessionOptions {  userId: number;
-  /** 当前账号 session_version（改密/重置/换绑/注销后递增，旧会话因版本不一致失效） */
+  /** 当前账号 session_version（改密/重置/注销后递增，旧会话因版本不一致失效） */
   sessionVersion: number;
   /** 是否"记住我"（延长空闲与绝对时限） */
   rememberMe: boolean;

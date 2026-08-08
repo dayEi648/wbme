@@ -4,7 +4,7 @@
  * - 会话 Cookie：`HttpOnly + Secure(按部署配置) + SameSite=Lax + Path=/`；
  *   SameSite=Lax 允许钉钉 top-level 授权回跳仍携带 Cookie，同时挡住跨站 POST。
  * - CSRF Cookie：双提交 Cookie + 自定义头（X-WBME-CSRF-Token），非 HttpOnly 供前端读取。
- * - 流程 Cookie：激活/注册/重置/换绑的一次性流程会话，Path 仅覆盖对应流程路由。
+ * - 流程 Cookie：激活/注册/重置的一次性流程会话，Path 仅覆盖对应流程路由。
  */
 
 /** 服务端会话 Cookie 名 */

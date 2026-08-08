@@ -12,7 +12,7 @@ export interface SessionUser {
   id: number;
   /** 账号状态（PENDING_ACTIVATION 未激活 / ACTIVE 正常 / DEACTIVATED 已注销） */
   status: UserStatus;
-  /** 账号会话版本：修改/重置密码、换绑、注销时递增，与会话内版本不一致即失效 */
+  /** 账号会话版本：修改/重置密码、注销时递增，与会话内版本不一致即失效 */
   sessionVersion: number;
   /** 是否超级管理员（门户入口推导与守卫快捷路径使用） */
   isSuperAdmin: boolean;

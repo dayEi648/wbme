@@ -80,7 +80,7 @@ export class SessionGuard implements CanActivate {
       throw new BusinessException(frameworkErrors.SESSION_EXPIRED);
     }
     if (user.sessionVersion !== data.sv) {
-      // 改密/重置/换绑/注销后旧会话立即失效（base PRD §3）
+      // 改密/重置/注销后旧会话立即失效（base PRD §3）
       await this.session.destroy(sessionId);
       throw new BusinessException(frameworkErrors.SESSION_EXPIRED);
     }

@@ -34,11 +34,11 @@
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `integer` | PK，serial4 自增 | 主键 |
-| `created_by` | `uuid` | NULL | 创建者；NULL 表示系统/初始化操作 |
+| `created_by` | `integer` | NULL | 创建者；NULL 表示系统/初始化操作 |
 | `created_at` | `timestamptz` | NOT NULL，`DEFAULT now()` | 创建时间（UTC） |
-| `updated_by` | `uuid` | NULL | 最后修改者 |
+| `updated_by` | `integer` | NULL | 最后修改者 |
 | `updated_at` | `timestamptz` | NOT NULL | 最后修改时间，应用层维护 |
-| `deleted_by` | `uuid` | NULL | 软删除者（注销/删除操作人） |
+| `deleted_by` | `integer` | NULL | 软删除者（注销/删除操作人） |
 | `deleted_at` | `timestamptz` | NULL | NULL=有效；非 NULL=已软删除 |
 
 ### 2.2 只追加表（日志、流水、审计、任务事实）
@@ -46,7 +46,7 @@
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `integer` | PK，serial4 自增 | 主键 |
-| `created_by` | `uuid` | NULL | 创建者/操作者；系统操作可为 NULL |
+| `created_by` | `integer` | NULL | 创建者/操作者；系统操作可为 NULL |
 | `created_at` | `timestamptz` | NOT NULL，`DEFAULT now()` | 创建/发生时间 |
 
 无 `updated_*`/`deleted_*` 字段；状态变化使用业务字段（如 `status`、`used_at`）表达，后端不提供修改或删除能力。`created_by` 是否必需由各表业务决定。

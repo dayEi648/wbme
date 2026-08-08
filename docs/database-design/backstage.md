@@ -360,4 +360,4 @@ MVP 不自动清理、不提供删除接口。
 
 - **`backstage.site_roles`**（01-site-roles.sql，主 PRD §9.4、backstage PRD §8）：站点角色最小只读视图 = `base.users` 的 `user_id / name / is_super_admin / status`（`deleted_at IS NULL`）；hr 等其它部署单元经此视图读取站点角色，不直连 users 表。
 - **`backstage.operation_logs_union`**（02-operation-logs-union.sql，主 PRD §3.3）：base/backstage/asset/hr/fin 各 schema 同构 `operation_logs` 的联合视图，`action_type` 统一转 `text`；新增模块时必须同步扩展。
-- **hr `v_user_titles`**（03-user-titles.sql，hr PRD §8）：职称视图归 hr 部署单元（见 `hr.md`）。
+- **hr `user_titles`**（03-user-titles.sql，hr PRD §8）：职称视图归 hr 部署单元（见 `hr.md`）。
