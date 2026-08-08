@@ -20,11 +20,13 @@ import { SecurityLogModule } from './modules/base/security-log/security-log.modu
 import { AuthModule } from './modules/base/auth/auth.module';
 import { DingtalkModule } from './modules/base/dingtalk/dingtalk.module';
 import { PortalModule } from './modules/base/portal/portal.module';
+import { PermissionCatalogModule } from './modules/backstage/permission-catalog/permission-catalog.module';
 
 /**
  * platform-core 根模块。
  * base 与 backstage 的模块边界与领域拆分在 T2/T3 阶段落地，
- * 本期承载全局配置、Redis、健康探针与认证会话基础设施（全局会话守卫 + CSRF 守卫）。
+ * 本期承载全局配置、Redis、健康探针、认证会话基础设施（全局会话守卫 + CSRF 守卫）
+ * 与 backstage 权限目录启动对账（T3-1）。
  */
 
 /** 空闲超时提供者：按"记住我"读取系统设置（base PRD §3 双时限） */
@@ -52,6 +54,7 @@ export class AppModule {
         AuthModule,
         DingtalkModule,
         PortalModule,
+        PermissionCatalogModule,
       ],
       providers: [
         SessionIntegrityLoader,

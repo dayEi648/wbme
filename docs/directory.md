@@ -22,7 +22,7 @@
 
 | 路径 | 用途 |
 | --- | --- |
-| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy） |
+| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy；backstage 权限目录启动对账见 `src/modules/backstage/permission-catalog/`） |
 | `apps/asset/` | 资产系统部署单元 |
 | `apps/hr/` | 人事系统部署单元 |
 | `apps/fin/` | 财务系统部署单元 |
@@ -35,7 +35,7 @@
 
 | 路径 | 用途 |
 | --- | --- |
-| `packages/contracts/` | 共享契约：错误码目录、BusinessException、DTO 基类、枚举、金额/时区约定 |
+| `packages/contracts/` | 共享契约：错误码目录、BusinessException、DTO 基类、枚举、功能权限目录权威定义（`src/permission/catalog.ts`，主 PRD §3.1）、金额/时区约定 |
 | `packages/server/` | NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器、Redis、健康探针、内部 REST |
 | `packages/approval/` | 统一审批内核（T5 实现） |
 | `packages/logging/` | 操作日志模板与集中日志受限语句（T4 实现） |
