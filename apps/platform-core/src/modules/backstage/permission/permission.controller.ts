@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { PERMISSION_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -11,6 +12,7 @@ import { BatchGrantDto, BatchRevokeDto, SaveEmployeeGrantsDto, SearchEmployeesDt
  * 全部路由要求持有"权限管理"功能授权或超级管理员（类级守卫 + 功能声明）；
  * 委派规则（自我修改禁止、"权限管理"功能仅超管可授收、超管目标保护）由服务层强制。
  */
+@ApiTags('权限管理')
 @Controller('permission')
 @UseGuards(FunctionPermissionGuard)
 @RequireFunction(PERMISSION_MANAGE_FUNCTION_CODE)

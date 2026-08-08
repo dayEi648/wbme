@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Controller, Get, Inject } from '@nestjs/common';
 import { BusinessException, frameworkErrors, maskPhone } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -7,6 +8,7 @@ import { PortalService } from './portal.service';
 /**
  * 统一门户（base PRD §5，T2-6）：P1 门户（系统入口 + 公告 + 待办角标）。
  */
+@ApiTags('门户')
 @Controller('portal')
 export class PortalController {
   constructor(

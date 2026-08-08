@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { PaginationQueryDto, PERMISSION_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -11,6 +12,7 @@ import { BatchDeleteGroupsDto, CreatePermissionGroupDto, UpdatePermissionGroupDt
  * 权限组是命名的授权预设（可跨系统）：授予员工时展开为员工功能授权快照，
  * 之后修改/删除组不影响已授权员工。全部路由要求持有"权限管理"功能授权或超级管理员。
  */
+@ApiTags('权限组')
 @Controller('permission/groups')
 @UseGuards(FunctionPermissionGuard)
 @RequireFunction(PERMISSION_MANAGE_FUNCTION_CODE)

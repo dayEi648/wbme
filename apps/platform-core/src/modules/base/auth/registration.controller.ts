@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { BusinessException, accountErrors } from '@wbme/contracts';
 import {
@@ -27,6 +28,7 @@ function cookieSecure(): boolean {
  * A8 注册确认（流程 Cookie；手机号取自钉钉授权结果只读展示，确认姓名/性别/密码后
  * 单事务创建账号 + 绑定钉钉 + 自动登录）。
  */
+@ApiTags('激活与注册')
 @Controller('auth/registration')
 export class RegistrationController {
   constructor(

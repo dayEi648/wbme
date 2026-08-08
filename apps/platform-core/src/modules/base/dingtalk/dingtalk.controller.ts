@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Controller, Get, Inject, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { BusinessException, accountErrors, normalizePhoneFromParts } from '@wbme/contracts';
 import {
@@ -40,6 +41,7 @@ function dingtalkRedirectUri(): string {
  * A4 授权发起（服务端签名 URL + 一次性 state）、A5 回调（校验后按用途分流）。
  * 回调为浏览器 302 跳转：成功跳前端对应页面，失败跳 /login?error={code}。
  */
+@ApiTags('钉钉 OAuth')
 @Controller('auth/dingtalk')
 export class DingtalkController {
   constructor(

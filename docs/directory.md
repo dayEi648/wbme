@@ -15,7 +15,7 @@
 | `docs/for-frontend/` | 前端设计规范（Ant Design 主题与设计文档） |
 | `docs/database-design/` | 数据库表结构设计（`00-baseline.md` 公共基线 + `base.md`/`backstage.md`/`hr.md`/`asset.md`/`fin.md` 各模块表设计） |
 | `docs/references/` | 参考资料（利润分析 Excel 模板等） |
-| `docs/api-documentations/` | API 文档（`base-auth.md` 认证链路与用户管理操作；`backstage-permission.md` 权限管理；`backstage-users.md` 用户管理/超管任免与 hr 生命周期内部契约；`backstage-systems.md` 系统与业务结构管理） |
+| `docs/api-documentations/` | API 文档（`README.md` 目录约定；`base-auth.md` 认证链路与用户管理操作；`backstage-permission.md` 权限管理；`backstage-users.md` 用户管理/超管任免与 hr 生命周期内部契约；`backstage-systems.md` 系统与业务结构管理；`openapi/platform-core.openapi.json` OpenAPI 构建期产物） |
 | `docs/dev-workflow.md` | 协作与 CI/CD 流程（Git 分支模型、版本与发布、CI 门禁、开发环境、机密管理、分工建议） |
 
 ## apps（部署单元与前端）

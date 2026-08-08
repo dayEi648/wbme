@@ -1,0 +1,2097 @@
+{
+  "components": {
+    "schemas": {
+      "BatchDeactivateDto": {
+        "properties": {
+          "userIds": {
+            "description": "目标用户标识（最多 100 个互不重复，主 PRD §9.5 固定上限）",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "userIds"
+        ],
+        "type": "object"
+      },
+      "BatchDeleteGroupsDto": {
+        "properties": {
+          "groupIds": {
+            "description": "目标组标识（最多 100 个互不重复，主 PRD §9.5 固定上限）",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "groupIds"
+        ],
+        "type": "object"
+      },
+      "BatchGrantDto": {
+        "properties": {
+          "grants": {
+            "description": "逐项追加的功能授权（含数据范围）；与 groupIds 至少一项非空（服务层校验）",
+            "items": {
+              "$ref": "#/components/schemas/GrantItemDto"
+            },
+            "type": "array"
+          },
+          "groupIds": {
+            "description": "权限组展开（T3-3）：组内失效项跳过不计入授权，展开为员工授权快照，不产生组关联",
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "userIds": {
+            "description": "目标员工标识（最多 100 个互不重复，主 PRD §9.5 固定上限）",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "userIds",
+          "grants"
+        ],
+        "type": "object"
+      },
+      "BatchRevokeDto": {
+        "properties": {
+          "userIds": {
+            "description": "目标员工标识（最多 100 个互不重复，主 PRD §9.5 固定上限）",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "userIds"
+        ],
+        "type": "object"
+      },
+      "ChangePasswordDto": {
+        "properties": {
+          "confirmPassword": {
+            "description": "二次输入（base PRD §2：要求二次输入一致；后端强制，不依赖前端）",
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          },
+          "currentPassword": {
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          },
+          "newPassword": {
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword",
+          "confirmPassword"
+        ],
+        "type": "object"
+      },
+      "ConfirmProfileDto": {
+        "properties": {
+          "confirmPassword": {
+            "description": "二次输入（base PRD §2：要求二次输入一致；后端强制，不依赖前端）",
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          },
+          "gender": {
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "gender",
+          "password",
+          "confirmPassword"
+        ],
+        "type": "object"
+      },
+      "CreatePermissionGroupDto": {
+        "properties": {
+          "description": {
+            "description": "组描述",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "items": {
+            "description": "组内功能授权明细（可空数组 = 空组；同一功能编码+数据范围不可重复）",
+            "items": {
+              "$ref": "#/components/schemas/GrantItemDto"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "组名（唯一；S-6 唯一约束覆盖已软删除组）",
+            "maxLength": 50,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "type": "object"
+      },
+      "CreateUserDto": {
+        "properties": {
+          "gender": {
+            "description": "性别",
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "姓名",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "phone": {
+            "description": "手机号（入库前规范化为 +国家码 格式；在待激活与正常账号间唯一）",
+            "maxLength": 32,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "gender"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "description": "机器可读稳定编码（(type, domain) 内唯一；目录见 @wbme/contracts）",
+                "enum": [
+                  "ACCOUNT_ACTIVATED",
+                  "ACCOUNT_DEACTIVATED",
+                  "ACCOUNT_LOCKED",
+                  "ACCOUNT_PENDING_ACTIVATION",
+                  "ALREADY_SUPER_ADMIN",
+                  "APPLICANT_DEACTIVATED",
+                  "ASSET_REFERENCED",
+                  "ASSET_STATUS_INVALID",
+                  "ASSIGNEE_DEPARTMENT_MISMATCH",
+                  "BACKUP_LOCK_BUSY",
+                  "BACKUP_UNVERIFIED",
+                  "BATCH_CORRECTION_FORBIDDEN",
+                  "CONFLICT",
+                  "CONSUMABLE_REFERENCED",
+                  "DATA_REVISION_STALE",
+                  "DEPARTMENT_HAS_CHILDREN",
+                  "DEPENDENCY_UNAVAILABLE",
+                  "DINGTALK_ALREADY_BOUND",
+                  "DINGTALK_CONFIG_MISSING",
+                  "DINGTALK_ORG_MISMATCH",
+                  "DINGTALK_STATE_INVALID",
+                  "DINGTALK_UNAVAILABLE",
+                  "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_TIMEOUT",
+                  "FLOW_SESSION_INVALID",
+                  "FORBIDDEN",
+                  "FUNCTION_NOT_REGISTERED",
+                  "GRANT_BATCH_BLOCKED",
+                  "GRANT_SELF_FORBIDDEN",
+                  "GRANT_VERSION_CONFLICT",
+                  "GROUP_BATCH_BLOCKED",
+                  "GROUP_NAME_CONFLICT",
+                  "HOLIDAY_API_UNAVAILABLE",
+                  "HR_SERVICE_UNAVAILABLE",
+                  "IDEMPOTENCY_KEY_REUSED",
+                  "IMPORT_ALREADY_RUNNING",
+                  "IMPORT_ARCHIVE_LIMIT_EXCEEDED",
+                  "IMPORT_FILE_TOO_LARGE",
+                  "IMPORT_FORMULA_NOT_ALLOWED",
+                  "IMPORT_PREVIEW_STALE",
+                  "IMPORT_PROJECT_DELETED",
+                  "IMPORT_ROW_LIMIT_EXCEEDED",
+                  "IMPORT_TIMEOUT",
+                  "IMPORT_YEAR_AMBIGUOUS",
+                  "IMPORT_YEAR_REQUIRED_FOR_NEW",
+                  "INSUFFICIENT_QUOTA",
+                  "INSUFFICIENT_STOCK",
+                  "INTERNAL_ERROR",
+                  "INVALID_CREDENTIALS",
+                  "INVITATION_INVALID",
+                  "ITEM_DUPLICATED",
+                  "LAST_SUPER_ADMIN",
+                  "LOCATION_HAS_CHILDREN",
+                  "LOCATION_INVALID_TARGET",
+                  "MAINTENANCE_ACTIVE_EXISTS",
+                  "MULTI_DEPARTMENT_APPLY_FORBIDDEN",
+                  "NOT_SUPER_ADMIN",
+                  "OLD_PASSWORD_INCORRECT",
+                  "ORGANIZATION_CYCLE",
+                  "ORGANIZATION_VERSION_CONFLICT",
+                  "OSS_UNAVAILABLE",
+                  "OVERTIME_DATE_OUT_OF_WINDOW",
+                  "OVERTIME_OVERLAP",
+                  "PASSWORD_CONFIRM_MISMATCH",
+                  "PASSWORD_POLICY_FAILED",
+                  "PAYLOAD_TOO_LARGE",
+                  "PENDING_ACCOUNT_EXISTS",
+                  "PENDING_LIMIT_REACHED",
+                  "PERMISSION_MANAGEMENT_GRANT_FORBIDDEN",
+                  "PHONE_MISSING_FROM_DINGTALK",
+                  "PHONE_TAKEN",
+                  "POSITION_APPLICATION_INELIGIBLE",
+                  "POSITION_APPLY_STALE",
+                  "POSITION_DEPARTMENT_MISMATCH",
+                  "PROFILE_CHANGE_PENDING_EXISTS",
+                  "PROJECT_KEY_CONFLICT",
+                  "QR_INVALID",
+                  "QR_REVOKED",
+                  "RATE_LIMITED",
+                  "REDIS_UNAVAILABLE",
+                  "REJECT_REASON_REQUIRED",
+                  "REQUEST_TIMEOUT",
+                  "RESET_SELF_UNAVAILABLE",
+                  "RESOURCE_NOT_FOUND",
+                  "RESTORE_IN_PROGRESS",
+                  "RESTORE_SUPER_ADMIN_ONLY",
+                  "ROW_LIMIT_EXCEEDED",
+                  "SCOPE_NOT_COVERED",
+                  "SCOPE_NOT_SUPPORTED",
+                  "SERVICE_UNAVAILABLE",
+                  "SESSION_EXPIRED",
+                  "STATUS_CONFLICT",
+                  "STATUS_NOT_ALLOWED",
+                  "STOCK_CONFLICT",
+                  "SUPER_ADMIN_TARGET_ONLY",
+                  "SYSTEM_MAINTENANCE",
+                  "SYSTEM_NOT_OPEN",
+                  "SYSTEM_STATUS_NOT_ADJUSTABLE",
+                  "UNAUTHORIZED",
+                  "UNIT_LOCKED",
+                  "USER_BATCH_BLOCKED",
+                  "USER_NOT_ACTIVE",
+                  "USER_NOT_PENDING",
+                  "VALIDATION_FAILED"
+                ],
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": true,
+                "description": "白名单结构化详情",
+                "type": "object"
+              },
+              "domain": {
+                "description": "业务域（仅 BUSINESS 类型必须返回）",
+                "enum": [
+                  "ACCOUNT",
+                  "PERMISSION",
+                  "APPROVAL",
+                  "ASSET",
+                  "INVENTORY",
+                  "HR",
+                  "FINANCE",
+                  "EXPORT",
+                  "BACKUP",
+                  "INTEGRATION"
+                ],
+                "type": "string"
+              },
+              "message": {
+                "description": "服务端控制、可向当前用户展示的文案",
+                "type": "string"
+              },
+              "requestId": {
+                "description": "请求追踪标识",
+                "type": "string"
+              },
+              "type": {
+                "description": "稳定错误大类（主 PRD §9.5）",
+                "enum": [
+                  "BUSINESS",
+                  "VALIDATION",
+                  "AUTHENTICATION",
+                  "AUTHORIZATION",
+                  "CONFLICT",
+                  "RATE_LIMIT",
+                  "TIMEOUT",
+                  "DEPENDENCY",
+                  "SYSTEM"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "code",
+              "message",
+              "requestId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "GrantItemDto": {
+        "properties": {
+          "dataScope": {
+            "description": "数据范围档位（必须在功能声明的可选档位内）",
+            "enum": [
+              "SELF",
+              "DEPARTMENT",
+              "COMPANY"
+            ],
+            "type": "string"
+          },
+          "functionCode": {
+            "description": "稳定功能编码（必须仍注册于权限目录）",
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "functionCode",
+          "dataScope"
+        ],
+        "type": "object"
+      },
+      "IdempotentDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "LoginPasswordDto": {
+        "properties": {
+          "password": {
+            "description": "平台密码（8~32 字符）",
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          },
+          "phone": {
+            "description": "手机号（登录前统一规范化，国家/地区码 + 号码）",
+            "maxLength": 32,
+            "type": "string"
+          },
+          "rememberMe": {
+            "description": "记住我：延长空闲与绝对过期时限（不取消绝对过期）",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "phone",
+          "password"
+        ],
+        "type": "object"
+      },
+      "ProcessApprovalDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "RedeemTokenDto": {
+        "properties": {
+          "token": {
+            "description": "一次性激活/重置凭证（≤256 字符；不得出现在 URL path/query/日志）",
+            "maxLength": 256,
+            "minLength": 16,
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "ResetInitiateDto": {
+        "properties": {
+          "phone": {
+            "description": "平台手机号（登录前统一规范化，国家/地区码 + 号码）",
+            "maxLength": 32,
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone"
+        ],
+        "type": "object"
+      },
+      "ResetPasswordDto": {
+        "properties": {
+          "confirmPassword": {
+            "description": "二次输入（base PRD §2：要求二次输入一致；后端强制，不依赖前端）",
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          },
+          "newPassword": {
+            "maxLength": 32,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "newPassword",
+          "confirmPassword"
+        ],
+        "type": "object"
+      },
+      "RestoreConfirmDto": {
+        "properties": {
+          "restoreRequestId": {
+            "description": "稳定恢复请求 ID（预览响应返回；同 ID 重试幂等）",
+            "format": "uuid",
+            "type": "string"
+          },
+          "targets": {
+            "description": "恢复目标（含生命周期版本；最多 100 个）",
+            "items": {
+              "$ref": "#/components/schemas/RestoreTargetDto"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "restoreRequestId",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "RestorePreviewDto": {
+        "properties": {
+          "userIds": {
+            "description": "目标用户标识（已注销账号；最多 100 个互不重复）",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "userIds"
+        ],
+        "type": "object"
+      },
+      "RestoreTargetDto": {
+        "properties": {
+          "lifecycleVersion": {
+            "description": "账号生命周期版本（乐观并发校验；预览响应原样回传）",
+            "minimum": 0,
+            "type": "number"
+          },
+          "userId": {
+            "description": "目标用户 id",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "userId",
+          "lifecycleVersion"
+        ],
+        "type": "object"
+      },
+      "SaveEmployeeGrantsDto": {
+        "properties": {
+          "grants": {
+            "description": "目标员工的完整功能授权状态（操作人可管理范围内）；空数组 = 清空可管理范围授权",
+            "items": {
+              "$ref": "#/components/schemas/GrantItemDto"
+            },
+            "type": "array"
+          },
+          "permissionVersion": {
+            "description": "打开页面时取得的目标员工授权版本（乐观并发控制，事务内条件更新）",
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "permissionVersion",
+          "grants"
+        ],
+        "type": "object"
+      },
+      "UpdateDescriptionDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "UpdatePermissionGroupDto": {
+        "properties": {
+          "description": {
+            "description": "组描述",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "items": {
+            "description": "组内功能授权明细（全量替换语义）",
+            "items": {
+              "$ref": "#/components/schemas/GrantItemDto"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "组名（唯一；S-6 唯一约束覆盖已软删除组）",
+            "maxLength": 50,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "type": "object"
+      },
+      "UpdateProfileDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "UpdateSystemStatusDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "UpdateUserDto": {
+        "properties": {
+          "gender": {
+            "description": "性别",
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "姓名",
+            "maxLength": 50,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "gender"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "csrfHeader": {
+        "description": "CSRF 双提交头（状态变更请求必须与 wbme_csrf Cookie 一致）",
+        "in": "header",
+        "name": "X-WBME-CSRF-Token",
+        "type": "apiKey"
+      },
+      "sessionCookie": {
+        "description": "服务端会话 Cookie（HttpOnly；登录/激活成功后下发）",
+        "in": "cookie",
+        "name": "wbme_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "platform-core 部署单元（base + backstage）OpenAPI 契约。构建期生成（主 PRD §9.5）：统一错误结构见 components.schemas.ErrorResponse；默认会话 Cookie + CSRF 头认证，公开路由无 security。",
+    "title": "WBME platform-core API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/approval-requests/{id}/process": {
+      "post": {
+        "operationId": "ApprovalController_process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessApprovalDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "X1 处理资料修改审批（APPROVE 生效 / REJECT 不改正式资料）",
+        "tags": [
+          "审批"
+        ]
+      }
+    },
+    "/api/v1/auth/activation/confirm": {
+      "post": {
+        "operationId": "ActivationController_confirm",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmProfileDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "A7 激活确认（公开；流程 Cookie；姓名/性别/密码 + 钉钉授权身份）",
+        "tags": [
+          "激活与注册"
+        ]
+      }
+    },
+    "/api/v1/auth/activation/redeem": {
+      "post": {
+        "operationId": "ActivationController_redeem",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemTokenDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "A6 兑换一次性激活凭证（公开；按 IP 与凭证前缀限流）",
+        "tags": [
+          "激活与注册"
+        ]
+      }
+    },
+    "/api/v1/auth/dingtalk/authorize": {
+      "get": {
+        "operationId": "DingtalkController_authorize",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "purpose",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "A4 授权发起：返回钉钉授权 URL（含一次性 state）",
+        "tags": [
+          "钉钉 OAuth"
+        ]
+      }
+    },
+    "/api/v1/auth/dingtalk/callback": {
+      "get": {
+        "operationId": "DingtalkController_callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "A5 钉钉回调（公开 GET；CSRF 风险由一次性 state 承担）",
+        "tags": [
+          "钉钉 OAuth"
+        ]
+      }
+    },
+    "/api/v1/auth/login/password": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginPasswordDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "A1 手机号 + 密码登录（公开；IP 限流）。\n防爆破由登录保护承担：账号锁（按账号连续失败）+ IP 锁（按来源 IP 窗口累计），\n参数全部读系统设置（base PRD §4）；此处仅做来源 IP 节流。",
+        "tags": [
+          "认证与会话"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "A2 登出（登录态；删会话 + LOGOUT 安全日志 + 清 Cookie）",
+        "tags": [
+          "认证与会话"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "A3 当前身份（登录态）",
+        "tags": [
+          "认证与会话"
+        ]
+      }
+    },
+    "/api/v1/auth/password/change": {
+      "post": {
+        "operationId": "PasswordController_change",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "A9 修改密码（登录态）",
+        "tags": [
+          "密码"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset/confirm": {
+      "post": {
+        "operationId": "PasswordController_resetConfirm",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "A10 重置确认（重置流程 Cookie + 钉钉授权身份；完成后全会话失效）",
+        "tags": [
+          "密码"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset/initiate": {
+      "post": {
+        "operationId": "PasswordController_resetInitiate",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetInitiateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "自助重置发起（A10'，base PRD §2）：已绑定钉钉账号凭手机号发起。\n签发重置流程 Cookie（RESET）并返回钉钉授权地址；回调后走 reset/confirm 完成。\n账号不存在/未绑定统一提示 RESET_SELF_UNAVAILABLE，不泄露手机号是否注册。",
+        "tags": [
+          "密码"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset/redeem": {
+      "post": {
+        "operationId": "PasswordController_resetRedeem",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemTokenDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "重置凭证兑换（M2 端点：账号 ACTIVE；兑换成功发 Path 限定重置流程 Cookie）",
+        "tags": [
+          "密码"
+        ]
+      }
+    },
+    "/api/v1/auth/registration/confirm": {
+      "post": {
+        "operationId": "RegistrationController_confirm",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmProfileDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "A8 注册确认（流程 Cookie；IP 限流）",
+        "tags": [
+          "激活与注册"
+        ]
+      }
+    },
+    "/api/v1/auth/registration/context": {
+      "get": {
+        "operationId": "RegistrationController_context",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "注册上下文（流程 Cookie）：只读展示钉钉授权返回的手机号（base PRD §2）",
+        "tags": [
+          "激活与注册"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "MeController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "P2 当前身份信息（部门/岗位由 hr 提供，T6 填充；手机号只读）",
+        "tags": [
+          "个人中心"
+        ]
+      }
+    },
+    "/api/v1/me/operation-logs": {
+      "get": {
+        "operationId": "MeController_listMyOperationLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "P6 我的操作日志（契约预留：T4-1 操作日志模块落地后接通；本期前端入口\"即将开放\"）",
+        "tags": [
+          "个人中心"
+        ]
+      }
+    },
+    "/api/v1/me/position-applications": {
+      "get": {
+        "operationId": "MeController_listPositionApplications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "P5 我的岗位申请记录（契约先行：本期空分页，T6-6 接通）",
+        "tags": [
+          "个人中心"
+        ]
+      },
+      "post": {
+        "operationId": "MeController_createPositionApplication",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "P4 岗位变更申请（契约先行：hr 侧校验 T6-6 落地；本期返回不可用）",
+        "tags": [
+          "个人中心"
+        ]
+      }
+    },
+    "/api/v1/me/profile": {
+      "put": {
+        "operationId": "MeController_updateProfile",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "P3 资料修改（超管直改生效；员工创建审批单）",
+        "tags": [
+          "个人中心"
+        ]
+      }
+    },
+    "/api/v1/permission/employees": {
+      "get": {
+        "operationId": "PermissionController_searchEmployees",
+        "parameters": [
+          {
+            "description": "检索词：姓名模糊匹配（不区分大小写）；含数字时同时匹配手机号片段",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "员工检索：姓名/手机号模糊 + 分页；返回授权摘要（含数据范围标注）",
+        "tags": [
+          "权限管理"
+        ]
+      }
+    },
+    "/api/v1/permission/employees/{id}/grants": {
+      "get": {
+        "operationId": "PermissionController_getEmployeeGrants",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "查看目标员工当前授权 + 授权版本（\"修改权限\"打开时调用）",
+        "tags": [
+          "权限管理"
+        ]
+      },
+      "put": {
+        "operationId": "PermissionController_saveEmployeeGrants",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveEmployeeGrantsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "保存单人权限：完整状态 + 授权版本（乐观并发控制）；幂等键重放返回原结果",
+        "tags": [
+          "权限管理"
+        ]
+      }
+    },
+    "/api/v1/permission/grants/batch": {
+      "post": {
+        "operationId": "PermissionController_batchGrant",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchGrantDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "批量授权（增量）：整批校验，任一目标失败整批回滚并逐人返回原因；幂等键重放不重复",
+        "tags": [
+          "权限管理"
+        ]
+      }
+    },
+    "/api/v1/permission/groups": {
+      "get": {
+        "operationId": "PermissionGroupController_listGroups",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "权限组列表（分页；不含已软删除）",
+        "tags": [
+          "权限组"
+        ]
+      },
+      "post": {
+        "operationId": "PermissionGroupController_createGroup",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePermissionGroupDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "创建权限组（命名 + 描述 + 明细；名称唯一冲突 409）",
+        "tags": [
+          "权限组"
+        ]
+      }
+    },
+    "/api/v1/permission/groups/{id}": {
+      "get": {
+        "operationId": "PermissionGroupController_getGroup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "查看组内权限（明细含目录有效性标记）",
+        "tags": [
+          "权限组"
+        ]
+      },
+      "put": {
+        "operationId": "PermissionGroupController_updateGroup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePermissionGroupDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "编辑权限组（名称/描述 + 明细事务内全量替换）",
+        "tags": [
+          "权限组"
+        ]
+      }
+    },
+    "/api/v1/permission/groups/batch-delete": {
+      "post": {
+        "operationId": "PermissionGroupController_batchDeleteGroups",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteGroupsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "批量删除权限组（软删除；全有或全无）",
+        "tags": [
+          "权限组"
+        ]
+      }
+    },
+    "/api/v1/permission/revocations/batch": {
+      "post": {
+        "operationId": "PermissionController_batchRevoke",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRevokeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "批量撤销：撤销所选员工在操作人可管理范围内的全部功能授权；同样的整批语义",
+        "tags": [
+          "权限管理"
+        ]
+      }
+    },
+    "/api/v1/portal": {
+      "get": {
+        "operationId": "PortalController_getPortal",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "P1 门户数据（登录态）",
+        "tags": [
+          "门户"
+        ]
+      }
+    },
+    "/api/v1/systems": {
+      "get": {
+        "operationId": "SystemStructureController_listStructure",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "系统与业务结构树（系统 → 板块 → 功能，按目录排序）",
+        "tags": [
+          "系统与业务结构"
+        ]
+      }
+    },
+    "/api/v1/systems/{code}/status": {
+      "put": {
+        "operationId": "SystemStructureController_updateSystemStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSystemStatusDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "调整系统开放状态（asset/hr/fin；backstage 恒开放不可调；BASE 不在目录 404）",
+        "tags": [
+          "系统与业务结构"
+        ]
+      }
+    },
+    "/api/v1/systems/{systemCode}/sections/{sectionCode}/description": {
+      "put": {
+        "operationId": "SystemStructureController_updateSectionDescription",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "systemCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sectionCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDescriptionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "维护业务板块的业务说明",
+        "tags": [
+          "系统与业务结构"
+        ]
+      }
+    },
+    "/api/v1/systems/functions/{functionCode}/description": {
+      "put": {
+        "operationId": "SystemStructureController_updateFunctionDescription",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "functionCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDescriptionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "维护功能的业务说明",
+        "tags": [
+          "系统与业务结构"
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "operationId": "UserAdminController_listUsers",
+        "parameters": [
+          {
+            "description": "状态筛选：PENDING_ACTIVATION 待激活 / ACTIVE 正常 / DEACTIVATED 已注销；缺省 = 未注销全部",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING_ACTIVATION",
+                "ACTIVE",
+                "DEACTIVATED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "检索词：姓名模糊匹配（不区分大小写）；含数字时同时匹配手机号片段",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "用户列表（状态筛选 + 姓名/手机号模糊 + 分页；含激活与钉钉绑定状态）",
+        "tags": [
+          "用户管理"
+        ]
+      },
+      "post": {
+        "operationId": "UserAdminController_createUser",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "创建用户（待激活基础账号；手机号在待激活与正常账号间唯一）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/{id}": {
+      "get": {
+        "operationId": "UserAdminController_getUserDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "用户详情（含已注销账号）",
+        "tags": [
+          "用户管理"
+        ]
+      },
+      "put": {
+        "operationId": "UserAdminController_updateUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "编辑基本资料（仅姓名和性别；手机号只读）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/activation-invitations": {
+      "post": {
+        "operationId": "AdminAuthController_issueActivationInvitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdempotentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "M1 生成/重新生成激活邀请（仅待激活；重新生成旧邀请失效）；返回链接与二维码（同一凭证）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/password-reset-invitations": {
+      "post": {
+        "operationId": "AdminAuthController_issuePasswordResetInvitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdempotentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "M2 生成钉钉验证式密码重置邀请（仅 ACTIVE；超管目标仅另一超管或本人钉钉验证）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/super-admin": {
+      "delete": {
+        "operationId": "UserAdminController_demoteSuperAdmin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdempotentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "超级管理员降级为普通员工（仅超管可操作；最后一名可用超管不可降级）",
+        "tags": [
+          "用户管理"
+        ]
+      },
+      "post": {
+        "operationId": "UserAdminController_appointSuperAdmin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdempotentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "任命普通员工为超级管理员（仅超管可操作；事务内复核角色与最后超管约束；任命后目标会话提权旋转）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/unlock": {
+      "post": {
+        "operationId": "AdminAuthController_unlock",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdempotentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "M4 解锁账号（幂等：未锁定也成功）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/deactivations/batch": {
+      "post": {
+        "operationId": "UserAdminController_batchDeactivate",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeactivateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "批量注销（整批全有或全无；同事务：账号注销 + 待审批资料修改取消 + 生命周期任务）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/restorations/confirm": {
+      "post": {
+        "operationId": "UserAdminController_confirmRestore",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreConfirmDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "恢复确认（稳定恢复请求 ID + 生命周期版本；hr 整批应用成功后本地事务完成恢复）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/restorations/preview": {
+      "post": {
+        "operationId": "UserAdminController_previewRestore",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestorePreviewDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "恢复预览（实际调用 hr 内部接口；hr 不可用则 503 HR_SERVICE_UNAVAILABLE）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "HealthController_liveness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "HealthController_readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "csrfHeader": [],
+      "sessionCookie": []
+    }
+  ],
+  "servers": [],
+  "tags": []
+}

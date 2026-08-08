@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { IdempotentDto, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -14,6 +15,7 @@ import { BatchDeactivateDto, CreateUserDto, ListUsersDto, RestoreConfirmDto, Res
  * 激活邀请（M1）/管理员发起密码重置（M2）/解锁账号（M4）见 base 认证模块的
  * admin-auth.controller（同一 /users 命名空间，同一功能守卫）。
  */
+@ApiTags('用户管理')
 @Controller('users')
 @UseGuards(FunctionPermissionGuard)
 @RequireFunction(USER_MANAGE_FUNCTION_CODE)

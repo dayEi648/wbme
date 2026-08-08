@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import {
   CurrentUser,
@@ -24,6 +25,7 @@ function cookieSecure(): boolean {
  * A1 密码登录、A2 登出、A3 当前身份。
  * 登录成功下发会话 Cookie + CSRF 双提交 Cookie。
  */
+@ApiTags('认证与会话')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}

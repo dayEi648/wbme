@@ -1,0 +1,10 @@
+# API 文档目录约定
+
+- `*.md` 为各部署单元接口文档（手写，随接口提交同步维护；文档与实现不一致视为任务未完成）。
+- `openapi/platform-core.openapi.json` 为 platform-core 的 OpenAPI 产物（主 PRD §9.5）：由构建期脚本生成并提交进版本库。
+  **新增/变更接口（路由、DTO、错误码、权限要求）时执行 `pnpm --filter @wbme/platform-core openapi:generate`
+  重新生成并随代码同一次提交**；CI 以 `openapi:verify` 校验产物与代码一致（不一致即失败）。
+- 产物约定：错误结构 `ErrorResponse` 的 type/domain/code 枚举从 `@wbme/contracts` 错误目录自动生成，
+  不手抄；DTO 与描述来自 swagger 编译器插件（docstring 即描述），控制器只补 `@ApiTags` 等最少标注。
+- asset/hr/fin 当前无业务接口；其接口上线时沿用同一模式（nest-cli swagger 插件 + 构建期生成脚本 +
+  产物提交 + verify 接入 CI），产物命名 `<unit>.openapi.json`。

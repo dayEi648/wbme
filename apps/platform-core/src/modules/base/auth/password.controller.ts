@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { BusinessException, accountErrors } from '@wbme/contracts';
 import {
@@ -31,6 +32,7 @@ function cookieSecure(): boolean {
  * A9 修改密码（成功后全部会话失效）、A10 钉钉验证式密码重置确认（M2 凭证 + 钉钉授权）。
  * 重置完成前旧会话有效，完成后统一失效（session_version 递增）。
  */
+@ApiTags('密码')
 @Controller('auth/password')
 export class PasswordController {
   constructor(

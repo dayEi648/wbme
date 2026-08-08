@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Inject, Post, Put, Query } from '@nestjs/common';
 import { BusinessException, accountErrors, frameworkErrors, IdempotentDto, maskPhone, PaginationQueryDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -22,6 +23,7 @@ class UpdateProfileDto extends IdempotentDto {
  * P2 当前身份、P3 资料修改（超管直改/员工审批）、P4/P5 岗位申请契约、
  * P6 我的操作日志契约（T4-1 落地后接通）。
  */
+@ApiTags('个人中心')
 @Controller('me')
 export class MeController {
   constructor(

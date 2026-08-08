@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
 import { IdempotentDto, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -20,6 +21,7 @@ class ProcessApprovalDto extends IdempotentDto {
  * 资料修改审批处理（X1，backstage PRD §3/§5；T5 统一审批内核接管完整规则）。
  * 审批权：持有"用户管理"功能者（T3-4 函数权限守卫：超管豁免 + 目录存在性过滤）。
  */
+@ApiTags('审批')
 @Controller('approval-requests')
 @UseGuards(FunctionPermissionGuard)
 @RequireFunction(USER_MANAGE_FUNCTION_CODE)
