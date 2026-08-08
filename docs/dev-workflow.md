@@ -50,7 +50,17 @@
 - 所有 `.env*` 不提交（已在 .gitignore）；生产机密（数据库连接串、钉钉密钥、OSS 凭证、Cookie 签名密钥、内部服务令牌）由部署环境注入，不进 Git、不进镜像层（主 PRD §9.14）。
 - CI 需要的凭证存入 GitHub 仓库级 Secrets，仅 workflow 内引用。
 
-## 7. 分工建议
+## 7. 新成员开发环境初始化（一次性，每台机器各做一次）
+
+1. **GitHub 账号与权限**：确认个人 GitHub 账号；联系仓库 owner（dayEi648）把自己添加为仓库 **Collaborators**（Settings → Collaborators，写权限）。
+2. **本机 SSH 认证**（每台机器一次）：生成 `ssh-keygen -t ed25519 -C "github"`，把 `~/.ssh/id_ed25519.pub` 内容添加到**个人** GitHub（Settings → SSH and GPG keys → New SSH key）。首次连接 GitHub 若提示 Host key verification failed，执行 `ssh-keyscan -H github.com >> ~/.ssh/known_hosts`（指纹与 GitHub 官方公布值比对确认）。
+3. **克隆与安装**：`git clone git@github.com:dayEi648/wbme.git`；安装 pnpm（corepack 或独立安装），项目根执行 `pnpm install`（国内镜像源）。
+4. **本地环境**：`docker compose up`（PostgreSQL + Redis + 各服务），Migration Runner 随启动执行迁移（主 PRD §9.9）。
+5. **日常开发**：`git pull --rebase` 后提交 `git push`，认证一次配置后全程无感；提交规范见 §2。
+
+> 认证方式说明：每人用**自己的** GitHub 账号与 SSH key，互不共享；仓库写权限由 owner 通过 Collaborators 控制。若个人偏好 HTTPS，可改用 Personal Access Token + macOS Keychain 记忆，效果相同。
+
+## 8. 分工建议
 
 - 初期按部署单元分工：一人负责 `platform-core`（base + backstage，含共享包维护），另一人负责一个业务模块（建议先 asset）；hr / fin 待骨架稳定后分配。
 - 共享包（权限目录、审批契约、错误目录、日志/任务模块）由 platform-core 负责人维护，业务模块负责人使用时以 review 形式把关。
