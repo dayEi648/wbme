@@ -50,4 +50,21 @@ export const permissionErrors = {
     httpStatus: 422,
     message: '该功能不支持所选数据范围',
   },
+  /** 授权目标功能未注册或已从目录移除（生效判断以目录中存在为准，主 PRD §3.1） */
+  FUNCTION_NOT_REGISTERED: {
+    code: 'FUNCTION_NOT_REGISTERED',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '功能未注册或已从目录移除',
+  },
+  /** 批量授权/撤销：任一目标校验失败则整批回滚并逐人返回阻塞原因（backstage PRD §4） */
+  GRANT_BATCH_BLOCKED: {
+    code: 'GRANT_BATCH_BLOCKED',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '部分目标无法完成权限变更，整批未生效',
+    detailsFields: ['failures'],
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

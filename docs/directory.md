@@ -15,14 +15,14 @@
 | `docs/for-frontend/` | 前端设计规范（Ant Design 主题与设计文档） |
 | `docs/database-design/` | 数据库表结构设计（`00-baseline.md` 公共基线 + `base.md`/`backstage.md`/`hr.md`/`asset.md`/`fin.md` 各模块表设计） |
 | `docs/references/` | 参考资料（利润分析 Excel 模板等） |
-| `docs/api-documentations/` | API 文档（待建设） |
+| `docs/api-documentations/` | API 文档（`base-auth.md` 认证链路与用户管理操作；`backstage-permission.md` 权限管理） |
 | `docs/dev-workflow.md` | 协作与 CI/CD 流程（Git 分支模型、版本与发布、CI 门禁、开发环境、机密管理、分工建议） |
 
 ## apps（部署单元与前端）
 
 | 路径 | 用途 |
 | --- | --- |
-| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy；backstage 权限目录启动对账见 `src/modules/backstage/permission-catalog/`） |
+| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy；backstage 见 `src/modules/backstage/`：permission-catalog 权限目录启动对账、permission 员工授权 CRUD 与授权校验基础） |
 | `apps/asset/` | 资产系统部署单元 |
 | `apps/hr/` | 人事系统部署单元 |
 | `apps/fin/` | 财务系统部署单元 |

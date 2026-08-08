@@ -55,8 +55,7 @@ export interface CatalogSystemDefinition {
  * hr PRD §1（9 项）、fin PRD §1（3 项）；变更本常量即变更授权语义，
  * platform-core 下次启动时对账入库并递增全局权限目录版本。
  */
-export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [
-  {
+export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
     code: 'BACKSTAGE',
     name: '管理后台',
     productStatus: 'OPEN',
@@ -385,6 +384,12 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [
     ],
   },
 ];
+
+/**
+ * "权限管理"功能编码（backstage PRD §1 权限板块）：平台唯一授权管理功能。
+ * 仅超级管理员可授予或撤销该功能；权限管理员不能授予/撤销任何人的该功能（主 PRD §3.1 委派规则）。
+ */
+export const PERMISSION_MANAGE_FUNCTION_CODE = 'permission_manage';
 
 /** 扁平化的目录功能条目：对账与守卫读取用（排序 = 各层数组下标） */
 export interface CatalogFunctionEntry {
