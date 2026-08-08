@@ -1,10 +1,8 @@
 # 合并门禁 CI：push main 与 PR 时执行质量检查。
 # 依赖安装统一走国内镜像（npmmirror），与开发机网络环境保持一致。
 # 引用的聚合脚本（lint/typecheck/test/build）在工程基座阶段于根 package.json 定义。
-# 后续扩展（工程基座就绪后追加）：
-#   - Prisma 迁移可执行性校验（临时 PostgreSQL 上 migrate deploy，覆盖 4 套迁移序列）
-#   - Playwright E2E（测试环境稳定后）
-#   - 镜像构建（发布流程纳入后）
+# 集成测试依赖真实 PostgreSQL（4 套迁移序列执行）+ Redis。
+# 后续扩展：Playwright E2E（测试环境稳定后）、镜像构建（发布流程纳入后）。
 
 name: CI
 
@@ -17,9 +15,22 @@ jobs:
   quality:
     name: Lint / Typecheck / Test / Build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
-      # Redis 集成测试(启动探测/健康探针/命名空间)依赖真实 Redis
+      # 集成测试（认证链路/激活/审批等真实数据库用例）依赖临时 PostgreSQL
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wbme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      # Redis 集成测试(启动探测/健康探针/命名空间/登录保护)依赖真实 Redis
       redis:
         image: redis:8
         ports:
@@ -65,10 +76,18 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # 在 CI PostgreSQL 上执行 4 套迁移序列与只读视图脚本（集成测试前置）
+      - name: Run migrations on CI database
+        run: pnpm --filter @wbme/migration-runner start
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wbme
+
       - name: Test
         run: pnpm test
         env:
-          # Redis 集成测试(启动探测/健康探针/命名空间)依赖真实 Redis
+          # 集成测试（认证链路/激活/审批等真实数据库用例）连接 CI PostgreSQL
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wbme
+          # Redis 集成测试(启动探测/健康探针/命名空间/登录保护)依赖真实 Redis
           REDIS_URL: redis://localhost:6379
 
       - name: Build
