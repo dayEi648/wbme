@@ -5,8 +5,9 @@
  * 开发环境不使用 Docker（容器化仅用于生产部署），依赖本机 PostgreSQL 与 Redis：
  *   1. 检查本地 PostgreSQL 与 Redis 可达（不可达给出明确安装提示并退出）；
  *   2. 构建共享包（@wbme/packages，供各应用运行时消费）；
- *   3. 执行 Migration Runner（按部署单元顺序迁移，失败即停）；
- *   4. 并行启动 platform-core / asset / hr / fin / worker（构建产物）。
+ *   3. 执行 Migration Runner（按部署单元顺序增量迁移，失败即停）；
+ *   4. 执行幂等种子（权限目录 + 首个超管账号，全新库初始化）；
+ *   5. 并行启动 platform-core / asset / hr / fin / worker（构建产物）。
  *
  * 退出方式：Ctrl+C 或 SIGTERM 时依次终止全部子进程。
  */
@@ -134,6 +135,24 @@ function runMigrationRunner() {
   console.log('[dev] Migration Runner 执行完成');
 }
 
+/**
+ * 种子与初始化数据（权限目录 + 首个超管账号，幂等：upsert / 已存在即跳过）。
+ * `prisma migrate deploy` 不触发 seed（Prisma 设计），开发启动需显式执行；
+ * 每次启动重复执行安全，全新库首次执行即完成初始化（主 PRD §3.1、T1-5）。
+ */
+function runSeed() {
+  const result = spawnSync('pnpm', ['--filter', '@wbme/platform-core', 'exec', 'prisma', 'db', 'seed'], {
+    cwd: root,
+    stdio: 'inherit',
+    env: process.env,
+  });
+  if (result.status !== 0) {
+    console.error('[dev] 种子初始化失败（权限目录/超管账号），停止启动');
+    process.exit(1);
+  }
+  console.log('[dev] 种子初始化完成（幂等）');
+}
+
 function startServices() {
   const children = [];
   for (const service of SERVICES) {
@@ -172,4 +191,5 @@ await checkDependencies();
 buildPackages();
 buildMissingServices();
 runMigrationRunner();
+runSeed();
 startServices();

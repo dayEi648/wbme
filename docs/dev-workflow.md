@@ -44,6 +44,11 @@
 
 - 开发环境不使用 Docker（容器化仅用于生产部署），两人各自使用本机安装的 PostgreSQL 与 Redis 服务，**不共享开发数据库**，避免迁移与数据互相污染。
 - 数据库结构变更只通过迁移文件随代码走；开发环境启动脚本先执行一次性 Migration Runner 再启动各服务（主 PRD §9.9）。
+- **迁移纪律（增量，只追加不改历史）**：
+  - 表结构变更步骤：改 `.prisma` schema → `pnpm --filter @wbme/<单元> exec prisma migrate dev --name <描述>` 生成**增量迁移**（本地自动应用，不重置数据库）→ 检查生成的 SQL → 提交（schema 文件 + 迁移目录 + `docs/database-design/` 表设计文档三者同步，一次提交）。
+  - **禁止修改、删除或重排已提交的迁移文件**——历史迁移是其他开发者本地库与 CI 全新库顺序应用的基础，修改后 `migrate deploy` 的增量语义被破坏。
+  - `prisma migrate dev` 检测到 schema 与迁移历史不一致（如有人改过历史迁移）会提示重置数据库：**不要执行重置**，先核对是谁改了历史迁移并回滚。
+  - `pnpm dev` 每次启动自动执行：未应用迁移（`migrate deploy`，天然增量）+ 幂等种子（权限目录 + 首个超管账号，存在即跳过）；新开发者首次 `pnpm dev` 即完成建库与初始化。
 
 ## 6. 机密管理
 
@@ -55,7 +60,7 @@
 1. **GitHub 账号与权限**：确认个人 GitHub 账号；联系仓库 owner（dayEi648）把自己添加为仓库 **Collaborators**（Settings → Collaborators，写权限）。
 2. **本机 SSH 认证**（每台机器一次）：生成 `ssh-keygen -t ed25519 -C "github"`，把 `~/.ssh/id_ed25519.pub` 内容添加到**个人** GitHub（Settings → SSH and GPG keys → New SSH key）。首次连接 GitHub 若提示 Host key verification failed，执行 `ssh-keyscan -H github.com >> ~/.ssh/known_hosts`（指纹与 GitHub 官方公布值比对确认）。
 3. **克隆与安装**：`git clone git@github.com:dayEi648/wbme.git`；安装 pnpm（corepack 或独立安装），项目根执行 `pnpm install`（国内镜像源）。
-4. **本地环境**：安装并启动本地 PostgreSQL 与 Redis（macOS 可用 `brew install postgresql@18 redis`），项目根执行 `pnpm dev` 一条命令启动各服务与 Worker，Migration Runner 随启动先执行迁移（主 PRD §9.9）。
+4. **本地环境**：安装并启动本地 PostgreSQL 与 Redis（macOS 可用 `brew install postgresql@18 redis`）；复制 `.env.example` 为 `.env` 并配置 `SUPER_ADMIN_*`（首个超管账号，激活后初始化入口永久关闭）与 `COOKIE_SIGNING_KEY`；项目根执行 `pnpm dev` 一条命令完成建库（增量迁移）+ 种子初始化 + 启动各服务与 Worker（主 PRD §9.9）。
 5. **日常开发**：`git pull --rebase` 后提交 `git push`，认证一次配置后全程无感；提交规范见 §2。
 
 > 认证方式说明：每人用**自己的** GitHub 账号与 SSH key，互不共享；仓库写权限由 owner 通过 Collaborators 控制。若个人偏好 HTTPS，可改用 Personal Access Token + macOS Keychain 记忆，效果相同。
