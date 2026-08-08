@@ -112,12 +112,6 @@ ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMPTZ(3),
 ALTER COLUMN "updated_at" SET DATA TYPE TIMESTAMPTZ(3),
 ALTER COLUMN "deleted_at" SET DATA TYPE TIMESTAMPTZ(3);
 
--- CreateIndex
-CREATE UNIQUE INDEX "background_tasks_task_uuid_key" ON "backstage"."background_tasks"("task_uuid");
-
--- CreateIndex
-CREATE UNIQUE INDEX "backups_task_uuid_key" ON "backstage"."backups"("task_uuid");
-
 -- AddForeignKey
 ALTER TABLE "backstage"."restores" ADD CONSTRAINT "restores_backup_id_fkey" FOREIGN KEY ("backup_id") REFERENCES "backstage"."backups"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
