@@ -1,3 +1,4 @@
+import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { BusinessException, accountErrors } from '@wbme/contracts';
 import {
@@ -28,6 +29,7 @@ function cookieSecure(): boolean {
  * A6 凭证兑换（发 Path 限定一次性流程 Cookie）、A7 激活确认（单事务完成 + 自动登录）。
  * 凭证只在 A6 请求体出现一次，后续步骤由流程 Cookie 承接。
  */
+@ApiTags('激活与注册')
 @Controller('auth/activation')
 export class ActivationController {
   constructor(
@@ -53,7 +55,8 @@ export class ActivationController {
     return { user: { id: result.userId, name: result.name, phoneMasked: result.phoneMasked } };
   }
 
-  /** A7 激活确认（流程 Cookie；姓名/性别/密码 + 钉钉授权身份） */
+  /** A7 激活确认（公开；流程 Cookie；姓名/性别/密码 + 钉钉授权身份） */
+  @Public()
   @Post('confirm')
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'activation-confirm', keyType: 'ip', limit: 10, windowSeconds: 60 })
