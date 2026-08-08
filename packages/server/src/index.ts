@@ -16,6 +16,7 @@ export * from './redis/redis.module';
 export * from './redis/tokens';
 export * from './health/health.controller';
 export * from './health/health.module';
+export * from './health/migration-readiness';
 export * from './internal/internal-rest.constants';
 export * from './internal/allowed-callers.decorator';
 export * from './internal/internal-auth.guard';

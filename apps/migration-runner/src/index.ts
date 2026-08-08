@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { Client } from 'pg';
+import { runPreMigrationBackup } from './pre-migration-backup.hook';
 
 // 加载仓库根 .env（开发环境本地变量；生产/CI 由部署环境注入，缺失时跳过）
 try {
@@ -56,6 +57,41 @@ function run(cmd: string, args: string[]): Promise<{ ok: boolean; code: number |
     const child = spawn(cmd, args, { stdio: 'inherit', env: process.env });
     child.on('close', (code) => resolvePromise({ ok: code === 0, code }));
   });
+}
+
+/** 迁移目录中的迁移名清单（含 migration.sql 的子目录名） */
+function migrationNamesOf(root: string, unit: DeploymentUnit): string[] {
+  const dir = resolve(prismaDirOf(root, unit), 'migrations');
+  if (!existsSync(dir)) {
+    return [];
+  }
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(resolve(dir, entry.name, 'migration.sql')))
+    .map((entry) => entry.name);
+}
+
+/**
+ * 单元是否存在待执行迁移（目录迁移未全部应用即视为存在）。
+ * 元数据表不存在（全新库）时全部迁移待执行；元数据 schema 来自本文件常量，注入安全。
+ */
+async function hasPendingMigrations(client: Client, root: string, unit: DeploymentUnit): Promise<boolean> {
+  const names = migrationNamesOf(root, unit);
+  if (names.length === 0) {
+    return false;
+  }
+  const tableCheck = await client.query(
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_schema = $1 AND table_name = '_prisma_migrations'`,
+    [unit.metadataSchema],
+  );
+  if (tableCheck.rowCount === 0) {
+    return true;
+  }
+  const applied = await client.query(
+    `SELECT migration_name FROM "${unit.metadataSchema}"."_prisma_migrations" WHERE finished_at IS NOT NULL`,
+  );
+  const appliedNames = new Set((applied.rows as Array<{ migration_name: string }>).map((row) => row.migration_name));
+  return names.some((name) => !appliedNames.has(name));
 }
 
 /** 校验各部署单元迁移元数据表隔离：`_prisma_migrations` 位于各自声明 schema */
@@ -112,10 +148,26 @@ async function main(): Promise<void> {
   const root = resolve(__dirname, '../../..');
   const databaseUrl = process.env.DATABASE_URL;
 
+  // 迁移前「立即备份」钩子挂载点（主 PRD §9.9/T0-6）：仅在存在待执行迁移时、首个迁移执行前调用一次
+  let backupHookDone = false;
+  let metaClient: Client | null = null;
+
   for (const unit of DEPLOYMENT_UNITS) {
     if (!hasSchema(root, unit)) {
       console.log(`[migration-runner] ${unit.name}: 无 Prisma schema，跳过迁移`);
       continue;
+    }
+    if (databaseUrl && !backupHookDone) {
+      metaClient ??= await (async () => {
+        const client = new Client({ connectionString: databaseUrl });
+        await client.connect();
+        return client;
+      })();
+      if (await hasPendingMigrations(metaClient, root, unit)) {
+        // 备份命令失败即停（钩子内抛出），不执行任何迁移
+        await runPreMigrationBackup();
+        backupHookDone = true;
+      }
     }
     console.log(`[migration-runner] ${unit.name}: 执行 prisma migrate deploy ...`);
     const { ok, code } = await run('pnpm', ['--filter', unit.packageName, 'exec', 'prisma', 'migrate', 'deploy']);
@@ -125,6 +177,7 @@ async function main(): Promise<void> {
     }
     console.log(`[migration-runner] ${unit.name}: 迁移完成`);
   }
+  await metaClient?.end();
 
   if (!databaseUrl) {
     console.log('[migration-runner] 未配置 DATABASE_URL，跳过迁移元数据隔离校验与视图脚本');

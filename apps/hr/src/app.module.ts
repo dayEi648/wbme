@@ -1,6 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { HealthModule, RedisModule } from '@wbme/server';
+import { resolve } from 'node:path';
+import { HealthModule, MIGRATION_READINESS, MigrationReadinessService, RedisModule } from '@wbme/server';
 import type { Redis } from '@wbme/server';
 
 /** hr 根模块（业务模块 T6 阶段落地） */
@@ -12,6 +13,18 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [RedisModule.forRoot(options.redis), HealthModule],
+      providers: [
+        // 迁移版本就绪检查（主 PRD §9.9）：本单元迁移元数据表与目录漂移对照
+        {
+          provide: MIGRATION_READINESS,
+          useFactory: () =>
+            new MigrationReadinessService({
+              connectionString: process.env.DATABASE_URL,
+              metadataSchema: 'hr',
+              migrationsDir: resolve(__dirname, '../prisma/migrations'),
+            }),
+        },
+      ],
     };
   }
 }

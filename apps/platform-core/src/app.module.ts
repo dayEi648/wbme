@@ -1,9 +1,12 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { resolve } from 'node:path';
 import {
   CsrfGuard,
   HealthModule,
+  MIGRATION_READINESS,
+  MigrationReadinessService,
   RedisModule,
   SessionGuard,
   SessionModule,
@@ -73,6 +76,16 @@ export class AppModule {
         },
         { provide: APP_GUARD, useClass: SessionGuard },
         { provide: APP_GUARD, useClass: CsrfGuard },
+        // 迁移版本就绪检查（主 PRD §9.9）：base 元数据表代表 base+backstage 合并迁移序列
+        {
+          provide: MIGRATION_READINESS,
+          useFactory: () =>
+            new MigrationReadinessService({
+              connectionString: process.env.DATABASE_URL,
+              metadataSchema: 'base',
+              migrationsDir: resolve(__dirname, '../prisma/migrations'),
+            }),
+        },
       ],
     };
   }

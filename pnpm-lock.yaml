@@ -373,6 +373,9 @@ importers:
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0(supports-color@8.0.0)
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
       rxjs:
         specifier: ^7.8.1
         version: 7.8.1
@@ -386,6 +389,9 @@ importers:
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
+      '@types/pg':
+        specifier: ^8.20.4
+        version: 8.20.4
       '@types/supertest':
         specifier: ^7.2.1
         version: 7.2.1

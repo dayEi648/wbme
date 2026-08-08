@@ -47,6 +47,7 @@ enum TablePrefType {
 }
 
 /// B-1 users 用户（软删除）
+/// CHECK users_active_password_check（ACTIVE 必有密码）与 users_name_length_check（name ≤50）由手写迁移补充
 model User {
   id                Int        @id @default(autoincrement())
   name              String
