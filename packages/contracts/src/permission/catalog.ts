@@ -397,6 +397,12 @@ export const PERMISSION_MANAGE_FUNCTION_CODE = 'permission_manage';
  */
 export const USER_MANAGE_FUNCTION_CODE = 'user_manage';
 
+/**
+ * "系统与业务结构管理"功能编码（backstage PRD §1 权限板块）：
+ * 系统开放状态调整与板块/功能业务说明维护（backstage PRD §6）。
+ */
+export const SYSTEM_STRUCTURE_MANAGE_FUNCTION_CODE = 'system_structure_manage';
+
 /** 扁平化的目录功能条目：对账与守卫读取用（排序 = 各层数组下标） */
 export interface CatalogFunctionEntry {
   /** 所属系统编码 */

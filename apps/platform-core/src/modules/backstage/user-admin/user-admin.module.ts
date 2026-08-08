@@ -4,6 +4,7 @@ import { HrLifecycleClient } from './hr-lifecycle.client';
 import { UserAdminController } from './user-admin.controller';
 import { UserAdminService } from './user-admin.service';
 import { UserLifecycleService } from './user-lifecycle.service';
+import { SuperAdminService } from './super-admin.service';
 
 /**
  * 用户管理模块（backstage，实现规划 T3-5）。
@@ -17,9 +18,10 @@ import { UserLifecycleService } from './user-lifecycle.service';
   providers: [
     UserAdminService,
     UserLifecycleService,
+    SuperAdminService,
     // 工厂装配：InternalHttpClient 非 Nest provider，避免构造参数被按类型解析
     { provide: HrLifecycleClient, useFactory: () => HrLifecycleClient.fromEnv() },
   ],
-  exports: [UserAdminService, UserLifecycleService, HrLifecycleClient],
+  exports: [UserAdminService, UserLifecycleService, SuperAdminService, HrLifecycleClient],
 })
 export class UserAdminModule {}

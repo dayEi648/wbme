@@ -23,6 +23,7 @@ import { PortalModule } from './modules/base/portal/portal.module';
 import { PermissionCatalogModule } from './modules/backstage/permission-catalog/permission-catalog.module';
 import { PermissionModule } from './modules/backstage/permission/permission.module';
 import { UserAdminModule } from './modules/backstage/user-admin/user-admin.module';
+import { SystemStructureModule } from './modules/backstage/system-structure/system-structure.module';
 
 /**
  * platform-core 根模块。
@@ -59,6 +60,7 @@ export class AppModule {
         PermissionCatalogModule,
         PermissionModule,
         UserAdminModule,
+        SystemStructureModule,
       ],
       providers: [
         SessionIntegrityLoader,

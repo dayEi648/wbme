@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
-import { USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { IdempotentDto, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
+import { SuperAdminService } from './super-admin.service';
 import { UserAdminService } from './user-admin.service';
 import { UserLifecycleService } from './user-lifecycle.service';
 import { BatchDeactivateDto, CreateUserDto, ListUsersDto, RestoreConfirmDto, RestorePreviewDto, UpdateUserDto } from './user-admin.dto';
@@ -20,6 +21,7 @@ export class UserAdminController {
   constructor(
     private readonly users: UserAdminService,
     private readonly lifecycle: UserLifecycleService,
+    private readonly superAdmins: SuperAdminService,
   ) {}
 
   /** 创建用户（待激活基础账号；手机号在待激活与正常账号间唯一） */
@@ -66,5 +68,25 @@ export class UserAdminController {
   @Post('restorations/confirm')
   confirmRestore(@CurrentUser() operatorId: number, @Body() dto: RestoreConfirmDto): Promise<unknown> {
     return this.lifecycle.confirmRestore(operatorId, dto);
+  }
+
+  /** 任命普通员工为超级管理员（仅超管可操作；事务内复核角色与最后超管约束；任命后目标会话提权旋转） */
+  @Post(':id/super-admin')
+  appointSuperAdmin(
+    @Param('id', ParseIntPipe) targetUserId: number,
+    @CurrentUser() operatorId: number,
+    @Body() dto: IdempotentDto,
+  ): Promise<unknown> {
+    return this.superAdmins.appoint(operatorId, targetUserId, dto);
+  }
+
+  /** 超级管理员降级为普通员工（仅超管可操作；最后一名可用超管不可降级） */
+  @Delete(':id/super-admin')
+  demoteSuperAdmin(
+    @Param('id', ParseIntPipe) targetUserId: number,
+    @CurrentUser() operatorId: number,
+    @Body() dto: IdempotentDto,
+  ): Promise<unknown> {
+    return this.superAdmins.demote(operatorId, targetUserId, dto);
   }
 }

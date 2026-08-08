@@ -26,6 +26,30 @@ export const permissionErrors = {
     httpStatus: 422,
     message: '系统必须保留至少一名超级管理员',
   },
+  /** 任命目标已是超级管理员（重复任命） */
+  ALREADY_SUPER_ADMIN: {
+    code: 'ALREADY_SUPER_ADMIN',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '目标已是超级管理员',
+  },
+  /** 降级目标不是超级管理员 */
+  NOT_SUPER_ADMIN: {
+    code: 'NOT_SUPER_ADMIN',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '目标不是超级管理员',
+  },
+  /** 系统开放状态不可调整（backstage 恒开放；BASE 不进入目录）（backstage PRD §6） */
+  SYSTEM_STATUS_NOT_ADJUSTABLE: {
+    code: 'SYSTEM_STATUS_NOT_ADJUSTABLE',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '该系统的开放状态不可调整',
+  },
   /** 超级管理员账号仅可由超级管理员管理（backstage PRD §3） */
   SUPER_ADMIN_TARGET_ONLY: {
     code: 'SUPER_ADMIN_TARGET_ONLY',

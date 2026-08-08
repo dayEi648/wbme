@@ -86,6 +86,25 @@
 - 成功：`{ ok: true, userIds }`（幂等重放返回原结果，不再调 hr）
 - 操作日志：UPDATE；逐人明细（含被移除授权）+ 批次汇总（含恢复请求 ID 引用）
 
+## S1 任命超级管理员 `POST /users/{id}/super-admin`
+
+- 入参：`{ idempotencyKey? }`（单对象操作；二次确认由前端负责）
+- 规则（主 PRD §3.1）：**仅超级管理员可操作**（不拆成可委派功能，非超管 `403 FORBIDDEN`）；
+  事务内复核操作人当前仍是超管、目标账号状态与约束；仅正常（ACTIVE）普通员工可被任命——
+  待激活账号激活后即为普通员工再由超管任命（`USER_NOT_ACTIVE`），已注销 `ACCOUNT_DEACTIVATED`，
+  已是超管 `ALREADY_SUPER_ADMIN`
+- 提权旋转（base PRD §3）：任命 = 站点角色提升，提交后标记目标会话旋转（下次请求透明轮换标识）；
+  目标 `permission_version` 递增
+- 成功：`{ ok: true }`（幂等重放返回首次结果）；操作日志 UPDATE（摘要含"站点角色 员工 → 超级管理员"前后值）
+
+## S2 超级管理员降级 `DELETE /users/{id}/super-admin`
+
+- 入参：`{ idempotencyKey? }`（请求体）；把超管降级为普通员工，可对自己操作
+- 规则：仅超管可操作；`NOT_SUPER_ADMIN`(422 目标不是超管)；**最后一名可用超管**（ACTIVE 且未注销）
+  不可卸任/降级 → `LAST_SUPER_ADMIN`(422)；并发卸任以"锁定全部可用超管行"串行化，恰一个成功
+- 降级不是提权，**不旋转会话**（即时生效由守卫实时读取站点角色保证）；目标 `permission_version` 递增
+- 成功：`{ ok: true }`；操作日志 UPDATE（前后值）
+
 ## hr 内部接口契约（账号生命周期恢复，供 T6-8 实现；调用方 platform-core → hr）
 
 > 前缀 `/internal/v1`（内部令牌 + 调用方白名单，主 PRD §9.4）。恢复预览与最终确认都必须实际调用 hr
