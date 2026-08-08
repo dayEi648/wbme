@@ -1,0 +1,148 @@
+// base 模块表设计（docs/database-design/base.md：B-1 ~ B-5）
+
+enum Gender {
+  MALE
+  FEMALE
+
+  @@schema("base")
+}
+
+enum UserStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  DEACTIVATED
+
+  @@schema("base")
+}
+
+enum InvitationStatus {
+  VALID
+  USED
+  REVOKED
+
+  @@schema("base")
+}
+
+enum BindingStatus {
+  BOUND
+  UNBOUND
+
+  @@schema("base")
+}
+
+enum LogAction {
+  CREATE
+  UPDATE
+  DELETE
+  EXPORT
+
+  @@schema("base")
+}
+
+enum TablePrefType {
+  FILTER_PRESET
+  COLUMN_SETTING
+
+  @@schema("base")
+}
+
+/// B-1 users 用户（软删除）
+model User {
+  id                Int        @id @default(autoincrement())
+  name              String
+  gender            Gender
+  phone             String
+  passwordHash      String?    @map("password_hash")
+  status            UserStatus @default(PENDING_ACTIVATION)
+  isSuperAdmin      Boolean    @default(false) @map("is_super_admin")
+  sessionVersion    Int        @default(0) @map("session_version")
+  permissionVersion Int        @default(0) @map("permission_version")
+  lifecycleVersion  Int        @default(0) @map("lifecycle_version")
+  restoredBy        Int?       @map("restored_by")
+  restoredAt        DateTime?  @map("restored_at")
+  createdBy         Int?       @map("created_by")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedBy         Int?       @map("updated_by")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  deletedBy         Int?       @map("deleted_by")
+  deletedAt         DateTime?  @map("deleted_at")
+
+  activationInvitations ActivationInvitation[]
+  dingtalkBindings      DingtalkBinding[]
+
+  @@index([phone])
+  @@index([status, deletedAt])
+  @@map("users")
+  @@schema("base")
+}
+
+/// B-2 activation_invitations 账号激活邀请（只追加）
+model ActivationInvitation {
+  id        Int              @id @default(autoincrement())
+  user      User             @relation(fields: [userId], references: [id])
+  userId    Int              @map("user_id")
+  tokenHash String           @map("token_hash")
+  status    InvitationStatus @default(VALID)
+  expiresAt DateTime         @map("expires_at")
+  usedAt    DateTime?        @map("used_at")
+  revokedAt DateTime?        @map("revoked_at")
+  createdBy Int?             @map("created_by")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@map("activation_invitations")
+  @@schema("base")
+}
+
+/// B-3 dingtalk_bindings 钉钉身份绑定（只追加）
+model DingtalkBinding {
+  id              Int           @id @default(autoincrement())
+  user            User          @relation(fields: [userId], references: [id])
+  userId          Int           @map("user_id")
+  dingtalkUnionId String        @unique @map("dingtalk_union_id")
+  status          BindingStatus @default(BOUND)
+  unboundAt       DateTime?     @map("unbound_at")
+  createdBy       Int?          @map("created_by")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@map("dingtalk_bindings")
+  @@schema("base")
+}
+
+/// B-4 operation_logs 操作日志（只追加，各模块同构）
+model OperationLog {
+  id                  Int       @id @default(autoincrement())
+  operatorId          Int?      @map("operator_id")
+  operatorName        String?   @map("operator_name")
+  operatorDepartments Json?     @map("operator_departments")
+  system              String
+  feature             String
+  actionType          LogAction @map("action_type")
+  summary             String
+  idempotencyScope    String?   @map("idempotency_scope")
+  idempotencyKey      String?   @map("idempotency_key")
+  requestFingerprint  String?   @map("request_fingerprint")
+  resultReference     Json?     @map("result_reference")
+  requestId           String?   @map("request_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([system, createdAt])
+  @@index([operatorId, createdAt])
+  @@map("operation_logs")
+  @@schema("base")
+}
+
+/// B-5 user_table_prefs 用户表格偏好（物理删除，无审计字段）
+model UserTablePref {
+  id        Int           @id @default(autoincrement())
+  userId    Int           @map("user_id")
+  pageKey   String        @map("page_key")
+  prefType  TablePrefType @map("pref_type")
+  name      String?
+  content   Json
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId, pageKey])
+  @@map("user_table_prefs")
+  @@schema("base")
+}

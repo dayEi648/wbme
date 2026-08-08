@@ -216,4 +216,4 @@
 
 结构与 `base.user_table_prefs`（B-5）完全一致（`user_id` 不建外键），只存 hr 页面偏好（筛选预设 + 列设置，主 PRD §10.2）。
 
-**表间关系**：`departments` 自引用树 + 1—N `department_leaders`/`user_departments`；`positions` 1—N `position_departments`、1—1 `user_positions`；`approval_requests` 1—N `approval_actions`、1—N `overtime_items`、1—1 `position_change_requests`；`org_meta` 单行。
+**表间关系**：`departments` 自引用树 + 1—N `department_leaders`/`user_departments`；`positions` 1—N `position_departments`、1—N `user_positions`（岗位可由多人任职）；`approval_requests` 1—N `approval_actions`、1—N `overtime_items`、1—1 `position_change_requests`；`org_meta` 单行。

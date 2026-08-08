@@ -1,0 +1,537 @@
+// backstage 模块表设计（docs/database-design/backstage.md：S-1 ~ S-19；S-20 引用 base 表不建表）
+
+enum ProductStatus {
+  OPEN
+  COMING_SOON
+
+  @@schema("backstage")
+}
+
+enum DataScope {
+  SELF
+  DEPARTMENT
+  COMPANY
+
+  @@schema("backstage")
+}
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+
+  @@schema("backstage")
+}
+
+enum SettingGroup {
+  PLATFORM
+  AI
+
+  @@schema("backstage")
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  CRITICAL
+
+  @@schema("backstage")
+}
+
+enum ErrorStatus {
+  PENDING
+  HANDLED
+  IGNORED
+
+  @@schema("backstage")
+}
+
+enum SecurityEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  ACCOUNT_LOCK
+  ACCOUNT_UNLOCK
+  IP_LOCK
+  IP_UNLOCK
+  ACCOUNT_ACTIVATED
+  INVITATION_ISSUED
+  INVITATION_USED
+  PASSWORD_CHANGED
+  PASSWORD_RESET_ISSUED
+  PASSWORD_RESET_COMPLETED
+  BINDING_CHANGED_ISSUED
+  BINDING_CHANGED_COMPLETED
+  BINDING_CHANGED_FAILED
+  PHONE_SYNCED
+  PHONE_SYNC_CONFLICT
+  INTERNAL_TOKEN_FAILED
+
+  @@schema("backstage")
+}
+
+enum SecurityResult {
+  SUCCESS
+  FAILURE
+
+  @@schema("backstage")
+}
+
+enum TaskStatus {
+  PENDING_ENQUEUE
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+
+  @@schema("backstage")
+}
+
+enum TaskInitiatorType {
+  USER
+  SCHEDULER
+
+  @@schema("backstage")
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHING
+  REVOKED
+
+  @@schema("backstage")
+}
+
+enum BackupType {
+  SCHEDULED
+  IMMEDIATE
+  EMERGENCY
+
+  @@schema("backstage")
+}
+
+enum BackupStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+
+  @@schema("backstage")
+}
+
+enum RestoreStatus {
+  PENDING
+  PRECHECK
+  MAINTENANCE
+  RESTORING
+  SUCCEEDED
+  FAILED
+
+  @@schema("backstage")
+}
+
+enum ApprovalStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@schema("backstage")
+}
+
+enum ApprovalAction {
+  SUBMIT
+  CANCEL
+  APPROVE
+  REJECT
+  AUTO_CANCEL
+
+  @@schema("backstage")
+}
+
+enum CancelSource {
+  USER
+  ACCOUNT_DEACTIVATED
+  OVERDUE
+
+  @@schema("backstage")
+}
+
+/// backstage 模块审批类型（各模块定义自己的请求类型枚举）
+enum ApprovalRequestType {
+  PROFILE_CHANGE
+
+  @@schema("backstage")
+}
+
+/// S-1 systems 系统（无删除字段，代码注册只调状态）
+model System {
+  id            Int           @id @default(autoincrement())
+  code          String        @unique
+  name          String
+  productStatus ProductStatus @default(COMING_SOON) @map("product_status")
+  sort          Int           @default(0)
+  updatedBy     Int?          @map("updated_by")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  sections  BusinessSection[]
+  functions Function[]
+
+  @@map("systems")
+  @@schema("backstage")
+}
+
+/// S-2 business_sections 业务板块
+model BusinessSection {
+  id          Int     @id @default(autoincrement())
+  system      System  @relation(fields: [systemId], references: [id])
+  systemId    Int     @map("system_id")
+  code        String
+  name        String
+  description String?
+  sort        Int     @default(0)
+  updatedBy   Int?    @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  functions Function[]
+
+  @@unique([systemId, code])
+  @@map("business_sections")
+  @@schema("backstage")
+}
+
+/// S-3 functions 功能（启动对账新增/移除，移除=物理删除行）
+model Function {
+  id               Int      @id @default(autoincrement())
+  system           System   @relation(fields: [systemId], references: [id])
+  systemId         Int      @map("system_id")
+  section          BusinessSection @relation(fields: [sectionId], references: [id])
+  sectionId        Int      @map("section_id")
+  code             String   @unique
+  name             String
+  dataScopeOptions String[] @default([]) @map("data_scope_options")
+  sort             Int      @default(0)
+  description      String?
+  updatedBy        Int?     @map("updated_by")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("functions")
+  @@schema("backstage")
+}
+
+/// S-4 permission_catalog_meta 权限目录版本（单行，CHECK id=1 由迁移 SQL 补充）
+model PermissionCatalogMeta {
+  id             Int      @id @default(autoincrement())
+  catalogVersion Int      @default(0) @map("catalog_version")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("permission_catalog_meta")
+  @@schema("backstage")
+}
+
+/// S-5 employee_grants 员工功能授权（撤销=物理删除行）
+model EmployeeGrant {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  functionCode String    @map("function_code")
+  dataScope    DataScope @map("data_scope")
+  grantedBy    Int       @map("granted_by")
+  grantedAt    DateTime  @default(now()) @map("granted_at")
+
+  @@unique([userId, functionCode, dataScope])
+  @@map("employee_grants")
+  @@schema("backstage")
+}
+
+/// S-6 permission_groups 权限组（软删除）
+model PermissionGroup {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdBy   Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedBy   Int?     @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedBy   Int?     @map("deleted_by")
+  deletedAt   DateTime? @map("deleted_at")
+
+  items PermissionGroupItem[]
+
+  @@map("permission_groups")
+  @@schema("backstage")
+}
+
+/// S-7 permission_group_items 权限组明细（组编辑=事务内全量替换）
+model PermissionGroupItem {
+  id           Int             @id @default(autoincrement())
+  group        PermissionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId      Int             @map("group_id")
+  systemCode   String          @map("system_code")
+  functionCode String          @map("function_code")
+  dataScope    DataScope       @map("data_scope")
+
+  @@unique([groupId, functionCode, dataScope])
+  @@map("permission_group_items")
+  @@schema("backstage")
+}
+
+/// S-8 system_settings 系统设置项
+model SystemSetting {
+  id        Int              @id @default(autoincrement())
+  key       String           @unique
+  value     String
+  valueType SettingValueType @map("value_type")
+  group     SettingGroup
+  label     String
+  sensitive Boolean          @default(false)
+  updatedBy Int?             @map("updated_by")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@map("system_settings")
+  @@schema("backstage")
+}
+
+/// S-9 error_logs 集中错误日志（聚合；部分唯一索引由迁移 SQL 补充）
+model ErrorLog {
+  id              Int         @id @default(autoincrement())
+  level           LogLevel
+  service         String
+  source          String
+  errorCategory   String      @map("error_category")
+  deployCommit    String      @map("deploy_commit")
+  fingerprint     String
+  bucketStart     DateTime    @map("bucket_start")
+  firstSeenAt     DateTime    @map("first_seen_at")
+  lastSeenAt      DateTime    @map("last_seen_at")
+  occurrenceCount Int         @default(1) @map("occurrence_count")
+  firstRequestId  String?     @map("first_request_id")
+  lastRequestId   String?     @map("last_request_id")
+  sample          String?
+  status          ErrorStatus @default(PENDING)
+  handledBy       Int?        @map("handled_by")
+  handledAt       DateTime?   @map("handled_at")
+  remark          String?
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@index([status, lastSeenAt])
+  @@map("error_logs")
+  @@schema("backstage")
+}
+
+/// S-10 security_logs 安全日志（只追加）
+model SecurityLog {
+  id           Int              @id @default(autoincrement())
+  eventType    SecurityEventType @map("event_type")
+  actorId      Int?             @map("actor_id")
+  targetUserId Int?             @map("target_user_id")
+  result       SecurityResult
+  reason       String?
+  sourceIp     String?          @map("source_ip")
+  context      Json?
+  requestId    String?          @map("request_id")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@map("security_logs")
+  @@schema("backstage")
+}
+
+/// S-11 background_tasks 统一后台任务事实表（只追加，兼作轻量 Outbox）
+model BackgroundTask {
+  id              Int               @id @default(autoincrement())
+  taskUuid        String            @unique @map("task_uuid")
+  taskType        String            @map("task_type")
+  module          String
+  initiatorId     Int?              @map("initiator_id")
+  initiatorType   TaskInitiatorType @map("initiator_type")
+  ref             Json?
+  status          TaskStatus        @default(PENDING_ENQUEUE)
+  progress        Int               @default(0)
+  startedAt       DateTime?         @map("started_at")
+  finishedAt      DateTime?         @map("finished_at")
+  attempts        Int               @default(0)
+  nextRetryAt     DateTime?         @map("next_retry_at")
+  timeoutAt       DateTime?         @map("timeout_at")
+  leaseOwner      String?           @map("lease_owner")
+  leaseExpiresAt  DateTime?         @map("lease_expires_at")
+  lastError       String?           @map("last_error")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  @@index([status, nextRetryAt])
+  @@index([status, leaseExpiresAt])
+  @@map("background_tasks")
+  @@schema("backstage")
+}
+
+/// S-12 release_logs 更新日志（只追加，发布流程自动写入）
+model ReleaseLog {
+  id             Int      @id @default(autoincrement())
+  releaseId      String   @unique @map("release_id")
+  version        String
+  commitSha      String   @map("commit_sha")
+  commitSubjects Json?    @map("commit_subjects")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("release_logs")
+  @@schema("backstage")
+}
+
+/// S-13 announcements 系统公告（软删除；部分唯一索引由迁移 SQL 补充）
+model Announcement {
+  id          Int                @id @default(autoincrement())
+  title       String
+  content     String?
+  status      AnnouncementStatus @default(DRAFT)
+  publishedAt DateTime?          @map("published_at")
+  publisherId Int?               @map("publisher_id")
+  createdBy   Int?               @map("created_by")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedBy   Int?               @map("updated_by")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  deletedBy   Int?               @map("deleted_by")
+  deletedAt   DateTime?          @map("deleted_at")
+
+  @@index([status])
+  @@map("announcements")
+  @@schema("backstage")
+}
+
+/// S-14 backups 备份记录（按保留天数物理清理）
+model Backup {
+  id            Int          @id @default(autoincrement())
+  taskUuid      String?      @unique @map("task_uuid")
+  taskType      BackupType   @map("task_type")
+  status        BackupStatus @default(RUNNING)
+  backupTime    DateTime     @map("backup_time")
+  pgVersion     String?      @map("pg_version")
+  fileSize      BigInt?      @map("file_size")
+  checksum      String?
+  ossObjectKey  String?      @map("oss_object_key")
+  ossManifestKey String?     @map("oss_manifest_key")
+  error         String?
+  startedAt     DateTime     @map("started_at")
+  finishedAt    DateTime?    @map("finished_at")
+  createdBy     Int?         @map("created_by")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@map("backups")
+  @@schema("backstage")
+}
+
+/// S-15 restores 恢复记录（只追加）
+model Restore {
+  id               Int           @id @default(autoincrement())
+  restoreUuid      String        @unique @map("restore_uuid")
+  backupId         Int?          @map("backup_id")
+  emergencyBackupId Int?         @map("emergency_backup_id")
+  status           RestoreStatus @default(PENDING)
+  stage            String?
+  initiatedBy      Int           @map("initiated_by")
+  initiatedAt      DateTime      @map("initiated_at")
+  finishedAt       DateTime?     @map("finished_at")
+  error            String?
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  @@map("restores")
+  @@schema("backstage")
+}
+
+/// S-16 approval_requests 审批头（通用契约；request_type 各模块定义自身枚举）
+model ApprovalRequest {
+  id                         Int                @id @default(autoincrement())
+  applicationNo              String             @unique @map("application_no")
+  requestType                ApprovalRequestType @map("request_type")
+  applicantId                Int                @map("applicant_id")
+  applicantName              String             @map("applicant_name")
+  applicantDepartmentSnapshot Json?             @map("applicant_department_snapshot")
+  proxyId                    Int?               @map("proxy_id")
+  proxyName                  String?            @map("proxy_name")
+  refRequestId               Int?               @map("ref_request_id")
+  status                     ApprovalStatus     @default(DRAFT)
+  version                    Int                @default(1)
+  submittedAt                DateTime?          @map("submitted_at")
+  cancelledBy                Int?               @map("cancelled_by")
+  cancelledAt                DateTime?          @map("cancelled_at")
+  cancelSource               CancelSource?      @map("cancel_source")
+  processorId                Int?               @map("processor_id")
+  processorName              String?            @map("processor_name")
+  processedAt                DateTime?          @map("processed_at")
+  opinion                    String?
+  createdBy                  Int?               @map("created_by")
+  createdAt                  DateTime           @default(now()) @map("created_at")
+  updatedBy                  Int?               @map("updated_by")
+  updatedAt                  DateTime           @updatedAt @map("updated_at")
+
+  actions            ApprovalActionRecord[]
+  profileChangeRequest ProfileChangeRequest?
+
+  @@index([status, submittedAt])
+  @@index([applicantId])
+  @@index([processorId])
+  @@index([requestType, status])
+  @@map("approval_requests")
+  @@schema("backstage")
+}
+
+/// S-17 approval_actions 审批处理记录（只追加）
+model ApprovalActionRecord {
+  id          Int            @id @default(autoincrement())
+  request     ApprovalRequest @relation(fields: [requestId], references: [id])
+  requestId   Int            @map("request_id")
+  action      ApprovalAction
+  actorId     Int            @map("actor_id")
+  actorName   String         @map("actor_name")
+  opinion     String?
+  cancelSource CancelSource? @map("cancel_source")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  @@index([requestId, createdAt])
+  @@map("approval_actions")
+  @@schema("backstage")
+}
+
+/// S-18 profile_change_requests 资料修改申请明细（1:1 审批头）
+model ProfileChangeRequest {
+  id                Int            @id @default(autoincrement())
+  request           ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId         Int            @unique @map("request_id")
+  userId            Int            @map("user_id")
+  userName          String         @map("user_name")
+  departmentSnapshot Json?         @map("department_snapshot")
+  oldName           String         @map("old_name")
+  newName           String         @map("new_name")
+  oldGender         Gender         @map("old_gender")
+  newGender         Gender         @map("new_gender")
+
+  @@map("profile_change_requests")
+  @@schema("backstage")
+}
+
+/// S-19 operation_logs（backstage schema，结构与 base.operation_logs 完全一致）
+model BackstageOperationLog {
+  id                  Int       @id @default(autoincrement())
+  operatorId          Int?      @map("operator_id")
+  operatorName        String?   @map("operator_name")
+  operatorDepartments Json?     @map("operator_departments")
+  system              String
+  feature             String
+  actionType          LogAction @map("action_type")
+  summary             String
+  idempotencyScope    String?   @map("idempotency_scope")
+  idempotencyKey      String?   @map("idempotency_key")
+  requestFingerprint  String?   @map("request_fingerprint")
+  resultReference     Json?     @map("result_reference")
+  requestId           String?   @map("request_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([system, createdAt])
+  @@index([operatorId, createdAt])
+  @@map("operation_logs")
+  @@schema("backstage")
+}

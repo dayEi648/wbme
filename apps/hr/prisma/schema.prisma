@@ -1,0 +1,19 @@
+// hr 部署单元 Prisma 配置（主 PRD §9.9）
+//
+// multi-file schema：hr.prisma（hr 模块，H-1 ~ H-18）
+// multiSchema：hr 单一 PostgreSQL schema、单一 Prisma Client、独立迁移序列；
+// hr 为独立服务，不建立跨 schema 外键：跨模块引用（用户 ID）只存 Int 字段，
+// 展示所需信息（姓名、部门等）按快照原则存快照字段。
+//
+// 表设计中 PostgreSQL 专属能力（部分唯一索引、CHECK 约束）不在 Prisma schema 表达，
+// 由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["hr"]
+}

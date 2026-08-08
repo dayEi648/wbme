@@ -1,0 +1,19 @@
+// asset 部署单元 Prisma 配置（主 PRD §9.9）
+//
+// multi-file schema：schema.prisma + asset.prisma（asset 模块 30 张表）
+// 独立部署单元：仅 asset 一个 PostgreSQL schema，独立迁移序列；
+// 模型通过 @@schema 声明归属，独立服务不建立跨 schema 外键
+// （跨模块引用只存目标 ID，展示信息按快照原则存文字快照）。
+//
+// 表设计中 PostgreSQL 专属能力（部分唯一索引、CHECK 约束）不在 Prisma schema 表达，
+// 由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["asset"]
+}

@@ -1,0 +1,915 @@
+// asset 模块表设计（docs/database-design/asset.md：A-1 ~ A-30）
+
+// ============================================================
+// 枚举（PostgreSQL enum，全部归属 asset schema）
+// ============================================================
+
+/// dict_status：分类/字典/品种/库位通用状态
+enum DictStatus {
+  ACTIVE
+  DISABLED
+
+  @@schema("asset")
+}
+
+/// asset_dict_type：业务字典类型
+enum AssetDictType {
+  UNIT
+  CHANGE_TYPE
+  SUPPLIER
+  BRAND
+  SPEC
+  ASSET_SPEC
+  ASSET_MODEL
+
+  @@schema("asset")
+}
+
+/// asset_status：资产使用状态
+enum AssetStatus {
+  IDLE
+  IN_USE
+  PENDING_REPAIR
+  REPAIRING
+  SCRAPPED
+
+  @@schema("asset")
+}
+
+/// asset_ownership：资产归属
+enum AssetOwnership {
+  COMPANY
+  PARTNER
+
+  @@schema("asset")
+}
+
+/// repair_status：维修单状态
+enum RepairStatus {
+  PENDING
+  REPAIRING
+  CANCELLED
+  COMPLETED
+
+  @@schema("asset")
+}
+
+/// repair_action：维修状态流转动作
+enum RepairAction {
+  REGISTER
+  CANCEL
+  START
+  COMPLETE
+
+  @@schema("asset")
+}
+
+/// consumable_type：消耗品种类（创建后不可变）
+enum ConsumableType {
+  DISPOSABLE
+  REUSABLE
+
+  @@schema("asset")
+}
+
+/// quota_cycle：一次性用品申领上限周期
+enum QuotaCycle {
+  MONTH
+  QUARTER
+  YEAR
+
+  @@schema("asset")
+}
+
+/// stock_flow_type：库存流水类型（库存变更类型仅表示意外扣减原因，不带增减方向）
+enum StockFlowType {
+  STOCK_IN
+  ISSUE
+  DEDUCTION
+  RETURN
+  TRANSFER_OUT
+  TRANSFER_IN
+  CORRECTION
+
+  @@schema("asset")
+}
+
+/// flow_direction：库存变动方向
+enum FlowDirection {
+  IN
+  OUT
+
+  @@schema("asset")
+}
+
+/// approval_request_type：asset 审批申请类型
+enum ApprovalRequestType {
+  STOCK_IN
+  STOCK_CHANGE
+  CONSUMABLE_REQUEST
+  AGENT_REQUEST
+  RETURN
+  WRITE_OFF
+  AGENT_SETTLEMENT
+
+  @@schema("asset")
+}
+
+/// approval_status：通用审批状态（backstage.md §S-16 同构）
+enum ApprovalStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@schema("asset")
+}
+
+/// approval_action：审批处理动作（backstage.md §S-17 同构）
+enum ApprovalAction {
+  SUBMIT
+  CANCEL
+  APPROVE
+  REJECT
+  AUTO_CANCEL
+
+  @@schema("asset")
+}
+
+/// cancel_source：审批取消来源
+enum CancelSource {
+  USER
+  ACCOUNT_DEACTIVATED
+  OVERDUE
+
+  @@schema("asset")
+}
+
+/// quota_type：申领额度占用类型
+enum QuotaType {
+  DISPOSABLE_CYCLE
+  REUSABLE_HOLDING
+
+  @@schema("asset")
+}
+
+/// quota_status：额度占用状态
+enum QuotaStatus {
+  RESERVED
+  CONSUMED
+  RELEASED
+
+  @@schema("asset")
+}
+
+/// borrow_type：借还记录类型
+enum BorrowType {
+  PERSONAL
+  AGENT
+
+  @@schema("asset")
+}
+
+/// write_off_type：核销类型
+enum WriteOffType {
+  LOST
+  DAMAGED
+
+  @@schema("asset")
+}
+
+/// settle_method：代领结清处理方式
+enum SettleMethod {
+  RETURN
+  WRITE_OFF
+
+  @@schema("asset")
+}
+
+/// disposal_type：注销员工直接处置方式
+enum DisposalType {
+  RETURN
+  WRITE_OFF
+  AGENT_SETTLE
+
+  @@schema("asset")
+}
+
+/// qr_target_type：二维码目标类型
+enum QrTargetType {
+  ASSET
+  INVENTORY_ITEM
+  SCAN_CATALOG
+
+  @@schema("asset")
+}
+
+/// qr_status：二维码状态（REVOKED 终态不可恢复）
+enum QrStatus {
+  ACTIVE
+  DISABLED
+  REVOKED
+
+  @@schema("asset")
+}
+
+/// setting_value_type：资产配置值类型（backstage.md §S-8 同构）
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+
+  @@schema("asset")
+}
+
+/// log_action：操作日志动作（base.md B-4 同构）
+enum LogAction {
+  CREATE
+  UPDATE
+  DELETE
+  EXPORT
+
+  @@schema("asset")
+}
+
+/// table_pref_type：用户表格偏好类型（base.md B-5 同构）
+enum TablePrefType {
+  FILTER_PRESET
+  COLUMN_SETTING
+
+  @@schema("asset")
+}
+
+// ============================================================
+// 1. 分类与字典
+// ============================================================
+
+/// A-1 asset_categories 分类（物理删除；部分唯一索引由迁移 SQL 补充）
+model AssetCategory {
+  id        Int        @id @default(autoincrement())
+  parent    AssetCategory? @relation("CategoryTree", fields: [parentId], references: [id])
+  parentId  Int?       @map("parent_id")
+  name      String
+  sort      Int        @default(0)
+  status    DictStatus @default(ACTIVE)
+  createdBy Int?       @map("created_by")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedBy Int?       @map("updated_by")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  children AssetCategory[] @relation("CategoryTree")
+
+  @@map("asset_categories")
+  @@schema("asset")
+}
+
+/// A-2 asset_dict_items 业务字典项（物理删除）
+model AssetDictItem {
+  id        Int           @id @default(autoincrement())
+  dictType  AssetDictType @map("dict_type")
+  name      String
+  sort      Int           @default(0)
+  status    DictStatus    @default(ACTIVE)
+  createdBy Int?          @map("created_by")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedBy Int?          @map("updated_by")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@unique([dictType, name])
+  @@map("asset_dict_items")
+  @@schema("asset")
+}
+
+// ============================================================
+// 2. 固定资产
+// ============================================================
+
+/// A-3 assets 固定资产台账（软删除）
+model Asset {
+  id                 Int           @id @default(autoincrement())
+  name               String
+  categoryId         Int?          @map("category_id")
+  categoryName       String?       @map("category_name")
+  specModel          String?       @map("spec_model")
+  amount             Decimal       @db.Decimal(18, 2)
+  purchaseAt         DateTime?     @db.Date @map("purchase_at")
+  usageStatus        AssetStatus   @default(IDLE) @map("usage_status")
+  ownership          AssetOwnership
+  ownerName          String?       @map("owner_name")
+  departmentId       Int?          @map("department_id")
+  departmentName     String?       @map("department_name")
+  responsibleUserId  Int?          @map("responsible_user_id")
+  responsibleUserName String?      @map("responsible_user_name")
+  currentUserId      Int?          @map("current_user_id")
+  currentUserName    String?       @map("current_user_name")
+  imageOssKey        String?       @map("image_oss_key")
+  remark             String?
+  createdBy          Int?          @map("created_by")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedBy          Int?          @map("updated_by")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  deletedBy          Int?          @map("deleted_by")
+  deletedAt          DateTime?     @map("deleted_at")
+
+  transfers   AssetTransfer[]
+  changes     AssetChange[]
+  repairOrders RepairOrder[]
+
+  @@map("assets")
+  @@schema("asset")
+}
+
+/// A-4 asset_transfers 调度记录（只追加）
+model AssetTransfer {
+  id               Int      @id @default(autoincrement())
+  asset            Asset    @relation(fields: [assetId], references: [id])
+  assetId          Int      @map("asset_id")
+  fromDepartmentId Int?     @map("from_department_id")
+  fromDepartmentName String? @map("from_department_name")
+  toDepartmentId   Int?     @map("to_department_id")
+  toDepartmentName String?  @map("to_department_name")
+  fromUserId       Int?     @map("from_user_id")
+  fromUserName     String?  @map("from_user_name")
+  toUserId         Int?     @map("to_user_id")
+  toUserName       String?  @map("to_user_name")
+  operatorId       Int      @map("operator_id")
+  operatorName     String   @map("operator_name")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("asset_transfers")
+  @@schema("asset")
+}
+
+/// A-5 asset_changes 变更记录（只追加）
+model AssetChange {
+  id           Int      @id @default(autoincrement())
+  asset        Asset    @relation(fields: [assetId], references: [id])
+  assetId      Int      @map("asset_id")
+  before       Json
+  after        Json
+  operatorId   Int      @map("operator_id")
+  operatorName String   @map("operator_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("asset_changes")
+  @@schema("asset")
+}
+
+/// A-6 repair_orders 维修单（不删除；部分唯一索引由迁移 SQL 补充）
+model RepairOrder {
+  id              Int          @id @default(autoincrement())
+  asset           Asset        @relation(fields: [assetId], references: [id])
+  assetId         Int          @map("asset_id")
+  status          RepairStatus @default(PENDING)
+  version         Int          @default(1)
+  faultDescription String      @map("fault_description")
+  reportedAt      DateTime     @map("reported_at")
+  preStatus       AssetStatus  @map("pre_status")
+  startedAt       DateTime?    @map("started_at")
+  completedAt     DateTime?    @map("completed_at")
+  result          String?
+  actualCost      Decimal?     @db.Decimal(18, 2) @map("actual_cost")
+  postStatus      AssetStatus? @map("post_status")
+  createdBy       Int?         @map("created_by")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedBy       Int?         @map("updated_by")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  actions RepairOrderAction[]
+
+  @@map("repair_orders")
+  @@schema("asset")
+}
+
+/// A-7 repair_order_actions 维修状态流转（只追加）
+model RepairOrderAction {
+  id         Int          @id @default(autoincrement())
+  order      RepairOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId    Int          @map("order_id")
+  action     RepairAction
+  fromStatus RepairStatus @map("from_status")
+  toStatus   RepairStatus @map("to_status")
+  operatorId Int          @map("operator_id")
+  operatorName String     @map("operator_name")
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  @@map("repair_order_actions")
+  @@schema("asset")
+}
+
+// ============================================================
+// 3. 消耗品
+// ============================================================
+
+/// A-8 consumables 品种（物理删除；CHECK 约束由迁移 SQL 补充）
+model Consumable {
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  categoryId    Int?           @map("category_id")
+  categoryName  String?        @map("category_name")
+  unitId        Int?           @map("unit_id")
+  unitName      String         @map("unit_name")
+  type          ConsumableType
+  quotaCycle    QuotaCycle?    @map("quota_cycle")
+  quotaLimit    Int?           @map("quota_limit")
+  returnDays    Int?           @map("return_days")
+  maxHolding    Int?           @map("max_holding")
+  referencePrice Decimal?      @db.Decimal(18, 2) @map("reference_price")
+  safetyStock   Int            @default(0) @map("safety_stock")
+  imageOssKey   String?        @map("image_oss_key")
+  remark        String?
+  status        DictStatus     @default(ACTIVE)
+  createdBy     Int?           @map("created_by")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedBy     Int?           @map("updated_by")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  inventoryItems InventoryItem[]
+
+  @@map("consumables")
+  @@schema("asset")
+}
+
+/// A-9 warehouses 库位树（物理删除，父库位 FK RESTRICT）
+model Warehouse {
+  id        Int        @id @default(autoincrement())
+  parent    Warehouse? @relation("WarehouseTree", fields: [parentId], references: [id], onDelete: Restrict)
+  parentId  Int?       @map("parent_id")
+  name      String
+  sort      Int        @default(0)
+  status    DictStatus @default(ACTIVE)
+  createdBy Int?       @map("created_by")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedBy Int?       @map("updated_by")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  children Warehouse[] @relation("WarehouseTree")
+
+  @@map("warehouses")
+  @@schema("asset")
+}
+
+/// A-10 inventory_items 库存条目（CHECK 约束与部分唯一索引由迁移 SQL 补充）
+model InventoryItem {
+  id            Int      @id @default(autoincrement())
+  consumable    Consumable @relation(fields: [consumableId], references: [id])
+  consumableId  Int      @map("consumable_id")
+  spec          String
+  warehouseId   Int?     @map("warehouse_id")
+  warehouseName String   @map("warehouse_name")
+  warehousePath String   @map("warehouse_path")
+  bookQty       Int      @default(0) @map("book_qty")
+  reservedQty   Int      @default(0) @map("reserved_qty")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("inventory_items")
+  @@schema("asset")
+}
+
+/// A-11 batches 批次（CHECK 约束由迁移 SQL 补充）
+model Batch {
+  id              Int         @id @default(autoincrement())
+  inventoryItemId Int         @map("inventory_item_id")
+  sourceBatchId   Int?        @map("source_batch_id")
+  consumableId    Int         @map("consumable_id")
+  consumableName  String      @map("consumable_name")
+  spec            String
+  warehouseName   String      @map("warehouse_name")
+  warehousePath   String      @map("warehouse_path")
+  supplierId      Int?        @map("supplier_id")
+  supplierName    String?     @map("supplier_name")
+  brandId         Int?        @map("brand_id")
+  brandName       String?     @map("brand_name")
+  unitPrice       Decimal?    @db.Decimal(18, 2) @map("unit_price")
+  remark          String?
+  receivedAt      DateTime    @map("received_at")
+  remainingQty    Int         @default(0) @map("remaining_qty")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedBy       Int?        @map("updated_by")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  corrections BatchCorrection[]
+
+  @@index([inventoryItemId])
+  @@index([sourceBatchId])
+  @@map("batches")
+  @@schema("asset")
+}
+
+/// A-12 batch_corrections 批次纠正记录（只追加）
+model BatchCorrection {
+  id           Int      @id @default(autoincrement())
+  batch        Batch    @relation(fields: [batchId], references: [id])
+  batchId      Int      @map("batch_id")
+  before       Json
+  after        Json
+  reason       String
+  operatorId   Int      @map("operator_id")
+  operatorName String   @map("operator_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("batch_corrections")
+  @@schema("asset")
+}
+
+// ============================================================
+// 4. 库存流水与调拨
+// ============================================================
+
+/// A-13 stock_flows 库存流水（只追加；CHECK 约束由迁移 SQL 补充）
+model StockFlow {
+  id              Int           @id @default(autoincrement())
+  flowType        StockFlowType @map("flow_type")
+  direction       FlowDirection
+  inventoryItemId Int           @map("inventory_item_id")
+  batchId         Int?          @map("batch_id")
+  consumableName  String        @map("consumable_name")
+  spec            String
+  warehouseName   String        @map("warehouse_name")
+  warehousePath   String        @map("warehouse_path")
+  qty             Int
+  bookBefore      Int           @map("book_before")
+  bookAfter       Int           @map("book_after")
+  refType         String?       @map("ref_type")
+  refId           Int?          @map("ref_id")
+  operatorId      Int           @map("operator_id")
+  operatorName    String        @map("operator_name")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@index([inventoryItemId, createdAt])
+  @@index([batchId])
+  @@index([refType, refId])
+  @@map("stock_flows")
+  @@schema("asset")
+}
+
+/// A-14 inventory_transfers 调拨主记录（只追加；CHECK 约束由迁移 SQL 补充）
+model InventoryTransfer {
+  id                  Int      @id @default(autoincrement())
+  fromInventoryItemId Int      @map("from_inventory_item_id")
+  toInventoryItemId   Int      @map("to_inventory_item_id")
+  fromWarehouseName   String   @map("from_warehouse_name")
+  fromWarehousePath   String   @map("from_warehouse_path")
+  toWarehouseName     String   @map("to_warehouse_name")
+  toWarehousePath     String   @map("to_warehouse_path")
+  qty                 Int
+  remark              String?
+  operatorId          Int      @map("operator_id")
+  operatorName        String   @map("operator_name")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  batchItems TransferBatchItem[]
+
+  @@map("inventory_transfers")
+  @@schema("asset")
+}
+
+/// A-15 transfer_batch_items 调拨批次分配明细（只追加；CHECK 约束由迁移 SQL 补充）
+model TransferBatchItem {
+  id             Int              @id @default(autoincrement())
+  transfer       InventoryTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  transferId     Int              @map("transfer_id")
+  sourceBatchId  Int              @map("source_batch_id")
+  targetBatchId  Int              @map("target_batch_id")
+  qty            Int
+
+  @@map("transfer_batch_items")
+  @@schema("asset")
+}
+
+// ============================================================
+// 5. 审批（asset）
+// ============================================================
+
+/// A-16 approval_requests 审批头（通用契约 backstage.md §S-16；部分唯一索引由迁移 SQL 补充）
+model ApprovalRequest {
+  id                         Int                 @id @default(autoincrement())
+  applicationNo              String              @unique @map("application_no")
+  requestType                ApprovalRequestType @map("request_type")
+  applicantId                Int                 @map("applicant_id")
+  applicantName              String              @map("applicant_name")
+  applicantDepartmentSnapshot Json?              @map("applicant_department_snapshot")
+  proxyId                    Int?                @map("proxy_id")
+  proxyName                  String?             @map("proxy_name")
+  refRequestId               Int?                @map("ref_request_id")
+  status                     ApprovalStatus      @default(DRAFT)
+  version                    Int                 @default(1)
+  submittedAt                DateTime?           @map("submitted_at")
+  cancelledBy                Int?                @map("cancelled_by")
+  cancelledAt                DateTime?           @map("cancelled_at")
+  cancelSource               CancelSource?       @map("cancel_source")
+  processorId                Int?                @map("processor_id")
+  processorName              String?             @map("processor_name")
+  processedAt                DateTime?           @map("processed_at")
+  opinion                    String?
+  createdBy                  Int?                @map("created_by")
+  createdAt                  DateTime            @default(now()) @map("created_at")
+  updatedBy                  Int?                @map("updated_by")
+  updatedAt                  DateTime            @updatedAt @map("updated_at")
+
+  actions                ApprovalActionRecord[]
+  stockInItems           StockInItem[]
+  stockChangeItems       StockChangeItem[]
+  consumableRequestItems ConsumableRequestItem[]
+  agentRecipients        AgentRecipient[]
+  borrowActionItems      BorrowActionItem[]
+  agentSettlementItems   AgentSettlementItem[]
+
+  @@index([status, submittedAt])
+  @@index([applicantId])
+  @@index([processorId])
+  @@index([requestType, status])
+  @@map("approval_requests")
+  @@schema("asset")
+}
+
+/// A-17 approval_actions 审批处理记录（只追加，backstage.md §S-17 同构）
+model ApprovalActionRecord {
+  id           Int            @id @default(autoincrement())
+  request      ApprovalRequest @relation(fields: [requestId], references: [id])
+  requestId    Int            @map("request_id")
+  action       ApprovalAction
+  actorId      Int            @map("actor_id")
+  actorName    String         @map("actor_name")
+  opinion      String?
+  cancelSource CancelSource?  @map("cancel_source")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@index([requestId, createdAt])
+  @@map("approval_actions")
+  @@schema("asset")
+}
+
+/// A-18 stock_in_items 入库申请明细（CHECK 约束由迁移 SQL 补充）
+model StockInItem {
+  id            Int         @id @default(autoincrement())
+  request       ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId     Int         @map("request_id")
+  consumableId  Int         @map("consumable_id")
+  consumableName String      @map("consumable_name")
+  supplierId    Int?        @map("supplier_id")
+  supplierName  String?     @map("supplier_name")
+  brandId       Int?        @map("brand_id")
+  brandName     String?     @map("brand_name")
+  spec          String
+  warehouseId   Int         @map("warehouse_id")
+  warehouseName String      @map("warehouse_name")
+  warehousePath String      @map("warehouse_path")
+  qty           Int
+  unitPrice     Decimal?    @db.Decimal(18, 2) @map("unit_price")
+  receivedAt    DateTime    @map("received_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@unique([requestId, consumableId, spec, warehouseId])
+  @@map("stock_in_items")
+  @@schema("asset")
+}
+
+/// A-19 stock_change_items 库存变更申请明细（CHECK 约束由迁移 SQL 补充）
+model StockChangeItem {
+  id              Int         @id @default(autoincrement())
+  request         ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId       Int         @map("request_id")
+  inventoryItemId Int         @map("inventory_item_id")
+  consumableName  String      @map("consumable_name")
+  spec            String
+  warehouseName   String      @map("warehouse_name")
+  warehousePath   String      @map("warehouse_path")
+  changeTypeId    Int?        @map("change_type_id")
+  changeTypeName  String?     @map("change_type_name")
+  reason          String
+  qty             Int
+  changedAt       DateTime    @map("changed_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@unique([requestId, inventoryItemId])
+  @@map("stock_change_items")
+  @@schema("asset")
+}
+
+/// A-20 consumable_request_items 申领清单明细（普通 + 代交共享清单；CHECK 约束由迁移 SQL 补充）
+model ConsumableRequestItem {
+  id              Int         @id @default(autoincrement())
+  request         ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId       Int         @map("request_id")
+  inventoryItemId Int         @map("inventory_item_id")
+  consumableName  String      @map("consumable_name")
+  spec            String
+  warehouseName   String      @map("warehouse_name")
+  warehousePath   String      @map("warehouse_path")
+  qty             Int
+  purpose         String?
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@unique([requestId, inventoryItemId])
+  @@map("consumable_request_items")
+  @@schema("asset")
+}
+
+/// A-21 agent_recipients 代领受领人名单
+model AgentRecipient {
+  id                Int      @id @default(autoincrement())
+  request           ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId         Int      @map("request_id")
+  userId            Int      @map("user_id")
+  userName          String   @map("user_name")
+  departmentSnapshot Json    @map("department_snapshot")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@unique([requestId, userId])
+  @@map("agent_recipients")
+  @@schema("asset")
+}
+
+/// A-22 quota_occupations 申领额度占用（CHECK 约束由迁移 SQL 补充）
+model QuotaOccupation {
+  id             Int         @id @default(autoincrement())
+  userId         Int         @map("user_id")
+  consumableId   Int         @map("consumable_id")
+  consumableName String      @map("consumable_name")
+  quotaType      QuotaType   @map("quota_type")
+  cycle          QuotaCycle?
+  cycleKey       String?     @map("cycle_key")
+  requestId      Int         @map("request_id")
+  qty            Int
+  status         QuotaStatus @default(RESERVED)
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@index([userId, consumableId, cycleKey])
+  @@map("quota_occupations")
+  @@schema("asset")
+}
+
+/// A-23 borrow_records 借还记录（个人 + 清单级代领；CHECK 约束由迁移 SQL 补充）
+model BorrowRecord {
+  id               Int         @id @default(autoincrement())
+  recordType       BorrowType  @map("record_type")
+  userId           Int?        @map("user_id")
+  userName         String?     @map("user_name")
+  departmentSnapshot Json?     @map("department_snapshot")
+  agentRequestId   Int?        @map("agent_request_id")
+  requestId        Int         @map("request_id")
+  inventoryItemId  Int         @map("inventory_item_id")
+  consumableName   String      @map("consumable_name")
+  spec             String
+  warehouseName    String      @map("warehouse_name")
+  warehousePath    String      @map("warehouse_path")
+  qty              Int
+  borrowedAt       DateTime    @map("borrowed_at")
+  dueAt            DateTime    @map("due_at")
+  returnedQty      Int         @default(0) @map("returned_qty")
+  writtenOffQty    Int         @default(0) @map("written_off_qty")
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  borrowActionItems    BorrowActionItem[]
+  agentSettlementItems AgentSettlementItem[]
+
+  @@index([userId])
+  @@index([agentRequestId])
+  @@index([createdAt])
+  @@map("borrow_records")
+  @@schema("asset")
+}
+
+/// A-24 borrow_action_items 归还/核销申请明细（CHECK 约束由迁移 SQL 补充）
+model BorrowActionItem {
+  id             Int          @id @default(autoincrement())
+  request        ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId      Int          @map("request_id")
+  borrowRecord   BorrowRecord @relation(fields: [borrowRecordId], references: [id])
+  borrowRecordId Int          @map("borrow_record_id")
+  qty            Int
+  writeOffType   WriteOffType? @map("write_off_type")
+  reason         String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@unique([requestId, borrowRecordId])
+  @@map("borrow_action_items")
+  @@schema("asset")
+}
+
+/// A-25 agent_settlement_items 代领结清申请明细（CHECK 约束由迁移 SQL 补充）
+model AgentSettlementItem {
+  id             Int          @id @default(autoincrement())
+  request        ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId      Int          @map("request_id")
+  borrowRecord   BorrowRecord @relation(fields: [borrowRecordId], references: [id])
+  borrowRecordId Int          @map("borrow_record_id")
+  qty            Int
+  method         SettleMethod
+  writeOffType   WriteOffType? @map("write_off_type")
+  reason         String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@unique([requestId, borrowRecordId, method])
+  @@map("agent_settlement_items")
+  @@schema("asset")
+}
+
+/// A-26 direct_disposal_records 注销员工借还直接处置记录（只追加）
+model DirectDisposalRecord {
+  id                Int           @id @default(autoincrement())
+  disposalType      DisposalType  @map("disposal_type")
+  borrowRecordId    Int?          @map("borrow_record_id")
+  agentRequestId    Int?          @map("agent_request_id")
+  userId            Int?          @map("user_id")
+  userName          String?       @map("user_name")
+  departmentSnapshot Json?        @map("department_snapshot")
+  inventoryItemId   Int           @map("inventory_item_id")
+  consumableName    String        @map("consumable_name")
+  spec              String
+  warehouseName     String        @map("warehouse_name")
+  warehousePath     String        @map("warehouse_path")
+  qty               Int
+  writeOffType      WriteOffType? @map("write_off_type")
+  reason            String?
+  processorId       Int           @map("processor_id")
+  processorName     String        @map("processor_name")
+  stockFlowRefs     Json?         @map("stock_flow_refs")
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  @@map("direct_disposal_records")
+  @@schema("asset")
+}
+
+// ============================================================
+// 6. 二维码
+// ============================================================
+
+/// A-27 qr_codes 二维码（部分唯一索引由迁移 SQL 补充）
+model QrCode {
+  id         Int         @id @default(autoincrement())
+  publicId   String      @unique @map("public_id")
+  targetType QrTargetType @map("target_type")
+  targetId   Int?        @map("target_id")
+  status     QrStatus    @default(ACTIVE)
+  revokedAt  DateTime?   @map("revoked_at")
+  createdBy  Int         @map("created_by")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedBy  Int?        @map("updated_by")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  @@map("qr_codes")
+  @@schema("asset")
+}
+
+// ============================================================
+// 7. 配置
+// ============================================================
+
+/// A-28 asset_settings 资产配置（backstage.md §S-8 同构，无 group/sensitive）
+model AssetSetting {
+  id        Int              @id @default(autoincrement())
+  key       String           @unique
+  value     String
+  valueType SettingValueType @map("value_type")
+  label     String
+  updatedBy Int?             @map("updated_by")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@map("asset_settings")
+  @@schema("asset")
+}
+
+/// A-29 operation_logs（asset schema，结构与 base.operation_logs（B-4）完全一致）
+model AssetOperationLog {
+  id                  Int       @id @default(autoincrement())
+  operatorId          Int?      @map("operator_id")
+  operatorName        String?   @map("operator_name")
+  operatorDepartments Json?     @map("operator_departments")
+  system              String
+  feature             String
+  actionType          LogAction @map("action_type")
+  summary             String
+  idempotencyScope    String?   @map("idempotency_scope")
+  idempotencyKey      String?   @map("idempotency_key")
+  requestFingerprint  String?   @map("request_fingerprint")
+  resultReference     Json?     @map("result_reference")
+  requestId           String?   @map("request_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([system, createdAt])
+  @@index([operatorId, createdAt])
+  @@map("operation_logs")
+  @@schema("asset")
+}
+
+/// A-30 user_table_prefs 用户表格偏好（物理删除，结构与 base.user_table_prefs（B-5）一致）
+model AssetUserTablePref {
+  id        Int           @id @default(autoincrement())
+  userId    Int           @map("user_id")
+  pageKey   String        @map("page_key")
+  prefType  TablePrefType @map("pref_type")
+  name      String?
+  content   Json
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId, pageKey])
+  @@map("user_table_prefs")
+  @@schema("asset")
+}

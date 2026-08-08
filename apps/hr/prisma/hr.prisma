@@ -1,0 +1,444 @@
+// hr 模块表设计（docs/database-design/hr.md：H-1 ~ H-18）
+
+enum DeptStatus {
+  ACTIVE
+  DISABLED
+
+  @@schema("hr")
+}
+
+enum PositionStatus {
+  ACTIVE
+  DISABLED
+
+  @@schema("hr")
+}
+
+enum SiteRole {
+  SUPER_ADMIN
+  EMPLOYEE
+
+  @@schema("hr")
+}
+
+enum RuleStatus {
+  ACTIVE
+  DISABLED
+
+  @@schema("hr")
+}
+
+// H-16：PostgreSQL/Prisma enum 不可为空集，MVP 先定义占位值，业务引入字典类型时扩展
+enum HrDictType {
+  PLACEHOLDER
+
+  @@schema("hr")
+}
+
+enum DictStatus {
+  ACTIVE
+  DISABLED
+
+  @@schema("hr")
+}
+
+enum HolidayDateType {
+  WORKDAY
+  WEEKEND
+  HOLIDAY
+  ADJUSTED_HOLIDAY
+  ADJUSTED_WORKDAY
+
+  @@schema("hr")
+}
+
+enum HrRequestType {
+  OVERTIME
+  POSITION_CHANGE
+
+  @@schema("hr")
+}
+
+enum ApprovalStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@schema("hr")
+}
+
+enum ApprovalAction {
+  SUBMIT
+  CANCEL
+  APPROVE
+  REJECT
+  AUTO_CANCEL
+
+  @@schema("hr")
+}
+
+enum CancelSource {
+  USER
+  ACCOUNT_DEACTIVATED
+  OVERDUE
+
+  @@schema("hr")
+}
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+
+  @@schema("hr")
+}
+
+enum LogAction {
+  CREATE
+  UPDATE
+  DELETE
+  EXPORT
+
+  @@schema("hr")
+}
+
+enum TablePrefType {
+  FILTER_PRESET
+  COLUMN_SETTING
+
+  @@schema("hr")
+}
+
+/// H-1 org_meta 组织版本（单行，CHECK id=1 由迁移 SQL 补充）
+model OrgMeta {
+  id             Int      @id @default(autoincrement())
+  userOrgVersion Int      @default(0) @map("user_org_version")
+  orgTreeVersion Int      @default(0) @map("org_tree_version")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("org_meta")
+  @@schema("hr")
+}
+
+/// H-2 departments 部门（物理删除，树形）
+model Department {
+  id        Int        @id @default(autoincrement())
+  parentId  Int?       @map("parent_id")
+  name      String
+  sort      Int        @default(0)
+  status    DeptStatus @default(ACTIVE)
+  createdBy Int?       @map("created_by")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedBy Int?       @map("updated_by")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  parent            Department?          @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children          Department[]         @relation("DepartmentTree")
+  departmentLeaders DepartmentLeader[]
+  positionDepartments PositionDepartment[]
+  userDepartments   UserDepartment[]
+
+  @@index([parentId])
+  @@map("departments")
+  @@schema("hr")
+}
+
+/// H-3 department_leaders 部门负责人
+model DepartmentLeader {
+  id           Int      @id @default(autoincrement())
+  departmentId Int      @map("department_id")
+  userId       Int      @map("user_id")
+  userName     String   @map("user_name")
+  createdBy    Int      @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userId])
+  @@map("department_leaders")
+  @@schema("hr")
+}
+
+/// H-4 positions 岗位（物理删除）
+model Position {
+  id             Int            @id @default(autoincrement())
+  name           String
+  description    String?
+  status         PositionStatus @default(ACTIVE)
+  sort           Int            @default(0)
+  allowSelfApply Boolean        @default(false) @map("allow_self_apply")
+  createdBy      Int?           @map("created_by")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedBy      Int?           @map("updated_by")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  positionDepartments PositionDepartment[]
+  userPositions       UserPosition[]
+
+  @@unique([name])
+  @@map("positions")
+  @@schema("hr")
+}
+
+/// H-5 position_departments 岗位适用部门
+model PositionDepartment {
+  id           Int      @id @default(autoincrement())
+  positionId   Int      @map("position_id")
+  departmentId Int      @map("department_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  position   Position   @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([positionId, departmentId])
+  @@map("position_departments")
+  @@schema("hr")
+}
+
+/// H-6 title_rules 职称规则（软删除）
+model TitleRule {
+  id            Int        @id @default(autoincrement())
+  titleName     String     @map("title_name")
+  departmentId  Int?       @map("department_id")
+  positionId    Int?       @map("position_id")
+  roleCondition SiteRole?  @map("role_condition")
+  status        RuleStatus @default(ACTIVE)
+  sort          Int        @default(0)
+  createdBy     Int?       @map("created_by")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedBy     Int?       @map("updated_by")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  deletedBy     Int?       @map("deleted_by")
+  deletedAt     DateTime?  @map("deleted_at")
+
+  @@map("title_rules")
+  @@schema("hr")
+}
+
+/// H-7 user_departments 用户部门关系
+model UserDepartment {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  departmentId Int      @map("department_id")
+  createdBy    Int      @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+  @@index([departmentId])
+  @@map("user_departments")
+  @@schema("hr")
+}
+
+/// H-8 user_positions 用户岗位（单行）
+model UserPosition {
+  userId     Int      @id @map("user_id")
+  positionId Int?     @map("position_id")
+  assignedBy Int      @map("assigned_by")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  position Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  @@map("user_positions")
+  @@schema("hr")
+}
+
+/// H-9 org_compat_records 恢复兼容性处理记录（只追加）
+model OrgCompatRecord {
+  id                 Int      @id @default(autoincrement())
+  userId             Int      @map("user_id")
+  restoreRequestId   String   @map("restore_request_id")
+  clearedDepartments Json?    @map("cleared_departments")
+  positionCleared    Boolean  @default(false) @map("position_cleared")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@map("org_compat_records")
+  @@schema("hr")
+}
+
+/// H-10 approval_requests 审批头（hr，S-16 同构契约）
+model HrApprovalRequest {
+  id                          Int              @id @default(autoincrement())
+  applicationNo               String           @unique @map("application_no")
+  requestType                 HrRequestType    @map("request_type")
+  applicantId                 Int              @map("applicant_id")
+  applicantName               String           @map("applicant_name")
+  applicantDepartmentSnapshot Json?            @map("applicant_department_snapshot")
+  proxyId                     Int?             @map("proxy_id")
+  proxyName                   String?          @map("proxy_name")
+  refRequestId                Int?             @map("ref_request_id")
+  status                      ApprovalStatus   @default(DRAFT)
+  version                     Int              @default(1)
+  submittedAt                 DateTime?        @map("submitted_at")
+  cancelledBy                 Int?             @map("cancelled_by")
+  cancelledAt                 DateTime?        @map("cancelled_at")
+  cancelSource                CancelSource?    @map("cancel_source")
+  processorId                 Int?             @map("processor_id")
+  processorName               String?          @map("processor_name")
+  processedAt                 DateTime?        @map("processed_at")
+  opinion                     String?
+  createdBy                   Int?             @map("created_by")
+  createdAt                   DateTime         @default(now()) @map("created_at")
+  updatedBy                   Int?             @map("updated_by")
+  updatedAt                   DateTime         @updatedAt @map("updated_at")
+
+  actions               HrApprovalAction[]
+  overtimeItems         OvertimeItem[]
+  positionChangeRequest PositionChangeRequest?
+
+  @@index([status, submittedAt])
+  @@index([applicantId])
+  @@index([processorId])
+  @@index([requestType, status])
+  @@map("approval_requests")
+  @@schema("hr")
+}
+
+/// H-11 approval_actions 审批处理记录（只追加，S-17 同构契约）
+model HrApprovalAction {
+  id          Int            @id @default(autoincrement())
+  requestId   Int            @map("request_id")
+  action      ApprovalAction
+  actorId     Int            @map("actor_id")
+  actorName   String         @map("actor_name")
+  opinion     String?
+  cancelSource CancelSource? @map("cancel_source")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  request HrApprovalRequest @relation(fields: [requestId], references: [id])
+
+  @@index([requestId, createdAt])
+  @@map("approval_actions")
+  @@schema("hr")
+}
+
+/// H-12 overtime_items 加班明细（CHECK 约束由迁移 SQL 补充）
+model OvertimeItem {
+  id                 Int      @id @default(autoincrement())
+  requestId          Int      @map("request_id")
+  userId             Int      @map("user_id")
+  userName           String   @map("user_name")
+  departmentSnapshot Json     @map("department_snapshot")
+  overtimeDate       DateTime @db.Date @map("overtime_date")
+  startMinute        Int      @map("start_minute")
+  endMinute          Int      @map("end_minute")
+  reason             String
+  holidaySnapshot    Json     @map("holiday_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  request HrApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, userId])
+  @@index([userId, overtimeDate])
+  @@map("overtime_items")
+  @@schema("hr")
+}
+
+/// H-13 position_change_requests 岗位申请明细（1:1 审批头）
+model PositionChangeRequest {
+  id                   Int      @id @default(autoincrement())
+  requestId            Int      @unique @map("request_id")
+  userId               Int      @map("user_id")
+  userName             String   @map("user_name")
+  departmentSnapshot   Json     @map("department_snapshot")
+  targetDepartmentId   Int      @map("target_department_id")
+  targetDepartmentName String   @map("target_department_name")
+  targetPositionId     Int      @map("target_position_id")
+  targetPositionName   String   @map("target_position_name")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  request HrApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("position_change_requests")
+  @@schema("hr")
+}
+
+/// H-14 holiday_results 节假日 API 结果
+model HolidayResult {
+  holidayDate DateTime        @id @db.Date @map("holiday_date")
+  dateType    HolidayDateType @map("date_type")
+  weekday     Int
+  providerId  String          @map("provider_id")
+  rawDigest   String          @map("raw_digest")
+  normalized  Json
+  fetchedAt   DateTime        @map("fetched_at")
+
+  @@map("holiday_results")
+  @@schema("hr")
+}
+
+/// H-15 hr_settings 人事设置（S-8 结构，无 group/sensitive）
+model HrSetting {
+  id        Int              @id @default(autoincrement())
+  key       String           @unique
+  value     String
+  valueType SettingValueType @map("value_type")
+  label     String
+  updatedBy Int?             @map("updated_by")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@map("hr_settings")
+  @@schema("hr")
+}
+
+/// H-16 hr_dicts 人事字典
+model HrDict {
+  id        Int        @id @default(autoincrement())
+  dictType  HrDictType @map("dict_type")
+  name      String
+  sort      Int        @default(0)
+  status    DictStatus @default(ACTIVE)
+  createdBy Int?       @map("created_by")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedBy Int?       @map("updated_by")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@unique([dictType, name])
+  @@map("hr_dicts")
+  @@schema("hr")
+}
+
+/// H-17 operation_logs（hr schema，结构与 base.operation_logs 完全一致）
+model HrOperationLog {
+  id                  Int       @id @default(autoincrement())
+  operatorId          Int?      @map("operator_id")
+  operatorName        String?   @map("operator_name")
+  operatorDepartments Json?     @map("operator_departments")
+  system              String
+  feature             String
+  actionType          LogAction @map("action_type")
+  summary             String
+  idempotencyScope    String?   @map("idempotency_scope")
+  idempotencyKey      String?   @map("idempotency_key")
+  requestFingerprint  String?   @map("request_fingerprint")
+  resultReference     Json?     @map("result_reference")
+  requestId           String?   @map("request_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([system, createdAt])
+  @@index([operatorId, createdAt])
+  @@map("operation_logs")
+  @@schema("hr")
+}
+
+/// H-18 user_table_prefs 用户表格偏好（物理删除，B-5 同构结构）
+model HrUserTablePref {
+  id        Int           @id @default(autoincrement())
+  userId    Int           @map("user_id")
+  pageKey   String        @map("page_key")
+  prefType  TablePrefType @map("pref_type")
+  name      String?
+  content   Json
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId, pageKey])
+  @@map("user_table_prefs")
+  @@schema("hr")
+}

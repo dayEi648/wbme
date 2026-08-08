@@ -113,6 +113,7 @@
 | `actual_cost` | `numeric(18,2)` | NULL | 实际费用（无费用为 0） |
 | `post_status` | `enum asset_status` | NULL | 完成后恢复的资产状态 |
 | `created_by` / `created_at` | | 基线 §2.1（无 `deleted_*`） | |
+| `updated_by` | `integer` | NULL | 最后修改者（与各表审计字段统一） |
 | `updated_at` | `timestamptz` | NOT NULL | |
 
 不删除（"已取消"为终态）；登记/取消/开始/完成使用状态+版本条件更新。

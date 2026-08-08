@@ -1,0 +1,18 @@
+// platform-core 部署单元 Prisma 配置（主 PRD §9.9）
+//
+// multi-file schema：base.prisma（base 模块）+ backstage.prisma（backstage 模块）
+// multiSchema：base + backstage 两个 PostgreSQL schema，单一 Prisma Client、单一迁移序列；
+// 模型通过 @@schema 声明归属，平台核心内允许建立跨 base/backstage 的外键。
+//
+// 表设计中 PostgreSQL 专属能力（部分唯一索引、CHECK 约束）不在 Prisma schema 表达，
+// 由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["base", "backstage"]
+}

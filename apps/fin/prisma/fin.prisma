@@ -1,0 +1,250 @@
+// fin 模块表设计（docs/database-design/fin.md：F-1 ~ F-9）
+
+enum AmountSemantic {
+  TENTATIVE
+  AUDITED
+
+  @@schema("fin")
+}
+
+enum ProjectAction {
+  CREATE
+  EDIT
+  DELETE
+  IMPORT_CREATE
+  IMPORT_OVERWRITE
+  IMPORT_SKIP
+
+  @@schema("fin")
+}
+
+enum FinanceDictType {
+  PROGRESS
+  COMPLETENESS
+  BIZ_CATEGORY
+  REGION
+
+  @@schema("fin")
+}
+
+enum DictStatus {
+  ACTIVE
+  DISABLED
+
+  @@schema("fin")
+}
+
+enum LogAction {
+  CREATE
+  UPDATE
+  DELETE
+  EXPORT
+
+  @@schema("fin")
+}
+
+enum TablePrefType {
+  FILTER_PRESET
+  COLUMN_SETTING
+
+  @@schema("fin")
+}
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+
+  @@schema("fin")
+}
+
+/// F-1 projects 项目主档（软删除）
+/// 唯一键 (business_key, year) 含软删除行（软删除记录仍占用业务唯一键），为普通唯一约束；
+/// year 四位公历年与全部手工金额 >= 0 的 CHECK 由迁移 SQL 补充。
+model Project {
+  id                    Int              @id @default(autoincrement())
+  name                  String
+  year                  Int
+  businessKey           String           @map("business_key")
+  completenessDocs      Json?            @map("completeness_docs")
+  regionId              Int?             @map("region_id")
+  regionName            String?          @map("region_name")
+  progressId            Int?             @map("progress_id")
+  progressName          String?          @map("progress_name")
+  progressSemantic      AmountSemantic?  @map("progress_semantic")
+  bizCategoryId         Int?             @map("biz_category_id")
+  bizCategoryName       String?          @map("biz_category_name")
+  partyA                String?          @map("party_a")
+  generalContractor     String?          @map("general_contractor")
+  managementFee         String?          @map("management_fee")
+  subcontractors        String[]         @default([])
+  contractStartDate     DateTime?        @db.Date @map("contract_start_date")
+  contractEndDate       DateTime?        @db.Date @map("contract_end_date")
+  contractAmount        Decimal?         @db.Decimal(18, 2) @map("contract_amount")
+  paymentNode           String?          @map("payment_node")
+  tentativeAuditedAmount Decimal?        @db.Decimal(18, 2) @map("tentative_audited_amount")
+  settlement            Decimal?         @db.Decimal(18, 2)
+  miscExpense           Decimal?         @db.Decimal(18, 2) @map("misc_expense")
+  remark                String?
+  dataRevision          Int              @default(0) @map("data_revision")
+  createdBy             Int?             @map("created_by")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedBy             Int?             @map("updated_by")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+  deletedBy             Int?             @map("deleted_by")
+  deletedAt             DateTime?        @map("deleted_at")
+
+  invoices            Invoice[]
+  receipts            Receipt[]
+  subcontractPayments SubcontractPayment[]
+  projectOperations   ProjectOperation[]
+
+  @@unique([businessKey, year])
+  @@map("projects")
+  @@schema("fin")
+}
+
+/// F-2 invoices 开票金额明细（物理删除；审计由 F-5 项目操作记录承载）
+model Invoice {
+  id           Int       @id @default(autoincrement())
+  project      Project   @relation(fields: [projectId], references: [id])
+  projectId    Int       @map("project_id")
+  amount       Decimal   @db.Decimal(18, 2)
+  occurredDate DateTime? @db.Date @map("occurred_date")
+  remark       String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@map("invoices")
+  @@schema("fin")
+}
+
+/// F-3 receipts 已收回款明细（物理删除；审计由 F-5 项目操作记录承载）
+model Receipt {
+  id           Int       @id @default(autoincrement())
+  project      Project   @relation(fields: [projectId], references: [id])
+  projectId    Int       @map("project_id")
+  amount       Decimal   @db.Decimal(18, 2)
+  occurredDate DateTime? @db.Date @map("occurred_date")
+  remark       String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@map("receipts")
+  @@schema("fin")
+}
+
+/// F-4 subcontract_payments 已付分包款明细（物理删除；审计由 F-5 项目操作记录承载）
+model SubcontractPayment {
+  id           Int       @id @default(autoincrement())
+  project      Project   @relation(fields: [projectId], references: [id])
+  projectId    Int       @map("project_id")
+  amount       Decimal   @db.Decimal(18, 2)
+  occurredDate DateTime? @db.Date @map("occurred_date")
+  remark       String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@map("subcontract_payments")
+  @@schema("fin")
+}
+
+/// F-5 project_operations 项目操作记录（只追加）
+/// 明细增删改与导入的审计均由此表承载，与业务变更同一数据库事务。
+model ProjectOperation {
+  id           Int           @id @default(autoincrement())
+  project      Project       @relation(fields: [projectId], references: [id])
+  projectId    Int           @map("project_id")
+  operatorId   Int           @map("operator_id")
+  operatorName String        @map("operator_name")
+  action       ProjectAction
+  field        String?
+  before       Json?
+  after        Json?
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  @@index([projectId, createdAt])
+  @@index([createdAt])
+  @@map("project_operations")
+  @@schema("fin")
+}
+
+/// F-6 finance_dict_items 财务字典（物理删除）
+/// CHECK（PROGRESS 类型必填 semantic）由迁移 SQL 补充。
+model FinanceDictItem {
+  id        Int              @id @default(autoincrement())
+  dictType  FinanceDictType  @map("dict_type")
+  name      String
+  semantic  AmountSemantic?
+  sort      Int              @default(0)
+  status    DictStatus       @default(ACTIVE)
+  createdBy Int?             @map("created_by")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedBy Int?             @map("updated_by")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@unique([dictType, name])
+  @@map("finance_dict_items")
+  @@schema("fin")
+}
+
+/// F-7 finance_settings 财务配置
+/// 结构与 backstage.md §S-8 一致，无 group/sensitive（MVP 财务参数无敏感项）。
+model FinanceSetting {
+  id        Int              @id @default(autoincrement())
+  key       String           @unique
+  value     String
+  valueType SettingValueType @map("value_type")
+  label     String
+  updatedBy Int?             @map("updated_by")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@map("finance_settings")
+  @@schema("fin")
+}
+
+/// F-8 operation_logs 操作日志（只追加，与 base B-4 同构）
+/// 幂等部分唯一索引由迁移 SQL 补充。
+model OperationLog {
+  id                  Int       @id @default(autoincrement())
+  operatorId          Int?      @map("operator_id")
+  operatorName        String?   @map("operator_name")
+  operatorDepartments Json?     @map("operator_departments")
+  system              String
+  feature             String
+  actionType          LogAction @map("action_type")
+  summary             String
+  idempotencyScope    String?   @map("idempotency_scope")
+  idempotencyKey      String?   @map("idempotency_key")
+  requestFingerprint  String?   @map("request_fingerprint")
+  resultReference     Json?     @map("result_reference")
+  requestId           String?   @map("request_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([system, createdAt])
+  @@index([operatorId, createdAt])
+  @@map("operation_logs")
+  @@schema("fin")
+}
+
+/// F-9 user_table_prefs 用户表格偏好（物理删除，无审计字段；与 base B-5 同构）
+/// 部分唯一索引（筛选预设同名唯一、每页一条列设置）由迁移 SQL 补充。
+model UserTablePref {
+  id        Int           @id @default(autoincrement())
+  userId    Int           @map("user_id")
+  pageKey   String        @map("page_key")
+  prefType  TablePrefType @map("pref_type")
+  name      String?
+  content   Json
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId, pageKey])
+  @@map("user_table_prefs")
+  @@schema("fin")
+}

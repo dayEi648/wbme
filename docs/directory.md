@@ -17,3 +17,34 @@
 | `docs/references/` | 参考资料（利润分析 Excel 模板等） |
 | `docs/api-documentations/` | API 文档（待建设） |
 | `docs/dev-workflow.md` | 协作与 CI/CD 流程（Git 分支模型、版本与发布、CI 门禁、开发环境、机密管理、分工建议） |
+
+## apps（部署单元与前端）
+
+| 路径 | 用途 |
+| --- | --- |
+| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`） |
+| `apps/asset/` | 资产系统部署单元 |
+| `apps/hr/` | 人事系统部署单元 |
+| `apps/fin/` | 财务系统部署单元 |
+| `apps/web/` | 前端（Vite + React + Ant Design） |
+| `apps/worker/` | BullMQ Worker 部署单元 |
+| `apps/recovery-executor/` | 数据库恢复执行器部署单元 |
+| `apps/migration-runner/` | Migration Runner（按部署单元顺序执行迁移与视图脚本） |
+
+## packages（@wbme 共享包）
+
+| 路径 | 用途 |
+| --- | --- |
+| `packages/contracts/` | 共享契约：错误码目录、BusinessException、DTO 基类、枚举、金额/时区约定 |
+| `packages/server/` | NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器、Redis、健康探针、内部 REST |
+| `packages/approval/` | 统一审批内核（T5 实现） |
+| `packages/logging/` | 操作日志模板与集中日志受限语句（T4 实现） |
+| `packages/tasks/` | 统一后台任务受限接口（T4 实现） |
+| `packages/files/` | 文件存储与 OSS 约定（T4 实现） |
+
+## scripts（工程脚本）
+
+| 路径 | 用途 |
+| --- | --- |
+| `scripts/dev.mjs` | 开发环境一键启动（依赖检查 → 构建共享包 → Migration Runner → 并行启动各服务） |
+| `scripts/db-views/` | 幂等只读视图脚本（站点角色、操作日志联合视图、职称视图；Migration Runner 统一执行） |

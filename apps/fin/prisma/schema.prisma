@@ -1,0 +1,18 @@
+// fin 部署单元 Prisma 配置（主 PRD §9.9）
+//
+// multi-file schema：fin.prisma（fin 模块全部模型，9 张表）
+// 单 schema：fin，单一 Prisma Client、单一迁移序列；模型通过 @@schema 声明归属。
+// 独立服务不建跨 schema 外键：跨模块引用（用户 ID、字典 ID 等）只存 Int 字段。
+//
+// 表设计中 PostgreSQL 专属能力（部分唯一索引、CHECK 约束）不在 Prisma schema 表达，
+// 由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["fin"]
+}
