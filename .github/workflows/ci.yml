@@ -48,8 +48,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # prisma.config.ts 解析 datasource.url 时要求 DATABASE_URL 存在（env() 缺失即抛错）。
+      # prisma generate 不连接数据库，CI 使用占位连接串即可；迁移/运行时由部署环境注入真实值。
       - name: Generate Prisma clients
         run: pnpm prisma:generate
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
 
       # 共享包先构建:typecheck/test 依赖各包的 dist(.d.ts),全新环境必须先出产物
       - name: Build shared packages
