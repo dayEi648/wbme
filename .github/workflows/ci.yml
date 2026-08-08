@@ -1,0 +1,50 @@
+# 合并门禁 CI：push main 与 PR 时执行质量检查。
+# 依赖安装统一走国内镜像（npmmirror），与开发机网络环境保持一致。
+# 引用的聚合脚本（lint/typecheck/test/build）在工程基座阶段于根 package.json 定义。
+# 后续扩展（工程基座就绪后追加）：
+#   - Prisma 迁移可执行性校验（临时 PostgreSQL 上 migrate deploy，覆盖 4 套迁移序列）
+#   - Playwright E2E（测试环境稳定后）
+#   - 镜像构建（发布流程纳入后）
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    name: Lint / Typecheck / Test / Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmmirror.com
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
