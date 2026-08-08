@@ -22,4 +22,5 @@ export * from './errors/domains/integration';
 export * from './dto/base.dto';
 export * from './enums/common';
 export * from './money';
+export * from './phone';
 export * from './time';

@@ -1,0 +1,221 @@
+import { Controller, Get, Inject, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { BusinessException, accountErrors, normalizePhoneFromParts } from '@wbme/contracts';
+import {
+  Public,
+  RateLimit,
+  RateLimitGuard,
+  CSRF_COOKIE,
+  FLOW_COOKIE,
+  SESSION_COOKIE,
+  csrfCookieOptions,
+  flowCookieOptions,
+  sessionCookieOptions,
+  parseCookies,
+} from '@wbme/server';
+import type { Request, Response } from 'express';
+import { PrismaService } from '../../../prisma.service';
+import { AuthService } from '../auth/auth.service';
+import { FlowSessionService } from '../auth/flows/flow-session.service';
+import { DINGTALK_GATEWAY, DingtalkUnavailableError, type DingtalkGateway } from './dingtalk.gateway';
+import { DingtalkGatewayImpl } from './dingtalk.gateway.impl';
+import { DINGTALK_PURPOSES, DingtalkStateService, type DingtalkPurpose } from './dingtalk.state.service';
+
+/** 会话 Cookie Secure 属性（生产必须 true；本地 http 开发设 false） */
+function cookieSecure(): boolean {
+  return process.env.COOKIE_SECURE !== 'false';
+}
+
+/** 前端公开地址（回调 302 与链接生成基准 origin） */
+function publicOrigin(): string {
+  return process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
+}
+
+/** 钉钉回调地址（与开发者后台一致） */
+function dingtalkRedirectUri(): string {
+  return process.env.DINGTALK_REDIRECT_URI ?? `${publicOrigin()}/auth/dingtalk/callback`;
+}
+
+/**
+ * 钉钉 OAuth 扫码授权（base PRD §2）：
+ * A4 授权发起（服务端签名 URL + 一次性 state）、A5 回调（校验后按用途分流）。
+ * 回调为浏览器 302 跳转：成功跳前端对应页面，失败跳 /login?error={code}。
+ */
+@Controller('auth/dingtalk')
+export class DingtalkController {
+  constructor(
+    @Inject(DINGTALK_GATEWAY) private readonly gateway: DingtalkGateway,
+    private readonly state: DingtalkStateService,
+    private readonly flows: FlowSessionService,
+    private readonly auth: AuthService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+  ) {}
+
+  /** A4 授权发起：返回钉钉授权 URL（含一次性 state） */
+  @Public()
+  @Get('authorize')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'dingtalk-authorize', keyType: 'ip', limit: 30, windowSeconds: 60 })
+  async authorize(
+    @Query('purpose') purposeRaw: string,
+    @Query('returnTo') returnTo: string | undefined,
+    @Req() req: Request,
+  ): Promise<{ authorizeUrl: string }> {
+    const purpose = this.resolvePurpose(purposeRaw);
+    // 流程类用途（激活/重置/换绑）必须持有对应的一次性流程 Cookie（兑换或发起时签发）
+    if (purpose === 'ACTIVATION' || purpose === 'RESET' || purpose === 'REBIND') {
+      const flowId = this.readCookie(req, FLOW_COOKIE);
+      const flow = await this.flows.read(flowId ?? '', purpose);
+      if (!flow) {
+        throw new BusinessException(accountErrors.FLOW_SESSION_INVALID);
+      }
+    }
+    const impl = this.gateway as DingtalkGatewayImpl;
+    if (!impl.isConfigured?.()) {
+      throw new BusinessException(accountErrors.DINGTALK_CONFIG_MISSING);
+    }
+    const state = await this.state.issue(purpose, returnTo);
+    return { authorizeUrl: this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
+  }
+
+  /** A5 钉钉回调（公开 GET；CSRF 风险由一次性 state 承担） */
+  @Public()
+  @Get('callback')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'dingtalk-callback', keyType: 'ip', limit: 60, windowSeconds: 60 })
+  async callback(
+    @Query('code') code: string,
+    @Query('state') stateRaw: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const ip = req.ip ?? 'unknown';
+    try {
+      // 一次性 state 校验（取用即删）
+      const stateData = await this.state.consume(stateRaw);
+      const purpose = stateData.purpose;
+
+      // 授权码兑换 + 组织校验（corpId 与部署配置一致）
+      const token = await this.gateway.exchangeCodeForUserToken(code);
+      if (token.corpId && process.env.DINGTALK_CORP_ID && token.corpId !== process.env.DINGTALK_CORP_ID) {
+        throw new BusinessException(accountErrors.DINGTALK_ORG_MISMATCH);
+      }
+      const info = await this.gateway.getUserInfo(token.accessToken);
+      const member = await this.gateway.getOrgMemberByUnionId(info.unionId);
+      if (!member.active) {
+        throw new BusinessException(accountErrors.DINGTALK_ORG_MISMATCH);
+      }
+
+      // 手机号（userinfo 优先，组织成员接口兜底）
+      const mobile = info.mobile || member.mobile;
+      const stateCode = info.stateCode || member.stateCode;
+
+      // 按用途分流
+      if (purpose === 'LOGIN') {
+        await this.handleLoginFlow(res, req, { unionId: info.unionId, mobile, stateCode }, ip);
+        return;
+      }
+      if (purpose === 'REGISTRATION') {
+        // 扫码注册：绑定身份校验（unionId 未绑定 + 手机号未占用）后进入完善页
+        await this.ensureRegistrable(info.unionId, mobile, stateCode);
+        const flowId = await this.flows.issue('REGISTRATION', { unionId: info.unionId, mobile, stateCode });
+        this.setFlowCookie(res, 'REGISTRATION', flowId);
+        this.redirect(res, '/register');
+        return;
+      }
+      if (purpose === 'ACTIVATION' || purpose === 'RESET' || purpose === 'REBIND') {
+        // 流程 Cookie 必须存在且用途匹配，回调后把钉钉身份（含手机号）写入流程会话
+        const flowId = this.readCookie(req, FLOW_COOKIE);
+        const flow = await this.flows.assert(flowId ?? '', purpose);
+        await this.flows.update(flowId ?? '', { ...flow, unionId: info.unionId, mobile, stateCode });
+        const target = purpose === 'ACTIVATION' ? '/activate/complete' : purpose === 'RESET' ? '/reset-password/complete' : '/rebind/complete';
+        this.redirect(res, target);
+        return;
+      }
+      this.redirect(res, '/login?error=DINGTALK_STATE_INVALID');
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        this.redirect(res, `/login?error=${error.entry.code}`);
+        return;
+      }
+      if (error instanceof DingtalkUnavailableError) {
+        this.redirect(res, '/login?error=DEPENDENCY_UNAVAILABLE');
+        return;
+      }
+      this.redirect(res, '/login?error=SYSTEM');
+    }
+  }
+
+  /** 扫码登录/注册分流（A5 LOGIN） */
+  private async handleLoginFlow(
+    res: Response,
+    req: Request,
+    info: { unionId: string; mobile: string; stateCode: string },
+    ip: string,
+  ): Promise<void> {
+    const result = await this.auth.loginWithDingtalk(info, ip);
+    if (result) {
+      res.cookie(SESSION_COOKIE, result.sessionId, sessionCookieOptions(cookieSecure()));
+      res.cookie(CSRF_COOKIE, result.csrfToken, csrfCookieOptions(cookieSecure()));
+      this.redirect(res, '/portal');
+      return;
+    }
+    // 未绑定：手机号占用检查后进入扫码注册完善页
+    await this.ensureRegistrable(info.unionId, info.mobile, info.stateCode);
+    const flowId = await this.flows.issue('REGISTRATION', { unionId: info.unionId });
+    this.setFlowCookie(res, 'REGISTRATION', flowId);
+    this.redirect(res, '/register');
+  }
+
+  /** 扫码注册前置校验：unionId 未绑定 + 手机号未占用（base PRD §2） */
+  private async ensureRegistrable(unionId: string, mobile: string, stateCode: string): Promise<void> {
+    if (!mobile) {
+      throw new BusinessException(accountErrors.PHONE_MISSING_FROM_DINGTALK);
+    }
+    // 钉钉稳定标识全局唯一（含已注销/已解绑历史，base PRD §2：注销后仍占用）
+    const bound = await this.prisma.client.dingtalkBinding.findFirst({
+      where: { dingtalkUnionId: unionId },
+      select: { id: true },
+    });
+    if (bound) {
+      throw new BusinessException(accountErrors.DINGTALK_ALREADY_BOUND);
+    }
+    // 手机号占用：待激活/正常账号（注销为历史快照不占用）
+    const normalized = normalizePhoneFromParts(stateCode, mobile);
+    if (normalized) {
+      const pending = await this.prisma.client.user.findFirst({
+        where: { phone: normalized, deletedAt: null, status: { in: ['PENDING_ACTIVATION', 'ACTIVE'] } },
+        select: { status: true },
+      });
+      if (pending) {
+        throw new BusinessException(
+          pending.status === 'PENDING_ACTIVATION' ? accountErrors.PENDING_ACCOUNT_EXISTS : accountErrors.PHONE_TAKEN,
+        );
+      }
+    }
+  }
+
+  private setFlowCookie(res: Response, purpose: string, flowId: string): void {
+    res.cookie(
+      FLOW_COOKIE,
+      flowId,
+      flowCookieOptions(cookieSecure(), `/api/v1/auth/${purpose === 'REGISTRATION' ? 'registration' : purpose.toLowerCase()}`),
+    );
+  }
+
+  private redirect(res: Response, path: string): void {
+    res.redirect(302, `${publicOrigin()}${path}`);
+  }
+
+  private readCookie(req: Request, name: string): string | undefined {
+    return parseCookies(req.headers.cookie)[name];
+  }
+
+  private resolvePurpose(raw: string): DingtalkPurpose {
+    if ((DINGTALK_PURPOSES as readonly string[]).includes(raw)) {
+      return raw as DingtalkPurpose;
+    }
+    throw new BusinessException(accountErrors.DINGTALK_STATE_INVALID);
+  }
+}
+
+export { DingtalkPurpose };

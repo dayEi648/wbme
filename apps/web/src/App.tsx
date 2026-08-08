@@ -1,11 +1,48 @@
-import { Typography } from 'antd';
+import { Route, Routes } from 'react-router-dom';
+import LoginPage from './pages/login/LoginPage';
+import ActivatePage from './pages/activate/ActivatePage';
+import ActivateCompletePage from './pages/activate/ActivateCompletePage';
+import RegisterPage from './pages/register/RegisterPage';
+import ResetPasswordPage, { ResetCompletePage } from './pages/reset-password/ResetPasswordPage';
+import RebindPage, { RebindCompletePage } from './pages/rebind/RebindPage';
+import PortalPage from './pages/portal/PortalPage';
+import MePage from './pages/me/MePage';
+import { RequireAuth } from './request/session';
 
-/** 前端骨架根组件（T0-9）：主题、路由与页面体系在 T9-1～T9-7 落地 */
+/** 路由表（T9-3 认证与门户；业务系统页面随对应后端检查点推进） */
 export default function App() {
   return (
-    <div style={{ padding: 24 }}>
-      <Typography.Title level={2}>WBME 企业管理平台</Typography.Title>
-      <Typography.Paragraph type="secondary">前端工程骨架已就绪（T0-9）</Typography.Paragraph>
-    </div>
+    <Routes>
+      {/* 公开：登录 / 激活 / 注册 / 重置 / 换绑（凭证 fragment 流程） */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/activate" element={<ActivatePage />} />
+      <Route path="/activate/complete" element={<ActivateCompletePage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/reset-password/complete" element={<ResetCompletePage />} />
+      <Route path="/rebind" element={<RebindPage />} />
+      <Route path="/rebind/complete" element={<RebindCompletePage />} />
+
+      {/* 登录态：门户 / 个人中心（业务系统页面随 T9-5~T9-7 推进） */}
+      <Route
+        path="/portal"
+        element={
+          <RequireAuth>
+            <PortalPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/me"
+        element={
+          <RequireAuth>
+            <MePage />
+          </RequireAuth>
+        }
+      />
+
+      {/* 默认落登录 */}
+      <Route path="*" element={<LoginPage />} />
+    </Routes>
   );
 }

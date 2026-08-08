@@ -1,0 +1,118 @@
+import { App as AntApp, Button, Card, Form, Input, Space, Spin, Typography } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { ApiError, http, newIdempotencyKey } from '../../request/http';
+
+/**
+ * 密码重置（base PRD §2）：
+ * 入口页读取 fragment 凭证兑换（发重置流程 Cookie）→ 钉钉授权（RESET）→ 完成页设新密码。
+ */
+export default function ResetPasswordPage() {
+  const { message } = AntApp.useApp();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [state, setState] = useState<'redeeming' | 'failed'>('redeeming');
+  const [errorMessage, setErrorMessage] = useState('');
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) {
+      return;
+    }
+    started.current = true;
+    const token = location.hash.replace(/^#/, '');
+    if (!token) {
+      setState('failed');
+      setErrorMessage('重置链接缺少凭证，请联系管理员重新生成');
+      return;
+    }
+    void (async () => {
+      try {
+        await http.post('/auth/password/reset/redeem', { token });
+        window.history.replaceState(null, '', '/reset-password');
+        const { authorizeUrl } = await http.get<{ authorizeUrl: string }>('/auth/dingtalk/authorize?purpose=RESET');
+        window.location.href = authorizeUrl;
+      } catch (error) {
+        setState('failed');
+        setErrorMessage(error instanceof ApiError ? error.body.message : '兑换失败');
+        message.error(error instanceof ApiError ? error.body.message : '兑换失败');
+      }
+    })();
+  }, [location.hash, message]);
+
+  if (state === 'redeeming') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" tip="正在校验重置凭证..." />
+      </div>
+    );
+  }
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Card style={{ width: 420 }}>
+        <Typography.Paragraph style={{ textAlign: 'center' }}>{errorMessage}</Typography.Paragraph>
+        <Button type="primary" block onClick={() => navigate('/login')}>
+          返回登录
+        </Button>
+      </Card>
+    </div>
+  );
+}
+
+/** 重置完成页（钉钉授权回调后）：设置新密码（完成后全会话失效，重新登录） */
+export function ResetCompletePage() {
+  const { message } = AntApp.useApp();
+  const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onFinish(values: { newPassword: string; confirmPassword: string }) {
+    if (values.newPassword !== values.confirmPassword) {
+      message.error('两次输入的密码不一致');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await http.post(
+        '/auth/password/reset/confirm',
+        { newPassword: values.newPassword, confirmPassword: values.confirmPassword },
+        { idempotencyKey: newIdempotencyKey() },
+      );
+      message.success('密码已重置，请重新登录');
+      navigate('/login', { replace: true });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        message.error(error.body.message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Card style={{ width: 420 }}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <div style={{ textAlign: 'center' }}>
+            <Typography.Title level={4} style={{ marginBottom: 4 }}>
+              设置新密码
+            </Typography.Title>
+            <Typography.Text type="secondary">设置完成后原会话全部失效，需重新登录</Typography.Text>
+          </div>
+          <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+            <Form.Item name="newPassword" label="新密码" rules={[{ required: true, min: 8, max: 32, message: '密码需 8~32 个字符' }]}>
+              <Input.Password placeholder="8~32 个字符" />
+            </Form.Item>
+            <Form.Item name="confirmPassword" label="确认新密码" rules={[{ required: true, min: 8, max: 32 }]}>
+              <Input.Password placeholder="再次输入密码" />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button type="primary" htmlType="submit" block loading={submitting}>
+                确认重置
+              </Button>
+            </Form.Item>
+          </Form>
+        </Space>
+      </Card>
+    </div>
+  );
+}

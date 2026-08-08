@@ -82,4 +82,100 @@ export const accountErrors = {
     httpStatus: 422,
     message: '该账号已绑定钉钉身份，请走换绑流程',
   },
+  /** 钉钉授权 state 缺失/过期/已使用（base PRD §2：一次性 state/nonce 校验） */
+  DINGTALK_STATE_INVALID: {
+    code: 'DINGTALK_STATE_INVALID',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '授权请求已过期，请重新扫码登录',
+  },
+  /** 钉钉授权过程失败（授权码无效/换 token 失败等） */
+  DINGTALK_AUTHORIZATION_FAILED: {
+    code: 'DINGTALK_AUTHORIZATION_FAILED',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '钉钉授权失败，请重试',
+  },
+  /** 钉钉应用未配置（部署环境缺凭证，base PRD §2） */
+  DINGTALK_CONFIG_MISSING: {
+    code: 'DINGTALK_CONFIG_MISSING',
+    type: 'DEPENDENCY',
+    domain: 'ACCOUNT',
+    httpStatus: 503,
+    message: '钉钉登录暂未配置，请使用手机号登录',
+  },
+  /** 钉钉授权结果未返回手机号（base PRD §2：无手机号不能注册/激活） */
+  PHONE_MISSING_FROM_DINGTALK: {
+    code: 'PHONE_MISSING_FROM_DINGTALK',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '钉钉未返回手机号，请联系管理员检查钉钉通讯录资料',
+  },
+  /** 流程会话（激活/注册/重置/换绑的短时一次性会话）无效/过期/已使用 */
+  FLOW_SESSION_INVALID: {
+    code: 'FLOW_SESSION_INVALID',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '操作已过期，请重新开始',
+  },
+  /** 目标账号不处于待激活状态（仅待激活可生成激活邀请） */
+  USER_NOT_PENDING: {
+    code: 'USER_NOT_PENDING',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '该账号不处于待激活状态',
+  },
+  /** 目标账号不处于正常状态（仅 ACTIVE 可重置/换绑） */
+  USER_NOT_ACTIVE: {
+    code: 'USER_NOT_ACTIVE',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '仅正常状态账号可执行该操作',
+  },
+  /** 兑换邀请时发现账号已激活（base PRD §2：已激活拒绝激活） */
+  ACCOUNT_ACTIVATED: {
+    code: 'ACCOUNT_ACTIVATED',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '该账号已激活，请直接登录',
+  },
+  /** 修改密码时旧密码错误（不泄露账号信息，复用统一提示语义） */
+  OLD_PASSWORD_INCORRECT: {
+    code: 'OLD_PASSWORD_INCORRECT',
+    type: 'AUTHENTICATION',
+    domain: 'ACCOUNT',
+    httpStatus: 401,
+    message: '当前密码不正确',
+  },
+  /** 换绑时账号当前没有有效钉钉绑定（无法完成替换） */
+  BINDING_NOT_FOUND: {
+    code: 'BINDING_NOT_FOUND',
+    type: 'CONFLICT',
+    domain: 'ACCOUNT',
+    httpStatus: 409,
+    message: '该账号暂无钉钉绑定，无需换绑',
+  },
+  /** 同一员工已存在待审批资料修改申请（主 PRD §3.2 单待审批限制） */
+  PROFILE_CHANGE_PENDING_EXISTS: {
+    code: 'PROFILE_CHANGE_PENDING_EXISTS',
+    type: 'CONFLICT',
+    domain: 'ACCOUNT',
+    httpStatus: 409,
+    message: '已有待审批的资料修改申请，请等待处理完成',
+  },
+  /** 岗位变更申请不满足资格（多部门员工/岗位未启用/不允许自助申请/不适用目标部门；T6-6 启用） */
+  POSITION_APPLICATION_INELIGIBLE: {
+    code: 'POSITION_APPLICATION_INELIGIBLE',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '当前不满足岗位变更申请条件',
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

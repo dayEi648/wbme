@@ -8,8 +8,9 @@
 // 由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {

@@ -1,4 +1,6 @@
 import { NestFactory } from '@nestjs/core';
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import {
   AccessLogInterceptor,
   assertRedisAvailable,
@@ -9,6 +11,14 @@ import {
   RequestTimeoutInterceptor,
 } from '@wbme/server';
 import { AppModule } from './app.module';
+
+// 加载仓库根 .env（开发环境本地变量；生产/CI 由部署环境注入，缺失时跳过）
+// dist/main.js → apps/platform-core/dist → 仓库根需要上三级
+try {
+  loadEnvFile(resolve(__dirname, '../../../.env'));
+} catch {
+  // .env 不存在时使用进程环境变量（CI / 部署注入场景）
+}
 
 /** platform-core 应用入口：base 与 backstage 逻辑模块共同运行的部署单元（主 PRD §1.3） */
 async function bootstrap(): Promise<void> {

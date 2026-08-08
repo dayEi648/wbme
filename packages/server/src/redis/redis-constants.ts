@@ -20,6 +20,10 @@ export const REDIS_NAMESPACE = {
   IDEMPOTENCY: 'idem',
   /** 未关联业务图片临时对象待清理记录 */
   UPLOAD_PENDING: 'upload',
+  /** 钉钉 OAuth 一次性 state（base PRD §2：回调校验、取用即删） */
+  DINGTALK_STATE: 'dtstate',
+  /** 激活/注册/重置/换绑的一次性流程会话（Path 限定 Cookie 对应） */
+  FLOW_TOKEN: 'flowtoken',
 } as const;
 
 export type RedisNamespace = (typeof REDIS_NAMESPACE)[keyof typeof REDIS_NAMESPACE];

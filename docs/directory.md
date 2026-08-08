@@ -22,11 +22,11 @@
 
 | 路径 | 用途 |
 | --- | --- |
-| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`） |
+| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy） |
 | `apps/asset/` | 资产系统部署单元 |
 | `apps/hr/` | 人事系统部署单元 |
 | `apps/fin/` | 财务系统部署单元 |
-| `apps/web/` | 前端（Vite + React + Ant Design） |
+| `apps/web/` | 前端（Vite + React + Ant Design；认证与门户页面见 `src/pages/`，统一请求层见 `src/request/`） |
 | `apps/worker/` | BullMQ Worker 部署单元 |
 | `apps/recovery-executor/` | 数据库恢复执行器部署单元 |
 | `apps/migration-runner/` | Migration Runner（按部署单元顺序执行迁移与视图脚本） |

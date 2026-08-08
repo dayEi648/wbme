@@ -57,3 +57,14 @@ export function createRequestContextMiddleware(
 export function getRequestContext(): RequestContext | undefined {
   return REQUEST_CONTEXT_STORAGE.getStore();
 }
+
+/**
+ * 写入认证后的当前用户标识（由认证守卫调用，主 PRD §9.6）。
+ * 业务代码只读上下文，不自行写入。
+ */
+export function setRequestUserId(userId: number): void {
+  const context = REQUEST_CONTEXT_STORAGE.getStore();
+  if (context) {
+    context.userId = userId;
+  }
+}

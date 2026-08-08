@@ -1,11 +1,13 @@
 import { Controller, Get, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { RedisService } from '../redis/redis.service';
+import { Public } from '../session/session.guard';
 
 /**
- * 健康探针（主 PRD §9.13）：免登录、仅供 Docker/Nginx 与外部监控使用。
+ * 健康探针（主 PRD §9.13）：免登录（@Public）、仅供 Docker/Nginx 与外部监控使用。
  * 只返回最小存活/就绪状态，不返回依赖地址、错误正文、任务数量或任何业务数据。
  */
+@Public()
 @Controller()
 export class HealthController {
   constructor(private readonly redis: RedisService) {}

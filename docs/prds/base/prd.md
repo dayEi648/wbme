@@ -71,8 +71,39 @@
 
 ---
 
-## 7. 数据实体清单
+## 7. 实现约定（开发期敲定，随实现同步维护）
+
+### 7.1 系统设置键名清单（T2 起读取侧生效；管理界面 T4-5）
+
+| 键名 | 默认值 | 说明 |
+| --- | --- | --- |
+| `session.idle.timeout.seconds` | 86400 | 普通会话空闲超时（秒） |
+| `session.idle.remember.seconds` | 2592000 | "记住我"会话空闲超时（秒） |
+| `session.abs.timeout.seconds` | 604800 | 普通会话绝对过期（秒） |
+| `session.abs.remember.seconds` | 7776000 | "记住我"会话绝对过期（秒） |
+| `login.account.max.attempts` | 10 | 账号锁连续失败次数上限 |
+| `login.account.lock.seconds` | 600 | 账号锁定时长（秒） |
+| `login.ip.window.seconds` | 3600 | IP 锁计数窗口（秒） |
+| `login.ip.max.attempts` | 120 | IP 锁窗口内失败次数上限 |
+| `login.ip.lock.seconds` | 3600 | IP 锁定时长（秒） |
+| `invitation.valid.seconds` | 604800 | 激活/重置/换绑凭证有效期（秒） |
+
+### 7.2 手机号规范与脱敏
+
+- 平台标准存储格式：`+{国家码}{号码}`（如 `+8613800138000`），只含数字与前置 `+`；写入、唯一性校验与登录查询前统一规范化（钉钉 `stateCode` + `mobile` 或用户输入均可解析）。
+- 脱敏展示：保留国家码与前 3 后 4，中间以 `****` 掩蔽（如 `+86 138****8000`）；完整手机号不出现于安全日志上下文、操作日志、错误详情或导出。
+
+### 7.3 会话与 CSRF 实现方案
+
+- 会话 Cookie：`wbme_session`，`HttpOnly + Secure（部署配置）+ SameSite=Lax + Path=/`；SameSite=Lax 允许钉钉 top-level 授权回跳携带 Cookie，同时挡住跨站 POST。
+- 空闲续期只由"有效交互"产生：前端请求层写请求默认携带 `X-WBME-Active: 1`，读请求仅页面导航/用户查询携带；轮询、预取、静默刷新、失败重试与后台标签页不携带。
+- CSRF：双提交 Cookie `wbme_csrf`（非 HttpOnly）+ 自定义头 `X-WBME-CSRF-Token`；状态变更且携带会话 Cookie 的请求校验；钉钉回调（GET）由一次性 state 承担。
+- 一次性流程 Cookie：`wbme_flow`，`Path` 仅覆盖对应流程路由（激活/注册/重置/换绑），值对应 Redis 一次性流程会话（TTL 30 分钟，确认成功后或失败即删）。
+
+---
+
+## 8. 数据实体清单
 
 > 供需求梳理与数据设计时参考；只列业务概念，不含字段细节。
 
-- **base（`platform-core` 内）**：用户、账号激活邀请（摘要/有效期/使用状态）、钉钉身份绑定（稳定外部标识/绑定状态/变更历史）、会话与会话版本。其余 `platform-core` 实体（功能权限目录、员工功能授权、系统设置、集中日志、统一后台任务、公告与备份等）见 backstage PRD §12。
+- **base（`platform-core` 内）**：用户、账号激活邀请（摘要/有效期/使用状态，激活/重置/换绑凭证共用）、钉钉身份绑定（稳定外部标识/绑定状态/变更历史）、会话与会话版本。其余 `platform-core` 实体（功能权限目录、员工功能授权、系统设置、集中日志、统一后台任务、公告与备份等）见 backstage PRD §12。
