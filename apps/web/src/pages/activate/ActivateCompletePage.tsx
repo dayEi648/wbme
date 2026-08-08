@@ -1,7 +1,7 @@
 import { App as AntApp, Button, Card, Form, Input, Radio, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, http, newIdempotencyKey } from '../../request/http';
+import { ApiError, http } from '../../request/http';
 import { useSession } from '../../request/session';
 
 interface ActivatePayload {
@@ -28,11 +28,12 @@ export default function ActivateCompletePage() {
     }
     setSubmitting(true);
     try {
-      await http.post(
-        '/auth/activation/confirm',
-        { name: values.name, gender: values.gender, password: values.password, confirmPassword: values.confirmPassword },
-        { idempotencyKey: newIdempotencyKey() },
-      );
+      await http.post('/auth/activation/confirm', {
+        name: values.name,
+        gender: values.gender,
+        password: values.password,
+        confirmPassword: values.confirmPassword,
+      });
       await refresh();
       message.success('账号已激活，欢迎使用');
       navigate('/portal', { replace: true });

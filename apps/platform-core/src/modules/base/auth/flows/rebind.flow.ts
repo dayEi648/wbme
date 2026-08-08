@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, accountErrors, maskPhone } from '@wbme/contracts';
+import { BusinessException, accountErrors, maskPhone, normalizePhoneFromParts } from '@wbme/contracts';
 import { PrismaService } from '../../../../prisma.service';
 import { SecurityLogService } from '../../security-log/security-log.service';
 import { PhoneSyncService } from '../phone-sync.service';
@@ -62,7 +62,7 @@ export class RebindFlow {
     const userId = flow.userId;
 
     try {
-      await this.doConfirm(userId, input, ip);
+      await this.doConfirm(userId, flow.tokenHash, input, ip);
     } catch (error) {
       // 换绑失败：安全日志（backstage PRD §8 发起/失败/成功全部记录）
       await this.securityLog.record('BINDING_CHANGED_FAILED', 'FAILURE', {
@@ -77,9 +77,10 @@ export class RebindFlow {
       targetUserId: userId,
       sourceIp: ip,
     });
+    const normalizedPhone = normalizePhoneFromParts(input.stateCode, input.mobile);
     await this.securityLog.record('BINDING_CHANGED_COMPLETED', 'SUCCESS', {
       targetUserId: userId,
-      context: { phoneMasked: maskPhone(`+${input.stateCode || '86'}${input.mobile}`) },
+      context: normalizedPhone ? { phoneMasked: maskPhone(normalizedPhone) } : undefined,
       sourceIp: ip,
     });
   }
@@ -87,6 +88,7 @@ export class RebindFlow {
   /** 换绑确认事务主体（失败由 confirm 记录 BINDING_CHANGED_FAILED 后上抛） */
   private async doConfirm(
     userId: number,
+    tokenHash: string | undefined,
     input: { unionId: string; mobile: string; stateCode: string },
     ip: string,
   ): Promise<void> {
@@ -127,7 +129,7 @@ export class RebindFlow {
     });
 
     await this.prisma.client.activationInvitation.updateMany({
-      where: { userId, status: 'VALID' },
+      where: { userId, tokenHash, status: 'VALID' },
       data: { status: 'USED', usedAt: new Date() },
     });
   }

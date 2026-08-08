@@ -18,7 +18,7 @@ import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
 import { FlowSessionService } from './flows/flow-session.service';
 import { ResetFlow } from './flows/reset.flow';
-import { ChangePasswordDto, ResetPasswordDto } from './dto/password.dto';
+import { ChangePasswordDto, ResetInitiateDto, ResetPasswordDto } from './dto/password.dto';
 import { RedeemTokenDto } from './dto/activation.dto';
 
 /** 会话 Cookie Secure 属性（生产必须 true；本地 http 开发设 false） */
@@ -56,6 +56,27 @@ export class PasswordController {
     return { ok: true };
   }
 
+  /**
+   * 自助重置发起（A10'，base PRD §2）：已绑定钉钉账号凭手机号发起。
+   * 签发重置流程 Cookie（RESET）并返回钉钉授权地址；回调后走 reset/confirm 完成。
+   * 账号不存在/未绑定统一提示 RESET_SELF_UNAVAILABLE，不泄露手机号是否注册。
+   */
+  @Public()
+  @Post('reset/initiate')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'reset-initiate', keyType: 'ip', limit: 10, windowSeconds: 60 })
+  async resetInitiate(
+    @Body() dto: ResetInitiateDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ authorizeUrl: string }> {
+    const result = await this.reset.initiateByPhone(dto.phone, req.ip ?? 'unknown');
+    const flowId = await this.flows.issue('RESET', { userId: result.userId });
+    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
+    res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
+    return { authorizeUrl: '/api/v1/auth/dingtalk/authorize?purpose=RESET' };
+  }
+
   /** 重置凭证兑换（M2 端点：账号 ACTIVE；兑换成功发 Path 限定重置流程 Cookie） */
   @Public()
   @Post('reset/redeem')
@@ -64,7 +85,7 @@ export class PasswordController {
   async resetRedeem(@Body() dto: RedeemTokenDto, @Res({ passthrough: true }) res: Response): Promise<unknown> {
     const tokenHash = this.token.hash(dto.token);
     const result = await this.reset.redeem(dto.token, tokenHash);
-    const flowId = await this.flows.issue('RESET', { userId: result.userId });
+    const flowId = await this.flows.issue('RESET', { userId: result.userId, tokenHash });
     res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
     return { user: { id: result.userId, name: result.name } };

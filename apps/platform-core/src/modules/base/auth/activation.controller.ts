@@ -47,7 +47,7 @@ export class ActivationController {
   ): Promise<unknown> {
     const result = await this.activation.redeem(dto.token);
     // 兑换成功 → 一次性流程 Cookie（覆盖钉钉授权/回调与激活流程）+ CSRF Cookie（确认请求双提交）
-    const flowId = await this.flows.issue('ACTIVATION', { userId: result.userId });
+    const flowId = await this.flows.issue('ACTIVATION', { userId: result.userId, tokenHash: result.tokenHash });
     res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
     return { user: { id: result.userId, name: result.name, phoneMasked: result.phoneMasked } };

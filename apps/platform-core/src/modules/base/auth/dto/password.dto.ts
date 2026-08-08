@@ -21,6 +21,14 @@ export class ChangePasswordDto extends IdempotentDto {
   confirmPassword!: string;
 }
 
+/** A10' 自助重置发起（已绑定钉钉账号凭手机号发起；未绑定账号统一提示） */
+export class ResetInitiateDto extends IdempotentDto {
+  /** 平台手机号（登录前统一规范化，国家/地区码 + 号码） */
+  @IsString()
+  @MaxLength(32)
+  phone!: string;
+}
+
 /** A10 重置确认（重置流程 Cookie） */
 export class ResetPasswordDto extends IdempotentDto {
   @IsString()

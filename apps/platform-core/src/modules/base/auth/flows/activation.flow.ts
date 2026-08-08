@@ -31,7 +31,7 @@ export class ActivationFlow {
   ) {}
 
   /** A6 兑换：凭证 → 校验邀请，返回目标用户（手机号为激活前联系参考） */
-  async redeem(rawToken: string): Promise<{ userId: number; name: string; phoneMasked: string }> {
+  async redeem(rawToken: string): Promise<{ userId: number; name: string; phoneMasked: string; tokenHash: string }> {
     const tokenHash = this.token.hash(rawToken);
     const invitation = await this.prisma.client.activationInvitation.findFirst({
       where: { tokenHash, status: 'VALID' },
@@ -50,7 +50,7 @@ export class ActivationFlow {
     if (!user || user.deletedAt !== null || user.status !== 'PENDING_ACTIVATION') {
       throw new BusinessException(accountErrors.ACCOUNT_ACTIVATED);
     }
-    return { userId: user.id, name: user.name, phoneMasked: maskPhone(user.phone) };
+    return { userId: user.id, name: user.name, phoneMasked: maskPhone(user.phone), tokenHash };
   }
 
   /** A7 确认：绑定钉钉 + 手机号 + 密码 + ACTIVE（单事务原子完成，完成后自动登录） */
@@ -98,10 +98,11 @@ export class ActivationFlow {
         throw new BusinessException(accountErrors.PHONE_TAKEN);
       }
 
-      // 邀请再校验（事务内，条件更新防并发重复使用）
+      // 邀请再校验（事务内，条件更新防并发重复使用；按兑换时的凭证摘要精确限定）
       const invitation = await tx.activationInvitation.updateMany({
         where: {
           userId: user.id,
+          tokenHash: flow.tokenHash,
           status: 'VALID',
           expiresAt: { gt: new Date() },
         },

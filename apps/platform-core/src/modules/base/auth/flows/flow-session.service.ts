@@ -28,6 +28,8 @@ export interface FlowSessionData {
   stateCode?: string;
   /** 换绑场景：旧身份已验证标记 */
   verifiedFlags?: string[];
+  /** 兑换凭证摘要（激活/重置/换绑确认时精确标记对应邀请 USED） */
+  tokenHash?: string;
   expiresAt: number;
 }
 

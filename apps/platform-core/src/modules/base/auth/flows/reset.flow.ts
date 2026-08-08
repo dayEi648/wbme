@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, accountErrors, maskPhone } from '@wbme/contracts';
+import { BusinessException, accountErrors, maskPhone, normalizePhoneFromParts, normalizePhoneInput } from '@wbme/contracts';
 import { PrismaService } from '../../../../prisma.service';
 import { SecurityLogService } from '../../security-log/security-log.service';
 import { PasswordService } from '../password.service';
@@ -24,6 +24,35 @@ export class ResetFlow {
     private readonly phoneSync: PhoneSyncService,
     private readonly securityLog: SecurityLogService,
   ) {}
+
+  /**
+   * 自助重置发起（A10'，base PRD §2）：已绑定钉钉的账号凭手机号发起。
+   * 账号不存在/未绑定统一提示 RESET_SELF_UNAVAILABLE（不泄露手机号是否注册）。
+   * 不校验手机号与绑定手机号一致（手机号以钉钉授权为准，见 §2 自动同步规则）。
+   */
+  async initiateByPhone(phone: string, ip: string): Promise<{ userId: number; name: string }> {
+    const normalized = normalizePhoneInput(phone);
+    if (!normalized) {
+      throw new BusinessException(accountErrors.RESET_SELF_UNAVAILABLE);
+    }
+    const user = await this.prisma.client.user.findFirst({
+      where: { phone: normalized, deletedAt: null, status: 'ACTIVE' },
+      select: { id: true, name: true },
+    });
+    const binding = user
+      ? await this.prisma.client.dingtalkBinding.findFirst({ where: { userId: user.id, status: 'BOUND' }, select: { id: true } })
+      : null;
+    if (!user || !binding) {
+      throw new BusinessException(accountErrors.RESET_SELF_UNAVAILABLE);
+    }
+    // 自助发起与管理员发起同属"密码重置发起"事件（backstage PRD §8）
+    await this.securityLog.record('PASSWORD_RESET_ISSUED', 'SUCCESS', {
+      targetUserId: user.id,
+      reason: '自助发起（钉钉验证式）',
+      sourceIp: ip,
+    });
+    return { userId: user.id, name: user.name };
+  }
 
   /** 重置凭证兑换（M2 端点：账号必须为 ACTIVE；失败/过期/已使用不得重放） */
   async redeem(rawToken: string, tokenHash: string): Promise<{ userId: number; name: string }> {
@@ -82,9 +111,9 @@ export class ResetFlow {
       await this.phoneSync.syncFromDingtalk(tx, userId, input.stateCode, input.mobile, ip);
     });
 
-    // 邀请标记 USED（一次性；仅当重置流程完成）
+    // 邀请标记 USED（一次性；仅当重置流程完成；按兑换时的凭证摘要精确限定）
     await this.prisma.client.activationInvitation.updateMany({
-      where: { userId: flow.userId, status: 'VALID' },
+      where: { userId: flow.userId, tokenHash: flow.tokenHash, status: 'VALID' },
       data: { status: 'USED', usedAt: new Date() },
     });
     await this.flows.consume(flowId);
@@ -92,9 +121,10 @@ export class ResetFlow {
       targetUserId: flow.userId,
       sourceIp: ip,
     });
+    const normalizedPhone = normalizePhoneFromParts(input.stateCode, input.mobile);
     await this.securityLog.record('PASSWORD_RESET_COMPLETED', 'SUCCESS', {
       targetUserId: flow.userId,
-      context: { phoneMasked: input.mobile ? maskPhone(`+${input.stateCode || '86'}${input.mobile}`) : undefined },
+      context: normalizedPhone ? { phoneMasked: maskPhone(normalizedPhone) } : undefined,
       sourceIp: ip,
     });
   }

@@ -148,6 +148,10 @@ model UserTablePref {
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  // 同页面同名预设唯一（docs/database-design/base.md B-5；索引由 init 迁移手写建立，此处声明防 migrate diff 误删）
+  @@unique([userId, pageKey, name], map: "user_table_prefs_preset_unique", where: raw("pref_type = 'FILTER_PRESET'"))
+  // 每页一条列设置（docs/database-design/base.md B-5；索引由 init 迁移手写建立，此处声明防 migrate diff 误删）
+  @@unique([userId, pageKey], map: "user_table_prefs_column_unique", where: raw("pref_type = 'COLUMN_SETTING'"))
   @@map("user_table_prefs")
   @@schema("base")
 }

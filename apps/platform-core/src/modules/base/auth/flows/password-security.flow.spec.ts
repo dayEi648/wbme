@@ -162,6 +162,43 @@ describe.skipIf(!REDIS_URL)('改密/重置/换绑集成（session_version 全会
     }
   });
 
+  it('A10\' 自助重置发起：已绑定账号可发起；未注册/格式非法统一拒绝（不泄露手机号是否注册）', async () => {
+    const user = await createActiveUser('sec-union-init');
+    try {
+      // 已绑定 ACTIVE 账号 → 发起成功（返回 userId，可用于签发 RESET 流程）
+      const initiated = await reset.initiateByPhone(user.phone, '10.2.0.6');
+      expect(initiated.userId).toBe(user.id);
+
+      // 未注册手机号 → 统一拒绝
+      await expect(reset.initiateByPhone('+8613999999999', '10.2.0.6')).rejects.toMatchObject({
+        entry: { code: 'RESET_SELF_UNAVAILABLE' },
+      });
+      // 格式非法同样统一拒绝
+      await expect(reset.initiateByPhone('not-a-phone', '10.2.0.6')).rejects.toMatchObject({
+        entry: { code: 'RESET_SELF_UNAVAILABLE' },
+      });
+    } finally {
+      await cleanupUser(user.id);
+    }
+  });
+
+  it('A10\' 自助重置发起：ACTIVE 但未绑定钉钉的账号拒绝', async () => {
+    phoneSeq += 1;
+    const phone = `+86139000${String(phoneSeq).padStart(4, '0')}`;
+    const hash = await password.hash('OldPass123456');
+    const unbounded = await prisma.client.user.create({
+      data: { name: '未绑定测试', gender: 'MALE', phone, status: 'ACTIVE', passwordHash: hash },
+    });
+    try {
+      await expect(reset.initiateByPhone(phone, '10.2.0.7')).rejects.toMatchObject({
+        entry: { code: 'RESET_SELF_UNAVAILABLE' },
+      });
+    } finally {
+      await prisma.client.securityLog.deleteMany({ where: { OR: [{ targetUserId: unbounded.id }, { actorId: unbounded.id }] } });
+      await prisma.client.user.deleteMany({ where: { id: unbounded.id } });
+    }
+  });
+
   it('A11 换绑：原子替换绑定（旧 UNBOUND + 新 BOUND）+ session_version 递增', async () => {
     const user = await createActiveUser('sec-union-old');
     try {

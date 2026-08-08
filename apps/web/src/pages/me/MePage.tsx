@@ -1,8 +1,8 @@
 import { App as AntApp, Button, Card, Descriptions, Divider, Form, Input, Radio, Space, Typography } from 'antd';
-import { ArrowLeftOutlined, KeyOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, KeyOutlined, SwapOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, http, newIdempotencyKey } from '../../request/http';
+import { ApiError, http } from '../../request/http';
 
 interface MeData {
   user: {
@@ -50,15 +50,22 @@ export default function MePage() {
   async function submitProfile(values: { name: string; gender: 'MALE' | 'FEMALE' }) {
     setProfileSubmitting(true);
     try {
-      const result = await http.put<{ applied: boolean; requestId?: number }>('/me/profile', values, {
-        idempotencyKey: newIdempotencyKey(),
-      });
+      const result = await http.put<{ applied: boolean; requestId?: number }>('/me/profile', values);
       if (result.applied) {
         message.success('资料已更新');
       } else {
         message.success('资料修改申请已提交，等待管理员审批');
       }
-      setMe((prev) => (prev ? { ...prev, pendingProfileChange: !result.applied || prev.pendingProfileChange } : prev));
+      // 超管直改立即生效：同步刷新身份信息卡
+      setMe((prev) =>
+        prev
+          ? {
+              ...prev,
+              user: { ...prev.user, name: values.name, gender: values.gender },
+              pendingProfileChange: !result.applied || prev.pendingProfileChange,
+            }
+          : prev,
+      );
     } catch (error) {
       if (error instanceof ApiError) {
         message.error(error.body.message);
@@ -75,11 +82,11 @@ export default function MePage() {
     }
     setPasswordSubmitting(true);
     try {
-      await http.post(
-        '/auth/password/change',
-        { currentPassword: values.currentPassword, newPassword: values.newPassword, confirmPassword: values.confirmPassword },
-        { idempotencyKey: newIdempotencyKey() },
-      );
+      await http.post('/auth/password/change', {
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+        confirmPassword: values.confirmPassword,
+      });
       message.success('密码已修改，请重新登录');
       navigate('/login', { replace: true });
     } catch (error) {
@@ -103,7 +110,14 @@ export default function MePage() {
           </Typography.Title>
         </div>
 
-        <Card title="身份信息">
+        <Card
+          title="身份信息"
+          extra={
+            <Button icon={<SwapOutlined />} onClick={() => navigate('/rebind')}>
+              换绑钉钉
+            </Button>
+          }
+        >
           <Descriptions column={2} size="small">
             <Descriptions.Item label="姓名">{me?.user.name}</Descriptions.Item>
             <Descriptions.Item label="性别">{me?.user.gender === 'MALE' ? '男' : '女'}</Descriptions.Item>

@@ -1,7 +1,7 @@
 import { App as AntApp, Button, Card, Form, Input, Radio, Space, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, http, newIdempotencyKey } from '../../request/http';
+import { ApiError, http } from '../../request/http';
 import { useSession } from '../../request/session';
 
 interface RegisterPayload {
@@ -26,8 +26,12 @@ export default function RegisterPage() {
     void http
       .get<{ phone: string }>('/auth/registration/context')
       .then((res) => setPhone(res.phone))
-      .catch(() => setPhone(''));
-  }, []);
+      .catch((error) => {
+        // 注册流程会话失效：明确提示（base PRD §3 不产生无提示跳转）
+        setPhone('');
+        message.error(error instanceof ApiError ? error.body.message : '注册会话已失效，请重新扫码注册');
+      });
+  }, [message]);
 
   async function onFinish(values: RegisterPayload) {
     if (values.password !== values.confirmPassword) {
@@ -36,11 +40,12 @@ export default function RegisterPage() {
     }
     setSubmitting(true);
     try {
-      await http.post(
-        '/auth/registration/confirm',
-        { name: values.name, gender: values.gender, password: values.password, confirmPassword: values.confirmPassword },
-        { idempotencyKey: newIdempotencyKey() },
-      );
+      await http.post('/auth/registration/confirm', {
+        name: values.name,
+        gender: values.gender,
+        password: values.password,
+        confirmPassword: values.confirmPassword,
+      });
       await refresh();
       message.success('注册成功');
       navigate('/portal', { replace: true });

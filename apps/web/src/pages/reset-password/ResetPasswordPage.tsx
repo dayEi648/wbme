@@ -1,7 +1,7 @@
 import { App as AntApp, Button, Card, Form, Input, Space, Spin, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ApiError, http, newIdempotencyKey } from '../../request/http';
+import { ApiError, http } from '../../request/http';
 
 /**
  * 密码重置（base PRD §2）：
@@ -33,6 +33,8 @@ export default function ResetPasswordPage() {
         const { authorizeUrl } = await http.get<{ authorizeUrl: string }>('/auth/dingtalk/authorize?purpose=RESET');
         window.location.href = authorizeUrl;
       } catch (error) {
+        // 兑换失败同样清除地址栏 fragment（凭证已失效，不滞留地址栏/截图/历史）
+        window.history.replaceState(null, '', '/reset-password');
         setState('failed');
         setErrorMessage(error instanceof ApiError ? error.body.message : '兑换失败');
         message.error(error instanceof ApiError ? error.body.message : '兑换失败');
@@ -72,11 +74,10 @@ export function ResetCompletePage() {
     }
     setSubmitting(true);
     try {
-      await http.post(
-        '/auth/password/reset/confirm',
-        { newPassword: values.newPassword, confirmPassword: values.confirmPassword },
-        { idempotencyKey: newIdempotencyKey() },
-      );
+      await http.post('/auth/password/reset/confirm', {
+        newPassword: values.newPassword,
+        confirmPassword: values.confirmPassword,
+      });
       message.success('密码已重置，请重新登录');
       navigate('/login', { replace: true });
     } catch (error) {

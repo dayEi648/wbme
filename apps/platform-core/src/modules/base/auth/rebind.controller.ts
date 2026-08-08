@@ -81,7 +81,7 @@ export class RebindController {
   async redeem(@Body() dto: RedeemTokenDto, @Res({ passthrough: true }) res: Response): Promise<unknown> {
     const tokenHash = this.token.hash(dto.token);
     const result = await this.rebind.redeem(dto.token, tokenHash);
-    const flowId = await this.flows.issue('REBIND', { userId: result.userId });
+    const flowId = await this.flows.issue('REBIND', { userId: result.userId, tokenHash });
     res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
     return { user: { id: result.userId, name: result.name } };

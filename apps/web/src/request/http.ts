@@ -4,8 +4,8 @@
  * - baseURL=/api/v1、credentials 携带 Cookie、自动附加 X-WBME-CSRF-Token（双提交）；
  * - 写请求默认 X-WBME-Active: 1；读请求仅页面导航/用户查询显式传 { active: true }
  *   （轮询/预取/静默刷新不得续期，base PRD §3）；
- * - 重要写操作自动生成幂等键（每次用户意图一个，网络重试保持不变）；
- * - 统一错误映射：会话失效 → 清理登录态并跳登录页。
+ * - 重要写操作自动生成幂等键：同一请求体生成相同键（网络重试保持不变，主 PRD §9.5）；
+ * - 统一错误映射：会话失效/账号状态异常 → 清理登录态并带提示跳登录页（base PRD §3）。
  */
 
 /** 统一错误结构（主 PRD §9.5） */
@@ -38,15 +38,23 @@ export class ApiError extends Error {
   }
 }
 
-/** 会话失效处理回调（session.ts 注入，避免循环依赖） */
-let onSessionExpired: (() => void) | null = null;
-export function setSessionExpiredHandler(handler: () => void): void {
+/** 会话失效处理回调（session.ts 注入，避免循环依赖）；可携带提示文案 */
+let onSessionExpired: ((message?: string) => void) | null = null;
+export function setSessionExpiredHandler(handler: (message?: string) => void): void {
   onSessionExpired = handler;
 }
 
-/** 幂等键生成（每次用户意图一个 UUID） */
-export function newIdempotencyKey(): string {
-  return crypto.randomUUID();
+/**
+ * 稳定幂等键：同一请求体（同一用户意图的重试）生成相同键，网络重试保持不变（主 PRD §9.5）。
+ * 失败请求不产生幂等记录，重试时后端按首次成功结果去重；显式传入的键优先。
+ */
+function stableIdempotencyKey(method: string, path: string, body: unknown): string {
+  const raw = `${method}:${path}:${JSON.stringify(body ?? '')}`;
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    hash = (hash * 31 + raw.charCodeAt(i)) | 0;
+  }
+  return `auto-${(hash >>> 0).toString(16)}`;
 }
 
 export interface RequestOptions {
@@ -108,9 +116,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (active) {
     headers['x-wbme-active'] = '1';
   }
-  // 幂等键（重要写操作；每次用户意图生成一次）
-  if (options.idempotencyKey) {
-    headers['idempotency-key'] = options.idempotencyKey;
+  // 幂等键：显式传入优先；写操作未显式传入时按请求体自动生成稳定键（重试保持不变）
+  const idempotencyKey = options.idempotencyKey ?? (isWrite ? stableIdempotencyKey(method, path, options.body) : undefined);
+  if (idempotencyKey) {
+    headers['idempotency-key'] = idempotencyKey;
   }
 
   const requestId = crypto.randomUUID();
@@ -140,9 +149,12 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   const raw = await response.text();
   const error = parseErrorBody(raw, response.status, requestId);
-  // 会话失效：统一清理并跳登录（主 PRD §10.5）
+  // 会话失效：统一清理并带提示跳登录（主 PRD §10.5，base PRD §3 明确提示）
   if (error.type === 'AUTHENTICATION' && error.code === 'SESSION_EXPIRED') {
     onSessionExpired?.();
+  } else if (error.code === 'ACCOUNT_DEACTIVATED' || error.code === 'ACCOUNT_PENDING_ACTIVATION') {
+    // 已登录态下账号状态异常（注销/待激活）：同样清理登录态并透传服务端提示
+    onSessionExpired?.(error.message);
   }
   throw error;
 }

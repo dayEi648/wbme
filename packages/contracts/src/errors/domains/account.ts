@@ -170,6 +170,14 @@ export const accountErrors = {
     httpStatus: 409,
     message: '已有待审批的资料修改申请，请等待处理完成',
   },
+  /** 自助重置不可用：账号不存在或未绑定钉钉（统一提示防手机号枚举，base PRD §2） */
+  RESET_SELF_UNAVAILABLE: {
+    code: 'RESET_SELF_UNAVAILABLE',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '无法自助重置密码，请绑定钉钉后重试或联系管理员',
+  },
   /** 岗位变更申请不满足资格（多部门员工/岗位未启用/不允许自助申请/不适用目标部门；T6-6 启用） */
   POSITION_APPLICATION_INELIGIBLE: {
     code: 'POSITION_APPLICATION_INELIGIBLE',

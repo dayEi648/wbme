@@ -1,7 +1,7 @@
 import { App as AntApp, Button, Card, Form, Input, Space, Spin, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ApiError, http, newIdempotencyKey } from '../../request/http';
+import { ApiError, http } from '../../request/http';
 import { useSession } from '../../request/session';
 
 /**
@@ -35,6 +35,8 @@ export default function RebindPage() {
         const { authorizeUrl } = await http.get<{ authorizeUrl: string }>('/auth/dingtalk/authorize?purpose=REBIND');
         window.location.href = authorizeUrl;
       } catch (error) {
+        // 兑换失败同样清除地址栏 fragment（凭证已失效，不滞留地址栏/截图/历史）
+        window.history.replaceState(null, '', '/rebind');
         setState('failed');
         setErrorMessage(error instanceof ApiError ? error.body.message : '兑换失败');
       }
@@ -45,9 +47,7 @@ export default function RebindPage() {
   async function startSelfRebind(values: { password: string }) {
     setSubmitting(true);
     try {
-      const { authorizeUrl } = await http.post<{ authorizeUrl: string }>('/auth/rebind/self-initiate', values, {
-        idempotencyKey: newIdempotencyKey(),
-      });
+      const { authorizeUrl } = await http.post<{ authorizeUrl: string }>('/auth/rebind/self-initiate', values);
       window.location.href = authorizeUrl;
     } catch (error) {
       if (error instanceof ApiError) {
@@ -124,7 +124,7 @@ export function RebindCompletePage() {
   async function confirmRebind() {
     setSubmitting(true);
     try {
-      await http.post('/auth/rebind/confirm', {}, { idempotencyKey: newIdempotencyKey() });
+      await http.post('/auth/rebind/confirm', {});
       message.success('换绑成功，请重新登录');
       navigate('/login', { replace: true });
     } catch (error) {

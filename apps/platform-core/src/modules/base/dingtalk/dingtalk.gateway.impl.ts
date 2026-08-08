@@ -18,6 +18,11 @@ import {
  *   不得误报组织不匹配、不得跳过校验；
  * - 凭证只在后端使用，不下发前端、不写入日志。
  */
+
+/** 钉钉授权页与开放 API 域名（如钉钉域名调整只改此处） */
+const DINGTALK_LOGIN_BASE = 'https://login.dingtalk.io/oauth2/auth';
+const DINGTALK_API_BASE = 'https://api.dingtalk.io';
+
 @Injectable()
 export class DingtalkGatewayImpl implements DingtalkGateway {
   private readonly logger = new Logger(DingtalkGatewayImpl.name);
@@ -57,11 +62,11 @@ export class DingtalkGatewayImpl implements DingtalkGateway {
       state: params.state,
       corpId: this.corpId,
     });
-    return `https://login.dingtalk.io/oauth2/auth?${search.toString()}`;
+    return `${DINGTALK_LOGIN_BASE}?${search.toString()}`;
   }
 
   async exchangeCodeForUserToken(code: string): Promise<{ accessToken: string; corpId: string }> {
-    const body = await this.request<{ accessToken: string; corpId: string }>('https://api.dingtalk.io/v1.0/oauth2/userAccessToken', {
+    const body = await this.request<{ accessToken: string; corpId: string }>(`${DINGTALK_API_BASE}/v1.0/oauth2/userAccessToken`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -84,7 +89,7 @@ export class DingtalkGatewayImpl implements DingtalkGateway {
       mobile?: string;
       stateCode?: string;
       nick?: string;
-    }>('https://api.dingtalk.io/v1.0/oauth2/userinfo', {
+    }>(`${DINGTALK_API_BASE}/v1.0/oauth2/userinfo`, {
       headers: { 'x-acs-dingtalk-access-token': userToken },
     });
     if (!info.unionId) {
@@ -107,7 +112,7 @@ export class DingtalkGatewayImpl implements DingtalkGateway {
       stateCode?: string;
       active?: boolean;
       departmentIds?: number[];
-    }>(`https://api.dingtalk.io/v1.0/contact/users/${encodeURIComponent(unionId)}`, {
+    }>(`${DINGTALK_API_BASE}/v1.0/contact/users/${encodeURIComponent(unionId)}`, {
       headers: { 'x-acs-dingtalk-access-token': appToken },
     }, { notMemberStatuses: [401, 403, 404] });
     if (!member.unionId) {
@@ -129,7 +134,7 @@ export class DingtalkGatewayImpl implements DingtalkGateway {
       return this.appTokenCache.token;
     }
     const body = await this.request<{ accessToken?: string; expireIn?: number }>(
-      'https://api.dingtalk.io/v1.0/oauth2/accessToken',
+      `${DINGTALK_API_BASE}/v1.0/oauth2/accessToken`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

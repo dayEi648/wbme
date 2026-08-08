@@ -37,6 +37,8 @@ export default function ActivatePage() {
         const { authorizeUrl } = await http.get<{ authorizeUrl: string }>('/auth/dingtalk/authorize?purpose=ACTIVATION');
         window.location.href = authorizeUrl;
       } catch (error) {
+        // 兑换失败同样清除地址栏 fragment（凭证已失效，不滞留地址栏/截图/历史）
+        window.history.replaceState(null, '', '/activate');
         setState('failed');
         setErrorMessage(error instanceof ApiError ? error.body.message : '兑换失败，请重试');
         message.error(error instanceof ApiError ? error.body.message : '兑换失败');

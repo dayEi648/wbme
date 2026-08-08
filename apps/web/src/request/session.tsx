@@ -1,3 +1,4 @@
+import { App as AntApp, Spin } from 'antd';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { http, setSessionExpiredHandler } from './http';
@@ -30,6 +31,7 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 
 /** 会话状态提供者：启动时校验登录态；会话失效统一处理（跳登录） */
 export function SessionProvider({ children }: { children: ReactNode }) {
+  const { message } = AntApp.useApp();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -50,10 +52,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // 会话中途失效（含账号注销/待激活）：明确提示后跳登录，不产生无提示跳转（base PRD §3）
   useEffect(() => {
-    setSessionExpiredHandler(goLogin);
+    setSessionExpiredHandler((messageText?: string) => {
+      setUser(null);
+      message.error(messageText ?? '登录状态已失效，请重新登录');
+      navigate('/login', { replace: true });
+    });
     void refresh();
-  }, [goLogin, refresh]);
+  }, [message, navigate, refresh]);
 
   const logout = useCallback(async () => {
     try {
@@ -82,7 +89,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useSession();
   const location = useLocation();
   if (loading) {
-    return null; // 校验中（避免闪烁）
+    // 会话校验中：全屏 loading 占位，避免白屏闪烁
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
   }
   if (!user) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;

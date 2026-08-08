@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import LoginPage from './pages/login/LoginPage';
 import ActivatePage from './pages/activate/ActivatePage';
 import ActivateCompletePage from './pages/activate/ActivateCompletePage';
@@ -23,6 +23,9 @@ export default function App() {
       <Route path="/reset-password/complete" element={<ResetCompletePage />} />
       <Route path="/rebind" element={<RebindPage />} />
       <Route path="/rebind/complete" element={<RebindCompletePage />} />
+
+      {/* 根路径 → 门户（未登录由 RequireAuth 重定向登录页） */}
+      <Route path="/" element={<Navigate to="/portal" replace />} />
 
       {/* 登录态：门户 / 个人中心（业务系统页面随 T9-5~T9-7 推进） */}
       <Route

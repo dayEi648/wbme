@@ -72,29 +72,32 @@ export default function PortalPage() {
 
       <Typography.Title level={4}>系统入口</Typography.Title>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-        {portal?.systems.map((system) => (
-          <Card
-            key={system.code}
-            hoverable={system.hasPermission && system.productStatus === 'OPEN'}
-            onClick={() => {
-              if (system.hasPermission && system.productStatus === 'OPEN') {
-                navigate(system.entryUrl);
-              }
-            }}
-            style={{ cursor: system.hasPermission && system.productStatus === 'OPEN' ? 'pointer' : 'not-allowed', opacity: system.hasPermission ? 1 : 0.6 }}
-          >
-            <Space direction="vertical" size="small">
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                {system.name}
-              </Typography.Title>
-              <Space size="small">
-                {!system.hasPermission && <Tag>暂无权限</Tag>}
-                {system.productStatus === 'COMING_SOON' && <Tag color="orange">即将上线</Tag>}
-                <Badge count={system.code === 'BACKSTAGE' ? portal.badgeCount : 0} showZero={false} size="small" />
+        {portal?.systems
+          // 入口可见规则：仅展示当前用户拥有至少一项功能授权的系统（base PRD §5）
+          .filter((system) => system.hasPermission)
+          .map((system) => (
+            <Card
+              key={system.code}
+              hoverable={system.productStatus === 'OPEN'}
+              onClick={() => {
+                if (system.productStatus === 'OPEN') {
+                  navigate(system.entryUrl);
+                }
+              }}
+              style={{ cursor: system.productStatus === 'OPEN' ? 'pointer' : 'not-allowed' }}
+            >
+              <Space direction="vertical" size="small">
+                <Typography.Title level={5} style={{ margin: 0 }}>
+                  {system.name}
+                </Typography.Title>
+                <Space size="small">
+                  {system.productStatus === 'COMING_SOON' && <Tag color="orange">即将上线</Tag>}
+                  {/* 待办角标：按对应审批功能数据范围统计（T5/6/7 联调后后端按系统返回） */}
+                  <Badge count={portal.badgeCount} showZero={false} size="small" />
+                </Space>
               </Space>
-            </Space>
-          </Card>
-        ))}
+            </Card>
+          ))}
       </div>
 
       <Drawer title="系统公告" open={announcementOpen} onClose={() => setAnnouncementOpen(false)} width={420}>

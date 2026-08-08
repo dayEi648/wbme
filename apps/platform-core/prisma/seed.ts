@@ -8,7 +8,9 @@
  *
  * 运行：`pnpm exec prisma db seed`（prisma.config.ts 配置了 seed 命令）。
  */
+import 'reflect-metadata';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { normalizePhoneInput } from '@wbme/contracts';
 import { PrismaClient } from '../src/generated/prisma/client';
 
 /** 功能权限目录定义（各子系统 PRD §1；编码为稳定功能编码，T3 权限系统使用） */
@@ -231,6 +233,12 @@ async function seedSuperAdmin(prisma: PrismaClient): Promise<void> {
   if (gender !== 'MALE' && gender !== 'FEMALE') {
     throw new Error('SUPER_ADMIN_GENDER 必须为 MALE 或 FEMALE');
   }
+  // 手机号统一规范化为平台标准格式（+国家码+号码，base PRD §7.2）：
+  // 与登录查询、唯一性校验口径一致，避免种子写入非规范化号码造成唯一性校验盲区
+  const normalizedPhone = normalizePhoneInput(phone);
+  if (!normalizedPhone) {
+    throw new Error(`SUPER_ADMIN_PHONE 无法规范化为平台标准格式（应如 13800138000 / +8613800138000）：${phone}`);
+  }
   const existing = await prisma.user.findFirst({
     where: { isSuperAdmin: true, deletedAt: null },
   });
@@ -241,14 +249,14 @@ async function seedSuperAdmin(prisma: PrismaClient): Promise<void> {
   const admin = await prisma.user.create({
     data: {
       name,
-      phone,
+      phone: normalizedPhone,
       gender,
       status: 'PENDING_ACTIVATION',
       isSuperAdmin: true,
     },
   });
   console.log(`[seed] 超级管理员种子账号已创建（id=${admin.id}，待激活，姓名=${name}）`);
-  console.log('[seed] 请管理员在用户管理中为该账号生成一次性激活邀请（激活链接生成在 T2 阶段接入）');
+  console.log('[seed] 请管理员在用户管理中为该账号生成一次性激活邀请（M1 激活邀请接口已接入，管理页面随 T9-4 提供）');
 }
 
 async function main(): Promise<void> {

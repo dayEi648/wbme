@@ -63,6 +63,12 @@
 - 失败：`OLD_PASSWORD_INCORRECT`(401) / `INVALID_CREDENTIALS`(422 策略不符)
 - 安全事件：PASSWORD_CHANGED（成功/失败）
 
+### A10' 自助重置发起 `POST /auth/password/reset/initiate`
+公开 + 限流。入参 `{ phone, idempotencyKey? }`（已绑定钉钉账号凭手机号自助发起；base PRD §2"已绑定钉钉的用户可重新扫码完成钉钉验证后重置密码"）。
+- 成功：`{ authorizeUrl }`（同源相对路径 `/api/v1/auth/dingtalk/authorize?purpose=RESET`）+ `wbme_flow`（Path=/api/v1/auth）+ `wbme_csrf`；回调后走 A10 完成
+- 失败：`RESET_SELF_UNAVAILABLE`(422 账号不存在或未绑定钉钉，统一提示不泄露手机号是否注册) / `RATE_LIMITED`(429)
+- 安全事件：PASSWORD_RESET_ISSUED（reason=自助发起）
+
 ### 重置凭证兑换 `POST /auth/password/reset/redeem`
 公开 + 限流。入参 `{ token }`（M2 生成的 fragment 凭证）。
 - 成功：`{ user: { id, name } }` + `wbme_flow`（Path=/api/v1/auth）+ `wbme_csrf`
