@@ -85,11 +85,25 @@ export class ResetFlow {
     }
     const userId = flow.userId;
     if (!this.password.validatePolicy(input.newPassword)) {
-      throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
+      throw new BusinessException(accountErrors.PASSWORD_POLICY_FAILED);
     }
     const newHash = await this.password.hash(input.newPassword);
 
     await this.prisma.client.$transaction(async (tx) => {
+      // 邀请一次性校验（事务内条件更新，与激活流程一致，base PRD §2）：
+      // 仅管理员凭证路径（流程会话携带 tokenHash）消费邀请；仅 VALID 且未过期可消费，
+      // 并发/已使用/被作废（REVOKED）/过期均拒绝，防并发重放。
+      // 自助路径（A10' initiate 签发，无 tokenHash）不消费任何邀请——
+      // 以免误消费账号现有 VALID 邀请，身份准入以发起时校验 + 钉钉验证为准。
+      if (flow.tokenHash) {
+        const invitation = await tx.activationInvitation.updateMany({
+          where: { userId: flow.userId, tokenHash: flow.tokenHash, status: 'VALID', expiresAt: { gt: new Date() } },
+          data: { status: 'USED', usedAt: new Date() },
+        });
+        if (invitation.count === 0) {
+          throw new BusinessException(accountErrors.INVITATION_INVALID);
+        }
+      }
       // 绑定一致性：钉钉身份必须是该账号当前有效绑定（base PRD §2）
       const binding = await tx.dingtalkBinding.findFirst({
         where: { userId, dingtalkUnionId: input.unionId, status: 'BOUND' },
@@ -111,16 +125,13 @@ export class ResetFlow {
       await this.phoneSync.syncFromDingtalk(tx, userId, input.stateCode, input.mobile, ip);
     });
 
-    // 邀请标记 USED（一次性；仅当重置流程完成；按兑换时的凭证摘要精确限定）
-    await this.prisma.client.activationInvitation.updateMany({
-      where: { userId: flow.userId, tokenHash: flow.tokenHash, status: 'VALID' },
-      data: { status: 'USED', usedAt: new Date() },
-    });
     await this.flows.consume(flowId);
-    await this.securityLog.record('INVITATION_USED', 'SUCCESS', {
-      targetUserId: flow.userId,
-      sourceIp: ip,
-    });
+    if (flow.tokenHash) {
+      await this.securityLog.record('INVITATION_USED', 'SUCCESS', {
+        targetUserId: flow.userId,
+        sourceIp: ip,
+      });
+    }
     const normalizedPhone = normalizePhoneFromParts(input.stateCode, input.mobile);
     await this.securityLog.record('PASSWORD_RESET_COMPLETED', 'SUCCESS', {
       targetUserId: flow.userId,

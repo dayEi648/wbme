@@ -38,10 +38,20 @@ export class ApiError extends Error {
   }
 }
 
-/** 会话失效处理回调（session.ts 注入，避免循环依赖）；可携带提示文案 */
-let onSessionExpired: ((message?: string) => void) | null = null;
-export function setSessionExpiredHandler(handler: (message?: string) => void): void {
+/** 会话失效处理回调（session.ts 注入，避免循环依赖）；可携带提示文案；silent=true 时仅跳转不弹提示 */
+let onSessionExpired: ((message?: string, silent?: boolean) => void) | null = null;
+export function setSessionExpiredHandler(handler: (message?: string, silent?: boolean) => void): void {
   onSessionExpired = handler;
+}
+
+/**
+ * 是否处于已登录态（区分"从未登录"与"会话中途失效"，base PRD §3）。
+ * 会话 Cookie（wbme_session）为 HttpOnly，前端不可读，故以同生命周期下发的 CSRF Cookie（wbme_csrf，
+ * 非 HttpOnly）作为登录标记：登录成功/激活/注册/钉钉登录后均有该 Cookie，登出即清除；
+ * "记住我"时两者同持久化、未勾选时同为浏览器会话级，生命周期始终一致。
+ */
+function hasSessionCookie(): boolean {
+  return document.cookie.split(';').some((part) => part.trim().startsWith('wbme_csrf='));
 }
 
 /**
@@ -149,11 +159,14 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   const raw = await response.text();
   const error = parseErrorBody(raw, response.status, requestId);
-  // 会话失效：统一清理并带提示跳登录（主 PRD §10.5，base PRD §3 明确提示）
+  // 会话失效：统一清理并跳登录（主 PRD §10.5，base PRD §3 明确提示）。
+  // 持有会话 Cookie 却返回 SESSION_EXPIRED = 会话中途失效（明确提示）；
+  // 无会话 Cookie（未登录首访）静默跳转，不弹误导性提示。
   if (error.type === 'AUTHENTICATION' && error.code === 'SESSION_EXPIRED') {
-    onSessionExpired?.();
-  } else if (error.code === 'ACCOUNT_DEACTIVATED' || error.code === 'ACCOUNT_PENDING_ACTIVATION') {
-    // 已登录态下账号状态异常（注销/待激活）：同样清理登录态并透传服务端提示
+    onSessionExpired?.(undefined, !hasSessionCookie());
+  } else if ((error.code === 'ACCOUNT_DEACTIVATED' || error.code === 'ACCOUNT_PENDING_ACTIVATION') && hasSessionCookie()) {
+    // 已登录态下账号状态异常（注销/待激活）：清理登录态并透传服务端提示；
+    // 登录失败场景（无会话 Cookie）不触发全局处理，由页面自行展示（避免双 toast）
     onSessionExpired?.(error.message);
   }
   throw error;

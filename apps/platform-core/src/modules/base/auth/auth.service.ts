@@ -22,6 +22,10 @@ export interface LoginResult {
   sessionId: string;
   /** 绝对过期时间点（epoch ms） */
   sessionExpiresAt: number;
+  /** 是否"记住我"会话（控制器据此持久化 Cookie，base PRD §3） */
+  rememberMe: boolean;
+  /** 绝对过期时长（秒；"记住我"时 Cookie maxAge 与服务端时限一致） */
+  absTimeoutSeconds: number;
   /** CSRF Cookie 值（双提交，控制器一并下发） */
   csrfToken: string;
 }
@@ -63,8 +67,10 @@ export class AuthService {
     const phone = normalizePhoneInput(input.phone);
     const user = phone ? await this.findUserByPhone(phone) : null;
 
-    // 未注册手机号：统一提示 + IP 失败计数（不解析 userId，防撞库放大）
+    // 未注册手机号：统一提示 + IP 失败计数（不解析 userId，防撞库放大）；
+    // IP 锁对未注册路径同样生效（base PRD §4：IP 锁按来源 IP 累计全部失败）
     if (!user) {
+      await this.protection.assertNotLocked(null, ip);
       await this.protection.recordFailure(null, ip);
       await this.securityLog.record('LOGIN_FAILURE', 'FAILURE', {
         reason: '账号不存在（统一提示）',
@@ -74,7 +80,11 @@ export class AuthService {
     }
 
     // 账号状态前置检查（不校验密码，避免泄露密码正确性）
+    // 状态异常分支：计入 IP 锁计数（base PRD §4：IP 锁按来源 IP 累计全部失败），不记账号锁——
+    // 待激活账号无密码、"账号锁"语义只针对密码校验失败，计账号锁会让撞库探测可恶意锁死真实员工
     if (user.status === 'DEACTIVATED') {
+      await this.protection.assertNotLocked(null, ip);
+      await this.protection.recordFailure(null, ip);
       await this.securityLog.record('LOGIN_FAILURE', 'FAILURE', {
         actorId: user.id,
         reason: '账号已注销',
@@ -83,6 +93,8 @@ export class AuthService {
       throw new BusinessException(accountErrors.ACCOUNT_DEACTIVATED);
     }
     if (user.status === 'PENDING_ACTIVATION') {
+      await this.protection.assertNotLocked(null, ip);
+      await this.protection.recordFailure(null, ip);
       await this.securityLog.record('LOGIN_FAILURE', 'FAILURE', {
         actorId: user.id,
         reason: '账号待激活',
@@ -169,7 +181,7 @@ export class AuthService {
       throw new BusinessException(accountErrors.OLD_PASSWORD_INCORRECT);
     }
     if (!this.password.validatePolicy(newPassword)) {
-      throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
+      throw new BusinessException(accountErrors.PASSWORD_POLICY_FAILED);
     }
     const newHash = await this.password.hash(newPassword);
     await this.prisma.client.user.update({
@@ -282,6 +294,8 @@ export class AuthService {
       },
       sessionId,
       sessionExpiresAt: expiresAt,
+      rememberMe,
+      absTimeoutSeconds: Math.round(absMs / 1000),
       csrfToken: this.csrf.issue(),
     };
   }

@@ -42,11 +42,3 @@ export class ResetPasswordDto extends IdempotentDto {
   @MaxLength(PASSWORD_MAX_LENGTH)
   confirmPassword!: string;
 }
-
-/** A12 自助换绑发起（登录态：验证平台密码后进入钉钉授权） */
-export class SelfRebindDto extends IdempotentDto {
-  @IsString()
-  @MinLength(PASSWORD_MIN_LENGTH)
-  @MaxLength(PASSWORD_MAX_LENGTH)
-  password!: string;
-}

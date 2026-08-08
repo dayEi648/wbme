@@ -4,7 +4,6 @@ import ActivatePage from './pages/activate/ActivatePage';
 import ActivateCompletePage from './pages/activate/ActivateCompletePage';
 import RegisterPage from './pages/register/RegisterPage';
 import ResetPasswordPage, { ResetCompletePage } from './pages/reset-password/ResetPasswordPage';
-import RebindPage, { RebindCompletePage } from './pages/rebind/RebindPage';
 import PortalPage from './pages/portal/PortalPage';
 import MePage from './pages/me/MePage';
 import BuildingPage from './pages/building/BuildingPage';
@@ -14,15 +13,13 @@ import { RequireAuth } from './request/session';
 export default function App() {
   return (
     <Routes>
-      {/* 公开：登录 / 激活 / 注册 / 重置 / 换绑（凭证 fragment 流程） */}
+      {/* 公开：登录 / 激活 / 注册 / 重置（凭证 fragment 流程） */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/activate" element={<ActivatePage />} />
       <Route path="/activate/complete" element={<ActivateCompletePage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/reset-password/complete" element={<ResetCompletePage />} />
-      <Route path="/rebind" element={<RebindPage />} />
-      <Route path="/rebind/complete" element={<RebindCompletePage />} />
 
       {/* 根路径 → 门户（未登录由 RequireAuth 重定向登录页） */}
       <Route path="/" element={<Navigate to="/portal" replace />} />

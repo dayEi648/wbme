@@ -23,10 +23,13 @@ export class LoginProtectionService {
     private readonly securityLog: SecurityLogService,
   ) {}
 
-  /** 登录前检查：账号锁或 IP 锁命中 → 统一"尝试过多"提示（不泄露锁维度） */
-  async assertNotLocked(userId: number, ip: string): Promise<void> {
+  /**
+   * 登录前检查：账号锁或 IP 锁命中 → 统一"尝试过多"提示（不泄露锁维度）。
+   * userId 为 null（未注册手机号）时只检查 IP 锁——IP 锁对全部来源失败计数生效（base PRD §4）。
+   */
+  async assertNotLocked(userId: number | null, ip: string): Promise<void> {
     const [accountLocked, ipLocked] = await Promise.all([
-      this.redis.exists(this.accountLockKey(userId)),
+      userId !== null ? this.redis.exists(this.accountLockKey(userId)) : Promise.resolve(0),
       this.redis.exists(this.ipLockKey(ip)),
     ]);
     if (accountLocked === 1 || ipLocked === 1) {

@@ -30,7 +30,7 @@ export const SETTING_KEYS = {
   LOGIN_IP_MAX_ATTEMPTS: 'login.ip.max.attempts',
   /** IP 锁定时长（秒）：默认 1 小时 */
   LOGIN_IP_LOCK_SECONDS: 'login.ip.lock.seconds',
-  /** 激活/重置/换绑凭证有效期（秒）：默认 7 天（base PRD §2） */
+  /** 激活/重置凭证有效期（秒）：默认 7 天（base PRD §2） */
   INVITATION_VALID_SECONDS: 'invitation.valid.seconds',
 } as const;
 

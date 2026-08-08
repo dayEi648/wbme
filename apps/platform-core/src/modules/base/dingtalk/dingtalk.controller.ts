@@ -54,18 +54,19 @@ export class DingtalkController {
   @Public()
   @Get('authorize')
   @UseGuards(RateLimitGuard)
+  // 三维限流（base PRD §4）：IP / 会话（流程 Cookie）/ 一次性状态值（state 由服务端签发，不在此计数）
   @RateLimit({ scope: 'dingtalk-authorize', keyType: 'ip', limit: 30, windowSeconds: 60 })
+  @RateLimit({ scope: 'dingtalk-authorize-flow', keyType: 'cookie', keyName: 'wbme_flow', limit: 10, windowSeconds: 60 })
   async authorize(
     @Query('purpose') purposeRaw: string,
-    @Query('returnTo') returnTo: string | undefined,
     @Req() req: Request,
   ): Promise<{ authorizeUrl: string }> {
     const purpose = this.resolvePurpose(purposeRaw);
-    // 流程类用途（激活/重置/换绑）必须持有对应的一次性流程 Cookie（兑换或发起时签发）；
+    // 流程类用途（激活/重置）必须持有对应的一次性流程 Cookie（兑换或发起时签发）；
     // 流程标识随一次性 state 交给钉钉回调（base PRD §2：回调只携带 state/nonce 和流程标识，
     // 不依赖流程 Cookie 覆盖钉钉路径）
     let flowId: string | undefined;
-    if (purpose === 'ACTIVATION' || purpose === 'RESET' || purpose === 'REBIND') {
+    if (purpose === 'ACTIVATION' || purpose === 'RESET') {
       flowId = this.readCookie(req, FLOW_COOKIE);
       const flow = await this.flows.read(flowId ?? '', purpose);
       if (!flow) {
@@ -76,7 +77,7 @@ export class DingtalkController {
     if (!impl.isConfigured?.()) {
       throw new BusinessException(accountErrors.DINGTALK_CONFIG_MISSING);
     }
-    const state = await this.state.issue(purpose, returnTo, flowId);
+    const state = await this.state.issue(purpose, flowId);
     return { authorizeUrl: this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
   }
 
@@ -84,7 +85,10 @@ export class DingtalkController {
   @Public()
   @Get('callback')
   @UseGuards(RateLimitGuard)
+  // 三维限流（base PRD §4）：IP / 会话（流程 Cookie）/ 一次性状态值（query state）
   @RateLimit({ scope: 'dingtalk-callback', keyType: 'ip', limit: 60, windowSeconds: 60 })
+  @RateLimit({ scope: 'dingtalk-callback-state', keyType: 'query', keyName: 'state', limit: 5, windowSeconds: 60 })
+  @RateLimit({ scope: 'dingtalk-callback-flow', keyType: 'cookie', keyName: 'wbme_flow', limit: 5, windowSeconds: 60 })
   async callback(
     @Query('code') code: string,
     @Query('state') stateRaw: string,
@@ -97,9 +101,10 @@ export class DingtalkController {
       const stateData = await this.state.consume(stateRaw);
       const purpose = stateData.purpose;
 
-      // 授权码兑换 + 组织校验（corpId 与部署配置一致）
+      // 授权码兑换 + 组织校验（corpId 与部署配置一致；配置了公司组织时缺失/不一致均拒绝）
       const token = await this.gateway.exchangeCodeForUserToken(code);
-      if (token.corpId && process.env.DINGTALK_CORP_ID && token.corpId !== process.env.DINGTALK_CORP_ID) {
+      const configuredCorpId = process.env.DINGTALK_CORP_ID;
+      if (configuredCorpId && token.corpId !== configuredCorpId) {
         throw new BusinessException(accountErrors.DINGTALK_ORG_MISMATCH);
       }
       const info = await this.gateway.getUserInfo(token.accessToken);
@@ -125,13 +130,13 @@ export class DingtalkController {
         this.redirect(res, '/register');
         return;
       }
-      if (purpose === 'ACTIVATION' || purpose === 'RESET' || purpose === 'REBIND') {
+      if (purpose === 'ACTIVATION' || purpose === 'RESET') {
         // 流程标识由一次性 state 携带（回调请求路径不在流程 Cookie 的 Path 范围内），
         // 回调后把钉钉身份（含手机号）写入流程会话
         const flowId = stateData.flowId;
         const flow = await this.flows.assert(flowId ?? '', purpose);
         await this.flows.update(flowId ?? '', { ...flow, unionId: info.unionId, mobile, stateCode });
-        const target = purpose === 'ACTIVATION' ? '/activate/complete' : purpose === 'RESET' ? '/reset-password/complete' : '/rebind/complete';
+        const target = purpose === 'ACTIVATION' ? '/activate/complete' : '/reset-password/complete';
         this.redirect(res, target);
         return;
       }
@@ -163,7 +168,12 @@ export class DingtalkController {
   ): Promise<void> {
     const result = await this.auth.loginWithDingtalk(info, ip);
     if (result) {
-      res.cookie(SESSION_COOKIE, result.sessionId, sessionCookieOptions(cookieSecure()));
+      // 扫码登录无"记住我"选项（非记住我会话，Cookie 为浏览器会话级）
+      res.cookie(
+        SESSION_COOKIE,
+        result.sessionId,
+        sessionCookieOptions(cookieSecure(), result.rememberMe ? result.absTimeoutSeconds : undefined),
+      );
       res.cookie(CSRF_COOKIE, result.csrfToken, csrfCookieOptions(cookieSecure()));
       this.redirect(res, '/portal');
       return;

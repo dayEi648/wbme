@@ -1,3 +1,5 @@
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import { Test } from '@nestjs/testing';
 import { BusinessException } from '@wbme/contracts';
 import { redisKey, REDIS_NAMESPACE, REDIS_CLIENT } from '@wbme/server';
@@ -6,6 +8,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import { SecurityLogService } from '../security-log/security-log.service';
 import { LoginProtectionService } from './login-protection.service';
+
+// 加载仓库根 .env（集成测试使用真实本地 Redis；CI 由环境变量注入）
+try {
+  loadEnvFile(resolve(process.cwd(), '../../.env'));
+} catch {
+  // 环境变量由外部注入时跳过
+}
 
 const REDIS_URL = process.env.REDIS_URL;
 

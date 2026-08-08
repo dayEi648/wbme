@@ -1,5 +1,5 @@
 import { App as AntApp, Button, Card, Descriptions, Divider, Form, Input, Radio, Space, Typography } from 'antd';
-import { ArrowLeftOutlined, KeyOutlined, SwapOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, KeyOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
@@ -110,14 +110,7 @@ export default function MePage() {
           </Typography.Title>
         </div>
 
-        <Card
-          title="身份信息"
-          extra={
-            <Button icon={<SwapOutlined />} onClick={() => navigate('/rebind')}>
-              换绑钉钉
-            </Button>
-          }
-        >
+        <Card title="身份信息">
           <Descriptions column={2} size="small">
             <Descriptions.Item label="姓名">{me?.user.name}</Descriptions.Item>
             <Descriptions.Item label="性别">{me?.user.gender === 'MALE' ? '男' : '女'}</Descriptions.Item>

@@ -15,7 +15,7 @@ interface LoginPayload {
 const DINGTALK_ERROR_TEXT: Record<string, string> = {
   DINGTALK_ORG_MISMATCH: '当前钉钉账号不属于本公司组织',
   DINGTALK_STATE_INVALID: '授权请求已过期，请重新扫码登录',
-  DINGTALK_ALREADY_BOUND: '该钉钉账号已绑定其他平台账号，请走账号恢复或换绑流程',
+  DINGTALK_ALREADY_BOUND: '该钉钉账号已绑定其他平台账号，请走账号恢复流程',
   DINGTALK_CONFIG_MISSING: '钉钉登录暂未配置，请使用手机号登录',
   DEPENDENCY_UNAVAILABLE: '钉钉服务暂不可用，请稍后重试',
   PENDING_ACCOUNT_EXISTS: '已有待激活账号，请联系管理员获取激活邀请',

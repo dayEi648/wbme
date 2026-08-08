@@ -50,7 +50,7 @@ export class PasswordController {
     @Req() req: Request,
   ): Promise<{ ok: true }> {
     if (dto.confirmPassword !== dto.newPassword) {
-      throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
+      throw new BusinessException(accountErrors.PASSWORD_CONFIRM_MISMATCH);
     }
     await this.auth.changePassword(userId, dto.currentPassword, dto.newPassword, req.ip ?? 'unknown');
     return { ok: true };
@@ -102,7 +102,7 @@ export class PasswordController {
     @Body() dto: ResetPasswordDto,
   ): Promise<{ ok: true }> {
     if (dto.confirmPassword !== dto.newPassword) {
-      throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
+      throw new BusinessException(accountErrors.PASSWORD_CONFIRM_MISMATCH);
     }
     const flowId = parseCookies(req.headers.cookie)[FLOW_COOKIE];
     if (!flowId) {

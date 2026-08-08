@@ -10,16 +10,14 @@ import { FlowSessionService } from './flows/flow-session.service';
 import { ActivationFlow } from './flows/activation.flow';
 import { RegistrationFlow } from './flows/registration.flow';
 import { ResetFlow } from './flows/reset.flow';
-import { RebindFlow } from './flows/rebind.flow';
 import { AdminInvitationService } from './admin-invitation.service';
 import { AuthController } from './auth.controller';
 import { AdminAuthController } from './admin-auth.controller';
 import { ActivationController } from './activation.controller';
 import { RegistrationController } from './registration.controller';
 import { PasswordController } from './password.controller';
-import { RebindController } from './rebind.controller';
 
-/** base 认证模块（登录/登出/当前身份/激活/注册/邀请/改密/重置/换绑/解锁，T2-2~T2-5） */
+/** base 认证模块（登录/登出/当前身份/激活/注册/邀请/改密/重置/解锁，T2-2~T2-5） */
 @Module({
   imports: [SettingsModule, SecurityLogModule, LoginProtectionModule],
   providers: [
@@ -31,7 +29,6 @@ import { RebindController } from './rebind.controller';
     ActivationFlow,
     RegistrationFlow,
     ResetFlow,
-    RebindFlow,
     AdminInvitationService,
   ],
   controllers: [
@@ -40,7 +37,6 @@ import { RebindController } from './rebind.controller';
     ActivationController,
     RegistrationController,
     PasswordController,
-    RebindController,
   ],
   exports: [PasswordService, AuthService, FlowSessionService, TokenService, PhoneSyncService],
 })

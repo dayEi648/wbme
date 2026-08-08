@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
-import { CsrfService, SessionService } from '@wbme/server';
+import { CsrfService, SessionService, redisKey, REDIS_NAMESPACE } from '@wbme/server';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../../../../prisma.service';
@@ -14,7 +14,6 @@ import { PhoneSyncService } from '../phone-sync.service';
 import { AuthService } from '../auth.service';
 import { FlowSessionService } from './flow-session.service';
 import { ResetFlow } from './reset.flow';
-import { RebindFlow } from './rebind.flow';
 import { AdminInvitationService } from '../admin-invitation.service';
 
 // 加载仓库根 .env（集成测试使用真实本地 PostgreSQL/Redis）
@@ -27,16 +26,15 @@ try {
 const REDIS_URL = process.env.REDIS_URL;
 
 /**
- * 改密/重置/换绑集成测试（真实 PG + Redis；测试数据即建即清，base PRD §2/§3）：
- * - 改密/重置/换绑后 session_version 递增 → 旧会话全部失效；
- * - 重置要求 unionId 与账号绑定一致；换绑原子替换绑定并同步手机号。
+ * 改密/重置集成测试（真实 PG + Redis；测试数据即建即清，base PRD §2/§3）：
+ * - 改密/重置后 session_version 递增 → 旧会话全部失效；
+ * - 重置要求 unionId 与账号绑定一致。
  */
-describe.skipIf(!REDIS_URL)('改密/重置/换绑集成（session_version 全会话失效）', () => {
+describe.skipIf(!REDIS_URL)('改密/重置集成（session_version 全会话失效）', () => {
   let prisma: PrismaService;
   let redis: Redis;
   let auth: AuthService;
   let reset: ResetFlow;
-  let rebind: RebindFlow;
   let invitations: AdminInvitationService;
   let flows: FlowSessionService;
   let password: PasswordService;
@@ -57,7 +55,6 @@ describe.skipIf(!REDIS_URL)('改密/重置/换绑集成（session_version 全会
     const phoneSync = new PhoneSyncService(prisma, securityLog);
     auth = new AuthService(prisma, password, protection, securityLog, settings, session, csrf, phoneSync);
     reset = new ResetFlow(prisma, flows, password, phoneSync, securityLog);
-    rebind = new RebindFlow(prisma, flows, phoneSync, securityLog);
     invitations = new AdminInvitationService(prisma, token, settings, securityLog);
 
     // 测试账号：ACTIVE + 密码 + 钉钉绑定（统一在用例外准备一次，用例内变更后不复用）
@@ -127,7 +124,14 @@ describe.skipIf(!REDIS_URL)('改密/重置/换绑集成（session_version 全会
       const redeemed = await reset.redeem(rawToken, tokenHash);
       expect(redeemed.userId).toBe(user.id);
 
-      const flowId = await flows.issue('RESET', { userId: user.id, unionId: 'sec-union-reset', mobile: '13900000301', stateCode: '86' });
+      // 与真实控制器一致：兑换成功后签发携带 tokenHash 的重置流程会话（password.controller.ts resetRedeem）
+      const flowId = await flows.issue('RESET', {
+        userId: user.id,
+        tokenHash,
+        unionId: 'sec-union-reset',
+        mobile: '13900000301',
+        stateCode: '86',
+      });
       await reset.confirm(
         flowId,
         { unionId: 'sec-union-reset', mobile: '13900000301', stateCode: '86', newPassword: 'ResetPass123456' },
@@ -146,6 +150,34 @@ describe.skipIf(!REDIS_URL)('改密/重置/换绑集成（session_version 全会
     }
   });
 
+  it('M2 重置：凭证被重新生成（REVOKED）后旧凭证 confirm 拒绝（事务内一次性校验）', async () => {
+    const user = await createActiveUser('sec-union-revoked');
+    try {
+      const { resetUrl } = await invitations.issueResetInvitation(user.id, user.id);
+      const rawToken = resetUrl.split('#')[1] ?? '';
+      const tokenHash = new TokenService().hash(rawToken);
+      await reset.redeem(rawToken, tokenHash);
+      // 管理员重新生成 → 旧凭证 REVOKED（base PRD §2：重新生成立即失效）
+      await invitations.issueResetInvitation(user.id, user.id);
+      const flowId = await flows.issue('RESET', {
+        userId: user.id,
+        tokenHash,
+        unionId: 'sec-union-revoked',
+        mobile: '13900000305',
+        stateCode: '86',
+      });
+      await expect(
+        reset.confirm(
+          flowId,
+          { unionId: 'sec-union-revoked', mobile: '13900000305', stateCode: '86', newPassword: 'Xxx12345678' },
+          '10.2.0.8',
+        ),
+      ).rejects.toMatchObject({ entry: { code: 'INVITATION_INVALID' } });
+    } finally {
+      await cleanupUser(user.id);
+    }
+  });
+
   it('M2 重置：unionId 与账号绑定不一致拒绝（组织不匹配语义）', async () => {
     const user = await createActiveUser('sec-union-reset2');
     try {
@@ -153,7 +185,13 @@ describe.skipIf(!REDIS_URL)('改密/重置/换绑集成（session_version 全会
       const rawToken = resetUrl.split('#')[1] ?? '';
       const tokenHash = new TokenService().hash(rawToken);
       await reset.redeem(rawToken, tokenHash);
-      const flowId = await flows.issue('RESET', { userId: user.id, unionId: 'WRONG-UNION', mobile: '13900000302', stateCode: '86' });
+      const flowId = await flows.issue('RESET', {
+        userId: user.id,
+        tokenHash,
+        unionId: 'WRONG-UNION',
+        mobile: '13900000302',
+        stateCode: '86',
+      });
       await expect(
         reset.confirm(flowId, { unionId: 'WRONG-UNION', mobile: '13900000302', stateCode: '86', newPassword: 'Xxx12345678' }, '10.2.0.3'),
       ).rejects.toMatchObject({ entry: { code: 'DINGTALK_ORG_MISMATCH' } });
@@ -199,33 +237,60 @@ describe.skipIf(!REDIS_URL)('改密/重置/换绑集成（session_version 全会
     }
   });
 
-  it('A11 换绑：原子替换绑定（旧 UNBOUND + 新 BOUND）+ session_version 递增', async () => {
-    const user = await createActiveUser('sec-union-old');
+  it('A10\' 自助重置全链路：initiate → 钉钉验证 → confirm 成功，且不误消费账号现有 VALID 邀请', async () => {
+    const user = await createActiveUser('sec-union-self');
     try {
-      const flowId = await flows.issue('REBIND', { userId: user.id, unionId: 'sec-union-new', mobile: '13900000303', stateCode: '86' });
-      await rebind.confirm(flowId, { unionId: 'sec-union-new', mobile: '13900000303', stateCode: '86' }, '10.2.0.4');
+      // 管理员恰好为该账号签发了一张 VALID 邀请（自助路径不得消费它）
+      const { resetUrl } = await invitations.issueResetInvitation(user.id, user.id);
+      const rawToken = resetUrl.split('#')[1] ?? '';
+      const tokenHash = new TokenService().hash(rawToken);
 
-      const oldBinding = await prisma.client.dingtalkBinding.findFirst({ where: { userId: user.id, dingtalkUnionId: 'sec-union-old' } });
-      const newBinding = await prisma.client.dingtalkBinding.findFirst({ where: { userId: user.id, dingtalkUnionId: 'sec-union-new' } });
-      expect(oldBinding?.status).toBe('UNBOUND'); // 旧绑定保留历史
-      expect(newBinding?.status).toBe('BOUND');
-      const freshUser = await prisma.client.user.findUnique({ where: { id: user.id }, select: { sessionVersion: true } });
-      expect(freshUser?.sessionVersion).toBe(1);
+      // 自助发起（流程会话无 tokenHash）
+      const initiated = await reset.initiateByPhone(user.phone, '10.2.0.9');
+      expect(initiated.userId).toBe(user.id);
+      const flowId = await flows.issue('RESET', {
+        userId: user.id,
+        unionId: 'sec-union-self',
+        mobile: '13900000309',
+        stateCode: '86',
+      });
+
+      // 无凭证路径确认成功（此前 bug：无 tokenHash 时 count=0 抛 INVITATION_INVALID）
+      await reset.confirm(
+        flowId,
+        { unionId: 'sec-union-self', mobile: '13900000309', stateCode: '86', newPassword: 'SelfReset123456' },
+        '10.2.0.9',
+      );
+      const fresh = await prisma.client.user.findUnique({ where: { id: user.id }, select: { passwordHash: true } });
+      expect(await password.verifyPassword('SelfReset123456', fresh?.passwordHash ?? '')).toBe(true);
+
+      // 该 VALID 邀请未被误消费：仍可被管理员凭证路径兑换
+      const redeemed = await reset.redeem(rawToken, tokenHash);
+      expect(redeemed.userId).toBe(user.id);
     } finally {
       await cleanupUser(user.id);
     }
   });
 
-  it('换绑后旧 unionId 不可再用于登录（绑定已替换）', async () => {
-    const user = await createActiveUser('sec-union-old2');
+  it('A1 密码登录：待激活账号明确提示 + 计入 IP 锁失败计数、不记账号锁（base PRD §2/§4）', async () => {
+    const user = await prisma.client.user.create({
+      data: { name: '待激活员工', gender: 'MALE', phone: '+8613900040000', status: 'PENDING_ACTIVATION' },
+    });
+    const ip = '10.3.0.1';
     try {
-      const flowId = await flows.issue('REBIND', { userId: user.id, unionId: 'sec-union-new2', mobile: '13900000304', stateCode: '86' });
-      await rebind.confirm(flowId, { unionId: 'sec-union-new2', mobile: '13900000304', stateCode: '86' }, '10.2.0.5');
-      // 旧 unionId 已无 BOUND 绑定 → 扫码登录返回 null（走注册分流会被 DINGTALK_ALREADY_BOUND 拦截）
-      const result = await auth.loginWithDingtalk({ unionId: 'sec-union-old2', mobile: '13900000304', stateCode: '86' }, '10.2.0.5');
-      expect(result).toBeNull();
+      await expect(
+        auth.loginPassword({ phone: '+8613900040000', password: 'Whatever123456' }, ip),
+      ).rejects.toMatchObject({ entry: { code: 'ACCOUNT_PENDING_ACTIVATION' } });
+      // 状态前置拒绝计入 IP 锁失败计数（PRD §4：IP 锁按来源 IP 累计全部失败）
+      const ipFail = await redis.get(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'ip_fail', ip));
+      expect(ipFail).toBe('1');
+      // 不记账号锁（待激活账号无密码，账号锁只针对密码校验失败；防撞库探测锁定真实员工）
+      const accountFail = await redis.get(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'acct_fail', user.id));
+      expect(accountFail).toBeNull();
     } finally {
       await cleanupUser(user.id);
+      await redis.del(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'ip_fail', ip));
     }
   });
+
 });

@@ -1,12 +1,12 @@
 import { Body, Controller, Get, Inject, Post, Put, Query } from '@nestjs/common';
-import { BusinessException, accountErrors, frameworkErrors, maskPhone, PaginationQueryDto } from '@wbme/contracts';
+import { BusinessException, accountErrors, frameworkErrors, IdempotentDto, maskPhone, PaginationQueryDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PrismaService } from '../../../prisma.service';
 import { ProfileChangeService } from '../approval-proxy/profile-change.service';
 
-/** P3 资料修改（至少一项；超管直改，员工提交审批） */
-class UpdateProfileDto {
+/** P3 资料修改（至少一项；超管直改，员工提交审批；幂等键防重复提交建单） */
+class UpdateProfileDto extends IdempotentDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)

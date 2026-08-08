@@ -4,14 +4,19 @@
  * - 权限目录初始注册：systems / business_sections / functions 三层，幂等（存在即跳过）；
  * - 权限目录版本单行（permission_catalog_meta id=1）；
  * - 第一个超级管理员种子账号（待激活、无密码、无钉钉绑定），
- *   由部署参数提供姓名/手机号/性别；账号激活后初始化入口永久关闭（已存在则跳过）。
+ *   由部署参数提供姓名/手机号/性别；种子直接签发一次性激活邀请并打印链接
+ *   （账号激活后初始化入口永久关闭；仍待激活时重跑 seed 重新签发并打印新链接）。
  *
  * 运行：`pnpm exec prisma db seed`（prisma.config.ts 配置了 seed 命令）。
  */
 import 'reflect-metadata';
+import { createHash, randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { normalizePhoneInput } from '@wbme/contracts';
 import { PrismaClient } from '../src/generated/prisma/client';
+
+/** 激活邀请默认有效期（秒）：与系统设置键 INVITATION_VALID_SECONDS 默认值一致（种子阶段不读设置表） */
+const INVITATION_VALID_SECONDS = 604800;
 
 /** 功能权限目录定义（各子系统 PRD §1；编码为稳定功能编码，T3 权限系统使用） */
 interface FeatureDef {
@@ -242,21 +247,44 @@ async function seedSuperAdmin(prisma: PrismaClient): Promise<void> {
   const existing = await prisma.user.findFirst({
     where: { isSuperAdmin: true, deletedAt: null },
   });
-  if (existing) {
-    console.log(`[seed] 超级管理员已存在（id=${existing.id}），初始化入口永久关闭，跳过`);
+  if (existing?.status === 'ACTIVE') {
+    console.log(`[seed] 超级管理员已激活（id=${existing.id}），初始化入口永久关闭，跳过`);
     return;
   }
-  const admin = await prisma.user.create({
-    data: {
-      name,
-      phone: normalizedPhone,
-      gender,
-      status: 'PENDING_ACTIVATION',
-      isSuperAdmin: true,
-    },
+  // 不存在或仍待激活（含激活链接丢失需重取的场景）：创建账号（幂等）并签发一次性激活邀请。
+  // 激活邀请生成（M1）要求已认证的用户管理权限，而种子超管是待激活状态无法登录，
+  // 故由种子直接签发并打印链接（T1-5 验收：初始化命令一次性展示激活链接，不写日志）。
+  const admin =
+    existing ??
+    (await prisma.user.create({
+      data: {
+        name,
+        phone: normalizedPhone,
+        gender,
+        status: 'PENDING_ACTIVATION',
+        isSuperAdmin: true,
+      },
+    }));
+  const rawToken = randomBytes(32).toString('base64url');
+  await prisma.$transaction(async (tx) => {
+    // 重新签发：旧有效邀请立即失效（条件更新 + 部分唯一索引 (user_id) WHERE status='VALID' 并发安全）
+    await tx.activationInvitation.updateMany({
+      where: { userId: admin.id, status: 'VALID' },
+      data: { status: 'REVOKED', revokedAt: new Date() },
+    });
+    await tx.activationInvitation.create({
+      data: {
+        userId: admin.id,
+        tokenHash: createHash('sha256').update(rawToken).digest('hex'),
+        expiresAt: new Date(Date.now() + INVITATION_VALID_SECONDS * 1000),
+        createdBy: null, // 部署初始化（表设计 B-2：创建者=初始化=NULL）
+      },
+    });
   });
-  console.log(`[seed] 超级管理员种子账号已创建（id=${admin.id}，待激活，姓名=${name}）`);
-  console.log('[seed] 请管理员在用户管理中为该账号生成一次性激活邀请（M1 激活邀请接口已接入，管理页面随 T9-4 提供）');
+  // 凭证放 URL fragment（base PRD §2：不得放 path/query）；打印到 stdout 仅展示给部署者，不写日志
+  const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
+  console.log(`[seed] 超级管理员激活链接（一次性，${INVITATION_VALID_SECONDS / 86400} 天有效，仅本次展示）：${origin}/activate#${rawToken}`);
+  console.log('[seed] 账号激活后初始化入口永久关闭；链接丢失可重跑 seed 重新生成（旧链接立即失效）');
 }
 
 async function main(): Promise<void> {

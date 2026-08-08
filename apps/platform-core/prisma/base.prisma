@@ -115,6 +115,8 @@ model DingtalkBinding {
 }
 
 /// B-4 operation_logs 操作日志（只追加，各模块同构）
+/// 幂等部分唯一索引 operation_logs_idempotency_unique 由迁移 SQL 手写建立
+/// （COALESCE 表达式无法在 Prisma @@unique(where:) 表达；结构见 docs/database-design/base.md B-4）
 model OperationLog {
   id                  Int       @id @default(autoincrement())
   operatorId          Int?      @map("operator_id")

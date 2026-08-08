@@ -61,7 +61,7 @@ export class RegistrationController {
     @Body() dto: ConfirmProfileDto,
   ): Promise<unknown> {
     if (dto.confirmPassword !== dto.password) {
-      throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
+      throw new BusinessException(accountErrors.PASSWORD_CONFIRM_MISMATCH);
     }
     const flowId = parseCookies(req.headers.cookie)[FLOW_COOKIE];
     if (!flowId) {

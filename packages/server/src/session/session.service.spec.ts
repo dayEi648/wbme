@@ -1,7 +1,16 @@
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import Redis from 'ioredis';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+
+// 加载仓库根 .env（集成测试使用真实本地 Redis；CI 由环境变量注入）
+try {
+  loadEnvFile(resolve(process.cwd(), '../../.env'));
+} catch {
+  // 环境变量由外部注入时跳过
+}
 import { redisKey, REDIS_NAMESPACE } from '../redis/redis-constants';
 import { REDIS_CLIENT } from '../redis/tokens';
 import { SessionService } from './session.service';

@@ -3,6 +3,7 @@
 > schema：`base`，归属部署单元 `platform-core`（与 backstage 同一 Prisma Client、同一迁移序列）。
 > 表结构遵循 `00-baseline.md` 公共基线。
 > 服务端会话存储在 Redis，不建会话表；`users.session_version` 持久化会话版本号。
+> **字段约束语义**：本文与 `backstage.md` 中 `→ xxx.id` 表示逻辑引用（同部署单元内可由 Prisma 关系建立物理外键；跨部署单元或仅作审计留存的字段为逻辑引用，不建物理外键），实际物理外键以 Prisma schema 与迁移 SQL 为准。
 
 ## B-1 `users` 用户（软删除）
 
@@ -15,7 +16,7 @@
 | `password_hash` | `text` | NULL | Argon2id 哈希；待激活账号为 NULL |
 | `status` | `enum user_status` | NOT NULL `DEFAULT PENDING_ACTIVATION` | `PENDING_ACTIVATION / ACTIVE / DEACTIVATED` |
 | `is_super_admin` | `boolean` | NOT NULL `DEFAULT false` | 站点角色（超级管理员/员工） |
-| `session_version` | `integer` | NOT NULL `DEFAULT 0` | 会话版本号：修改/重置密码、换绑、注销时递增 |
+| `session_version` | `integer` | NOT NULL `DEFAULT 0` | 会话版本号：修改/重置密码、注销时递增 |
 | `permission_version` | `integer` | NOT NULL `DEFAULT 0` | 账号授权版本：backstage 授权事务中递增 |
 | `lifecycle_version` | `integer` | NOT NULL `DEFAULT 0` | 账号生命周期版本：注销/恢复等生命周期变更时递增（恢复确认请求携带校验） |
 | `restored_by` | `integer` | NULL | 恢复人 |
@@ -57,14 +58,14 @@
 | `id` | `integer` | PK，serial4 自增 | |
 | `user_id` | `integer` | NOT NULL → `users.id` | 平台账号 |
 | `dingtalk_union_id` | `text` | NOT NULL | 钉钉稳定唯一用户标识 |
-| `status` | `enum binding_status` | NOT NULL `DEFAULT BOUND` | `BOUND / UNBOUND` |
-| `unbound_at` | `timestamptz` | NULL | 解绑/换绑时间 |
+| `status` | `enum binding_status` | NOT NULL `DEFAULT BOUND` | `BOUND / UNBOUND`（UNBOUND 为保留值：本期无换绑/解绑操作，不产生） |
+| `unbound_at` | `timestamptz` | NULL | 解绑时间（本期不产生，保留兼容） |
 | `created_by` | `integer` | NULL | 绑定发起者；激活流程=NULL |
 | `created_at` | `timestamptz` | NOT NULL `DEFAULT now()` | 绑定时间 |
 
 **约束与索引**
 - 唯一索引：`(dingtalk_union_id)` 全局唯一——一个钉钉身份永不重绑（含已注销、已解绑历史）
-- 部分唯一索引：`(user_id) WHERE status = 'BOUND'`——一个账号同时最多一条有效绑定（换绑=事务内新行 BOUND + 旧行 UNBOUND）
+- 部分唯一索引：`(user_id) WHERE status = 'BOUND'`——一个账号同时最多一条有效绑定
 
 ## B-4 `operation_logs` 操作日志（只追加，各模块同构）
 

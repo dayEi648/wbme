@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
  * 一次性凭证服务（base PRD §2）。
  *
  * - 凭证 = 密码学安全随机值（256bit），数据库只保存 SHA-256 摘要；
- * - 邀请/重置/换绑凭证统一经此生成与摘要；
+ * - 邀请/重置凭证统一经此生成与摘要；
  * - 凭证原文不得进入访问日志、操作日志、前端持久存储或错误详情。
  */
 @Injectable()

@@ -7,22 +7,20 @@ import type { Redis } from 'ioredis';
 /**
  * 钉钉 OAuth 一次性 state（base PRD §2）。
  *
- * - 授权发起时签发（32B 密码学随机），Redis 存 {purpose, returnTo, flowId?}，TTL 5 分钟；
+ * - 授权发起时签发（32B 密码学随机），Redis 存 {purpose, flowId?}，TTL 5 分钟；
  * - 回调校验存在性、purpose 匹配后**取用即删**（一次性，重放拒绝）；
  * - 回调地址与部署配置一致（防开放重定向）；state 不承载任何原始凭证；
- * - 流程类用途（激活/重置/换绑）把流程会话标识随 state 携带：钉钉跳转与回调只走
+ * - 流程类用途（激活/重置）把流程会话标识随 state 携带：钉钉跳转与回调只走
  *   一次性 state/nonce 与流程标识（base PRD §2），不依赖流程 Cookie 覆盖钉钉路径。
  */
 
 /** 钉钉授权用途（回调后按用途分流） */
-export const DINGTALK_PURPOSES = ['LOGIN', 'REGISTRATION', 'ACTIVATION', 'RESET', 'REBIND'] as const;
+export const DINGTALK_PURPOSES = ['LOGIN', 'REGISTRATION', 'ACTIVATION', 'RESET'] as const;
 export type DingtalkPurpose = (typeof DINGTALK_PURPOSES)[number];
 
 export interface DingtalkStateData {
   purpose: DingtalkPurpose;
-  /** 授权成功后的前端回跳地址（仅同源相对路径） */
-  returnTo?: string;
-  /** 流程类用途（激活/重置/换绑）的一次性流程会话标识（回调时据此取流程会话） */
+  /** 流程类用途（激活/重置）的一次性流程会话标识（回调时据此取流程会话） */
   flowId?: string;
 }
 
@@ -33,9 +31,9 @@ export class DingtalkStateService {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   /** 签发一次性 state 并返回；流程类用途需传入已校验的流程会话标识 */
-  async issue(purpose: DingtalkPurpose, returnTo?: string, flowId?: string): Promise<string> {
+  async issue(purpose: DingtalkPurpose, flowId?: string): Promise<string> {
     const state = randomBytes(32).toString('base64url');
-    const data: DingtalkStateData = { purpose, returnTo, flowId };
+    const data: DingtalkStateData = { purpose, flowId };
     await this.redis.set(redisKey(REDIS_NAMESPACE.DINGTALK_STATE, state), JSON.stringify(data), 'EX', STATE_TTL_SECONDS);
     return state;
   }

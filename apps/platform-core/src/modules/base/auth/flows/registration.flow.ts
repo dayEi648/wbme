@@ -31,12 +31,27 @@ export class RegistrationFlow {
     input: { unionId: string; mobile: string; stateCode: string; name: string; gender: 'MALE' | 'FEMALE'; password: string },
     ip: string,
   ): Promise<LoginResult> {
+    try {
+      return await this.confirmInner(flowId, input, ip);
+    } catch (error) {
+      // 确认失败同样即删流程会话（base PRD §7.3：一次性，成功后或失败即删）
+      await this.flows.consume(flowId).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** A8 主体逻辑（失败路径由外层 confirm 统一消费流程会话） */
+  private async confirmInner(
+    flowId: string,
+    input: { unionId: string; mobile: string; stateCode: string; name: string; gender: 'MALE' | 'FEMALE'; password: string },
+    ip: string,
+  ): Promise<LoginResult> {
     const flow = await this.flows.assert(flowId, 'REGISTRATION');
     if (!flow.unionId || flow.unionId !== input.unionId) {
       throw new BusinessException(accountErrors.FLOW_SESSION_INVALID);
     }
     if (!this.password.validatePolicy(input.password)) {
-      throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
+      throw new BusinessException(accountErrors.PASSWORD_POLICY_FAILED);
     }
     const phone = normalizePhoneFromParts(input.stateCode, input.mobile);
     if (!phone) {
@@ -44,7 +59,9 @@ export class RegistrationFlow {
     }
 
     const passwordHash = await this.password.hash(input.password);
-    const userId = await this.prisma.client.$transaction(async (tx) => {
+    let userId: number;
+    try {
+      userId = await this.prisma.client.$transaction(async (tx) => {
       // 钉钉稳定标识仍未被绑定（并发兜底；注销后占用也拒绝）
       const bound = await tx.dingtalkBinding.findFirst({
         where: { dingtalkUnionId: input.unionId },
@@ -76,7 +93,30 @@ export class RegistrationFlow {
         data: { userId: created.id, dingtalkUnionId: input.unionId, status: 'BOUND' },
       });
       return created.id;
-    });
+      });
+    } catch (error) {
+      // 并发竞态：两个请求同时通过预检，后者撞部分唯一索引 P2002——
+      // 重新读取判定占用方，给出明确的业务错误而非兜底 500
+      if (typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002') {
+        const occupied = await this.prisma.client.user.findFirst({
+          where: { phone, deletedAt: null, status: { in: ['PENDING_ACTIVATION', 'ACTIVE'] } },
+          select: { status: true },
+        });
+        if (occupied) {
+          throw new BusinessException(
+            occupied.status === 'PENDING_ACTIVATION' ? accountErrors.PENDING_ACCOUNT_EXISTS : accountErrors.PHONE_TAKEN,
+          );
+        }
+        const bound = await this.prisma.client.dingtalkBinding.findFirst({
+          where: { dingtalkUnionId: input.unionId },
+          select: { id: true },
+        });
+        if (bound) {
+          throw new BusinessException(accountErrors.DINGTALK_ALREADY_BOUND);
+        }
+      }
+      throw error;
+    }
 
     await this.flows.consume(flowId);
     await this.securityLog.record('ACCOUNT_ACTIVATED', 'SUCCESS', {

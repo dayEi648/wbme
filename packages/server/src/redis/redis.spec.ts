@@ -1,8 +1,17 @@
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Redis } from 'ioredis';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+// 加载仓库根 .env（集成测试使用真实本地 Redis；CI 由环境变量注入）
+try {
+  loadEnvFile(resolve(process.cwd(), '../../.env'));
+} catch {
+  // 环境变量由外部注入时跳过
+}
 import { HealthModule } from '../health/health.module';
 import { REDIS_NAMESPACE, redisKey } from './redis-constants';
 import { assertRedisAvailable, createRedisClient, RedisModule } from './redis.module';

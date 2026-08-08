@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, accountErrors, frameworkErrors, maskPhone } from '@wbme/contracts';
+import QRCode from 'qrcode';
 import { PrismaService } from '../../../prisma.service';
 import { Prisma } from '../../../generated/prisma/client';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
@@ -24,8 +25,8 @@ export class AdminInvitationService {
     private readonly securityLog: SecurityLogService,
   ) {}
 
-  /** M1 生成激活邀请（仅待激活账号；重新生成旧邀请失效） */
-  async issueActivationInvitation(adminId: number, targetUserId: number): Promise<{ activationUrl: string }> {
+  /** M1 生成激活邀请（仅待激活账号；重新生成旧邀请失效）；返回链接与二维码（同一凭证，任一使用后另一失效） */
+  async issueActivationInvitation(adminId: number, targetUserId: number): Promise<{ activationUrl: string; activationQr: string }> {
     const user = await this.prisma.client.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, status: true, phone: true, deletedAt: true },
@@ -71,7 +72,10 @@ export class AdminInvitationService {
       actorId: adminId,
       targetUserId,
     });
-    return { activationUrl: this.activationUrl(rawToken) };
+    // 二维码 = 激活链接的 QR 编码（PNG data URL），与链接指向同一凭证（base PRD §2 两种交付方式）；
+    // data URL 含凭证原文，仅返回给持有用户管理权的管理员，不写入任何日志
+    const activationUrl = this.activationUrl(rawToken);
+    return { activationUrl, activationQr: await QRCode.toDataURL(activationUrl) };
   }
 
   /** M2 生成钉钉验证式密码重置邀请（仅 ACTIVE；与激活邀请共用凭证表，同账号同时最多一个有效凭证） */
@@ -98,27 +102,8 @@ export class AdminInvitationService {
     return { resetUrl };
   }
 
-  /** M3 生成换绑邀请（仅超管；目标账号 ACTIVE 且有有效绑定） */
-  async issueRebindInvitation(adminId: number, targetUserId: number): Promise<{ rebindUrl: string }> {
-    const user = await this.prisma.client.user.findUnique({
-      where: { id: targetUserId },
-      select: { id: true, status: true, deletedAt: true },
-    });
-    if (!user || user.deletedAt !== null || user.status !== 'ACTIVE') {
-      throw new BusinessException(accountErrors.USER_NOT_ACTIVE);
-    }
-    const binding = await this.prisma.client.dingtalkBinding.findFirst({
-      where: { userId: targetUserId, status: 'BOUND' },
-      select: { id: true },
-    });
-    if (!binding) {
-      throw new BusinessException(accountErrors.BINDING_NOT_FOUND);
-    }
-    return { rebindUrl: await this.issueCredential(adminId, targetUserId, 'rebind') };
-  }
-
   /**
-   * 通用凭证签发（激活/重置/换绑共用 activation_invitations 表；同账号同时最多一个有效凭证）。
+   * 通用凭证签发（激活/重置共用 activation_invitations 表；同账号同时最多一个有效凭证）。
    * 并发重试：两个并发请求同时 updateMany 后都 create 时，后者撞部分唯一索引 P2002，
    * 重试整个事务（重试时 updateMany 会把前者创建的 VALID 记录 REVOKE 掉）即可成功。
    */

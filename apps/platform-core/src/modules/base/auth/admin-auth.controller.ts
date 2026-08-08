@@ -7,7 +7,7 @@ import { AdminInvitationService } from './admin-invitation.service';
 
 /**
  * 管理后台认证操作（backstage PRD §3 联动）：
- * M1 生成激活邀请、M4 解锁账号（权限"用户管理"，T3-5 完整权限守卫接入前的最小校验：
+ * M1 生成激活邀请、M2 生成重置邀请、M4 解锁账号（权限"用户管理"，T3-5 完整权限守卫接入前的最小校验：
  * 超管或持有 user_manage 授权）。
  */
 @Controller('users')
@@ -18,13 +18,13 @@ export class AdminAuthController {
     private readonly invitations: AdminInvitationService,
   ) {}
 
-  /** M1 生成/重新生成激活邀请（仅待激活；重新生成旧邀请失效） */
+  /** M1 生成/重新生成激活邀请（仅待激活；重新生成旧邀请失效）；返回链接与二维码（同一凭证） */
   @Post(':id/activation-invitations')
   async issueActivationInvitation(
     @Param('id', ParseIntPipe) targetUserId: number,
     @CurrentUser() operatorId: number,
     @Body() _dto: IdempotentDto,
-  ): Promise<{ activationUrl: string }> {
+  ): Promise<{ activationUrl: string; activationQr: string }> {
     await this.assertUserManage(operatorId);
     return this.invitations.issueActivationInvitation(operatorId, targetUserId);
   }
@@ -38,17 +38,6 @@ export class AdminAuthController {
   ): Promise<{ resetUrl: string }> {
     await this.assertUserManage(operatorId);
     return this.invitations.issueResetInvitation(operatorId, targetUserId);
-  }
-
-  /** M3 生成换绑邀请（仅超管；目标账号 ACTIVE 且有有效绑定） */
-  @Post(':id/rebind-invitations')
-  async issueRebindInvitation(
-    @Param('id', ParseIntPipe) targetUserId: number,
-    @CurrentUser() operatorId: number,
-    @Body() _dto: IdempotentDto,
-  ): Promise<{ rebindUrl: string }> {
-    await this.assertSuperAdmin(operatorId);
-    return this.invitations.issueRebindInvitation(operatorId, targetUserId);
   }
 
   /** M4 解锁账号（幂等：未锁定也成功） */
@@ -84,14 +73,4 @@ export class AdminAuthController {
     }
   }
 
-  /** 仅超级管理员（M3 换绑邀请；T3 完整站点角色守卫接管） */
-  private async assertSuperAdmin(operatorId: number): Promise<void> {
-    const operator = await this.prisma.client.user.findUnique({
-      where: { id: operatorId },
-      select: { isSuperAdmin: true },
-    });
-    if (!operator?.isSuperAdmin) {
-      throw new BusinessException(frameworkErrors.FORBIDDEN);
-    }
-  }
 }

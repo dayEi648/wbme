@@ -44,8 +44,19 @@ export class AuthController {
   ): Promise<unknown> {
     const ip = req.ip ?? 'unknown';
     const result = await this.auth.loginPassword(dto, ip);
-    res.cookie(SESSION_COOKIE, result.sessionId, sessionCookieOptions(cookieSecure()));
-    res.cookie(CSRF_COOKIE, result.csrfToken, csrfCookieOptions(cookieSecure()));
+    // "记住我"：Cookie 与服务端绝对过期时限一致持久化（浏览器重启保留；不取消绝对过期，base PRD §3）
+    res.cookie(
+      SESSION_COOKIE,
+      result.sessionId,
+      sessionCookieOptions(cookieSecure(), result.rememberMe ? result.absTimeoutSeconds : undefined),
+    );
+    // CSRF 双提交 Cookie 与会话 Cookie 同生命周期："记住我"时持久化（浏览器重启后写请求仍可携带 CSRF 头），
+    // 未勾选时浏览器会话级（重启后需重新登录，CSRF 同步失效）
+    res.cookie(
+      CSRF_COOKIE,
+      result.csrfToken,
+      csrfCookieOptions(cookieSecure(), result.rememberMe ? result.absTimeoutSeconds : undefined),
+    );
     return {
       user: result.user,
       sessionExpiresAt: result.sessionExpiresAt,

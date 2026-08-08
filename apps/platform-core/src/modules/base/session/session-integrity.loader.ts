@@ -6,7 +6,7 @@ import { PrismaService } from '../../../prisma.service';
  * 会话用户加载器（platform-core 实现，读 base.users）。
  *
  * 会话守卫每次请求按当前账号状态与 session_version 校验：
- * 改密/重置/换绑/注销后旧会话立即失效（版本不一致），不等待会话过期（base PRD §3）。
+ * 改密/重置/注销后旧会话立即失效（版本不一致），不等待会话过期（base PRD §3）。
  */
 @Injectable()
 export class SessionIntegrityLoader implements SessionUserLoader {

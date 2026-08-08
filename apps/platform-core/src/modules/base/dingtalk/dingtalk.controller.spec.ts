@@ -1,8 +1,17 @@
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import { Test } from '@nestjs/testing';
 import { redisKey, REDIS_NAMESPACE, REDIS_CLIENT } from '@wbme/server';
 import Redis from 'ioredis';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+// 加载仓库根 .env（集成测试使用真实本地 Redis；CI 由环境变量注入）
+try {
+  loadEnvFile(resolve(process.cwd(), '../../.env'));
+} catch {
+  // 环境变量由外部注入时跳过
+}
 import type { INestApplication } from '@nestjs/common';
 import { GlobalExceptionFilter } from '@wbme/server';
 import { PrismaService } from '../../../prisma.service';
@@ -162,7 +171,7 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
     await cleanStates();
     const flows = new FlowSessionService(redis);
     const flowId = await flows.issue('ACTIVATION', { userId: 7 });
-    const state = await new DingtalkStateService(redis).issue('ACTIVATION', undefined, flowId);
+    const state = await new DingtalkStateService(redis).issue('ACTIVATION', flowId);
     const res = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/activate/complete`);

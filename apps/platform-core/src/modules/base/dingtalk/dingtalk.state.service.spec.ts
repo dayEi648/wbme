@@ -1,9 +1,18 @@
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import { Test } from '@nestjs/testing';
 import { BusinessException } from '@wbme/contracts';
 import { redisKey, REDIS_NAMESPACE, REDIS_CLIENT } from '@wbme/server';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DingtalkStateService } from './dingtalk.state.service';
+
+// 加载仓库根 .env（集成测试使用真实本地 Redis；CI 由环境变量注入）
+try {
+  loadEnvFile(resolve(process.cwd(), '../../.env'));
+} catch {
+  // 环境变量由外部注入时跳过
+}
 
 const REDIS_URL = process.env.REDIS_URL;
 
@@ -24,10 +33,9 @@ describe.skipIf(!REDIS_URL)('DingtalkStateService（base PRD §2 一次性 state
   });
 
   it('签发后可消费一次，再消费拒绝（一次性）', async () => {
-    const state = await service.issue('LOGIN', '/portal');
+    const state = await service.issue('LOGIN');
     const data = await service.consume(state, 'LOGIN');
     expect(data.purpose).toBe('LOGIN');
-    expect(data.returnTo).toBe('/portal');
     await expect(service.consume(state, 'LOGIN')).rejects.toBeInstanceOf(BusinessException);
   });
 

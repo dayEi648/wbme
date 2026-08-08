@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import type { Redis } from 'ioredis';
 
 /**
- * 一次性流程会话（base PRD §2：激活/注册/重置/换绑的"短时一次性会话"）。
+ * 一次性流程会话（base PRD §2：激活/注册/重置的"短时一次性会话"）。
  *
  * - 兑换或发起成功后签发：Redis `flowtoken:{id}` = {purpose, userId?, unionId?, verifiedFlags, expiresAt}；
  * - 值 = 128bit 密码学随机，通过 Path 限定的一次性流程 Cookie 承接后续步骤；
@@ -14,21 +14,19 @@ import type { Redis } from 'ioredis';
  */
 
 /** 流程用途（与钉钉 state purpose 对应） */
-export const FLOW_PURPOSES = ['REGISTRATION', 'ACTIVATION', 'RESET', 'REBIND'] as const;
+export const FLOW_PURPOSES = ['REGISTRATION', 'ACTIVATION', 'RESET'] as const;
 export type FlowPurpose = (typeof FLOW_PURPOSES)[number];
 
 export interface FlowSessionData {
   purpose: FlowPurpose;
-  /** 目标账号（重置/换绑场景已确定；注册场景为 null） */
+  /** 目标账号（重置场景已确定；注册场景为 null） */
   userId?: number;
-  /** 已完成的钉钉授权身份（激活/注册/换绑场景） */
+  /** 已完成的钉钉授权身份（激活/注册场景） */
   unionId?: string;
   /** 钉钉返回的手机号与国家码（回调时写入，确认时使用） */
   mobile?: string;
   stateCode?: string;
-  /** 换绑场景：旧身份已验证标记 */
-  verifiedFlags?: string[];
-  /** 兑换凭证摘要（激活/重置/换绑确认时精确标记对应邀请 USED） */
+  /** 兑换凭证摘要（激活/重置确认时精确标记对应邀请 USED） */
   tokenHash?: string;
   expiresAt: number;
 }

@@ -59,12 +59,27 @@ export class ActivationFlow {
     input: { unionId: string; mobile: string; stateCode: string; name: string; gender: 'MALE' | 'FEMALE'; password: string },
     ip: string,
   ): Promise<LoginResult> {
+    try {
+      return await this.confirmInner(flowId, input, ip);
+    } catch (error) {
+      // 确认失败同样即删流程会话（base PRD §7.3：一次性，成功后或失败即删）
+      await this.flows.consume(flowId).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** A7 主体逻辑（失败路径由外层 confirm 统一消费流程会话） */
+  private async confirmInner(
+    flowId: string,
+    input: { unionId: string; mobile: string; stateCode: string; name: string; gender: 'MALE' | 'FEMALE'; password: string },
+    ip: string,
+  ): Promise<LoginResult> {
     const flow = await this.flows.assert(flowId, 'ACTIVATION');
     if (!flow.unionId || flow.unionId !== input.unionId) {
       throw new BusinessException(accountErrors.FLOW_SESSION_INVALID);
     }
     if (!this.password.validatePolicy(input.password)) {
-      throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
+      throw new BusinessException(accountErrors.PASSWORD_POLICY_FAILED);
     }
     const phone = normalizePhoneFromParts(input.stateCode, input.mobile);
     if (!phone) {

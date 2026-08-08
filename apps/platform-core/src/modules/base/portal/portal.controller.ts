@@ -1,5 +1,5 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import { maskPhone } from '@wbme/contracts';
+import { BusinessException, frameworkErrors, maskPhone } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../../prisma.service';
 import { PortalService } from './portal.service';
@@ -21,12 +21,14 @@ export class PortalController {
       where: { id: userId },
       select: { isSuperAdmin: true, name: true, phone: true },
     });
-    const portal = await this.portal.getPortal(userId, user?.isSuperAdmin ?? false);
+    // 守卫已拒绝非正常账号；此处兜底（账号被并发删除/注销时）不继续计算门户
+    if (!user) {
+      throw new BusinessException(frameworkErrors.UNAUTHORIZED);
+    }
+    const portal = await this.portal.getPortal(userId, user.isSuperAdmin);
     return {
       brand: { name: 'WBME 企业管理平台' },
-      user: user
-        ? { id: userId, name: user.name, phoneMasked: maskPhone(user.phone) }
-        : null,
+      user: { id: userId, name: user.name, phoneMasked: maskPhone(user.phone) },
       ...portal,
     };
   }

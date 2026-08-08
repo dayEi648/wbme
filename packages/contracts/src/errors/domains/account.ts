@@ -72,15 +72,7 @@ export const accountErrors = {
     type: 'BUSINESS',
     domain: 'ACCOUNT',
     httpStatus: 422,
-    message: '该钉钉账号已绑定其他平台账号，请走账号恢复或换绑流程',
-  },
-  /** 一个平台账号只能绑定一个钉钉账号（base PRD §2） */
-  BINDING_ALREADY_EXISTS: {
-    code: 'BINDING_ALREADY_EXISTS',
-    type: 'BUSINESS',
-    domain: 'ACCOUNT',
-    httpStatus: 422,
-    message: '该账号已绑定钉钉身份，请走换绑流程',
+    message: '该钉钉账号已绑定其他平台账号，请走账号恢复流程',
   },
   /** 钉钉授权 state 缺失/过期/已使用（base PRD §2：一次性 state/nonce 校验） */
   DINGTALK_STATE_INVALID: {
@@ -89,14 +81,6 @@ export const accountErrors = {
     domain: 'ACCOUNT',
     httpStatus: 422,
     message: '授权请求已过期，请重新扫码登录',
-  },
-  /** 钉钉授权过程失败（授权码无效/换 token 失败等） */
-  DINGTALK_AUTHORIZATION_FAILED: {
-    code: 'DINGTALK_AUTHORIZATION_FAILED',
-    type: 'BUSINESS',
-    domain: 'ACCOUNT',
-    httpStatus: 422,
-    message: '钉钉授权失败，请重试',
   },
   /** 钉钉应用未配置（部署环境缺凭证，base PRD §2） */
   DINGTALK_CONFIG_MISSING: {
@@ -114,7 +98,7 @@ export const accountErrors = {
     httpStatus: 422,
     message: '钉钉未返回手机号，请联系管理员检查钉钉通讯录资料',
   },
-  /** 流程会话（激活/注册/重置/换绑的短时一次性会话）无效/过期/已使用 */
+  /** 流程会话（激活/注册/重置的短时一次性会话）无效/过期/已使用 */
   FLOW_SESSION_INVALID: {
     code: 'FLOW_SESSION_INVALID',
     type: 'BUSINESS',
@@ -130,7 +114,7 @@ export const accountErrors = {
     httpStatus: 422,
     message: '该账号不处于待激活状态',
   },
-  /** 目标账号不处于正常状态（仅 ACTIVE 可重置/换绑） */
+  /** 目标账号不处于正常状态（仅 ACTIVE 可重置） */
   USER_NOT_ACTIVE: {
     code: 'USER_NOT_ACTIVE',
     type: 'BUSINESS',
@@ -154,13 +138,21 @@ export const accountErrors = {
     httpStatus: 401,
     message: '当前密码不正确',
   },
-  /** 换绑时账号当前没有有效钉钉绑定（无法完成替换） */
-  BINDING_NOT_FOUND: {
-    code: 'BINDING_NOT_FOUND',
-    type: 'CONFLICT',
+  /** 密码二次输入不一致（base PRD §2：要求二次输入一致；改密/重置/激活/注册确认的服务层校验） */
+  PASSWORD_CONFIRM_MISMATCH: {
+    code: 'PASSWORD_CONFIRM_MISMATCH',
+    type: 'BUSINESS',
     domain: 'ACCOUNT',
-    httpStatus: 409,
-    message: '该账号暂无钉钉绑定，无需换绑',
+    httpStatus: 422,
+    message: '两次输入的密码不一致',
+  },
+  /** 密码不符合平台策略（base PRD §2：仅校验 8~32 位，无强度要求） */
+  PASSWORD_POLICY_FAILED: {
+    code: 'PASSWORD_POLICY_FAILED',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '密码长度须为 8~32 位',
   },
   /** 同一员工已存在待审批资料修改申请（主 PRD §3.2 单待审批限制） */
   PROFILE_CHANGE_PENDING_EXISTS: {

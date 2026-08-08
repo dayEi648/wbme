@@ -9,30 +9,41 @@ import type { CookieOptions } from 'express';
  * - 流程 Cookie：HttpOnly + Secure + SameSite=Lax + Path 限定对应流程。
  */
 
-/** 会话 Cookie 基础属性 */
-export function sessionCookieOptions(secure: boolean): CookieOptions {
+/**
+ * 会话 Cookie 基础属性。
+ * @param maxAgeSeconds 可选：Cookie 持久化时长（"记住我"会话按服务端绝对过期时限持久化，
+ *   浏览器重启后仍保留；未勾选时为空 → 浏览器会话级 Cookie）
+ */
+export function sessionCookieOptions(secure: boolean, maxAgeSeconds?: number): CookieOptions {
   return {
     httpOnly: true,
     secure,
     sameSite: 'lax',
     path: '/',
+    ...(maxAgeSeconds ? { maxAge: maxAgeSeconds * 1000 } : {}),
   };
 }
 
-/** CSRF 双提交 Cookie：必须非 HttpOnly 供前端读取 */
-export function csrfCookieOptions(secure: boolean): CookieOptions {
+/**
+ * CSRF 双提交 Cookie：必须非 HttpOnly 供前端读取。
+ * @param maxAgeSeconds 可选："记住我"登录时与会话 Cookie 同持久化（浏览器重启后写请求仍可携带 CSRF 头，
+ *   避免 403 死锁；CSRF 值仅用于服务端比对、密钥不下发，SameSite=Lax + 仅状态变更校验，持久化安全可接受）；
+ *   未勾选"记住我"时为空 → 浏览器会话级（随浏览器关闭消失，重启后需重新登录，CSRF 同步失效无冲突）
+ */
+export function csrfCookieOptions(secure: boolean, maxAgeSeconds?: number): CookieOptions {
   return {
     httpOnly: false,
     secure,
     sameSite: 'lax',
     path: '/',
+    ...(maxAgeSeconds ? { maxAge: maxAgeSeconds * 1000 } : {}),
   };
 }
 
 /**
  * 一次性流程 Cookie：Path 覆盖 /api/v1/auth 前缀。
  * 钉钉授权发起/回调（/api/v1/auth/dingtalk/*）与各流程路由
- * （/api/v1/auth/activation|registration|password/reset|rebind）统一可达；
+ * （/api/v1/auth/activation|registration|password/reset）统一可达；
  * 流程标识在回调侧随一次性 state 携带（base PRD §2），Cookie 仅作流程持有凭证。
  */
 export function flowCookieOptions(secure: boolean): CookieOptions {

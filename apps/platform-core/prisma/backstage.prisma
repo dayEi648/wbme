@@ -62,9 +62,6 @@ enum SecurityEventType {
   PASSWORD_CHANGED
   PASSWORD_RESET_ISSUED
   PASSWORD_RESET_COMPLETED
-  BINDING_CHANGED_ISSUED
-  BINDING_CHANGED_COMPLETED
-  BINDING_CHANGED_FAILED
   PHONE_SYNCED
   PHONE_SYNC_CONFLICT
   INTERNAL_TOKEN_FAILED
@@ -519,6 +516,7 @@ model ProfileChangeRequest {
 }
 
 /// S-19 operation_logs（backstage schema，结构与 base.operation_logs 完全一致）
+/// 幂等部分唯一索引 operation_logs_idempotency_unique 由迁移 SQL 手写建立（同 B-4 说明）
 model BackstageOperationLog {
   id                  Int       @id @default(autoincrement())
   operatorId          Int?      @map("operator_id")

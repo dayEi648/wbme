@@ -3,6 +3,7 @@
 > schema：`backstage`，归属部署单元 `platform-core`（与 base 同一 Prisma Client、同一迁移序列）。
 > 表结构遵循 `00-baseline.md` 公共基线。
 > 集中错误日志、安全日志与统一后台任务表是主 PRD §9.4 明确的平台基础设施跨 schema 写入例外，由共享日志/任务模块以受限语句写入。
+> **字段约束语义**：本文与 `base.md` 中 `→ xxx.id` 表示逻辑引用（同部署单元内可由 Prisma 关系建立物理外键；跨部署单元或仅作审计留存的字段为逻辑引用，不建物理外键），实际物理外键以 Prisma schema 与迁移 SQL 为准。
 
 ## 1. 功能权限目录（系统 → 业务板块 → 功能 三层）
 
@@ -158,7 +159,7 @@
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `integer` | PK，serial4 自增 | |
-| `event_type` | `enum security_event_type` | NOT NULL | 登录成功/失败、登出、账号锁/IP 锁、激活、邀请、密码修改/重置、换绑、手机号同步、内部令牌校验失败等 |
+| `event_type` | `enum security_event_type` | NOT NULL | 登录成功/失败、登出、账号锁/IP 锁、激活、邀请、密码修改/重置、手机号同步、内部令牌校验失败等 |
 | `actor_id` | `integer` | NULL → `base.users.id` | 主体账号（匿名失败尝试可为 NULL） |
 | `target_user_id` | `integer` | NULL → `base.users.id` | 目标账号 |
 | `result` | `enum security_result` | NOT NULL | `SUCCESS / FAILURE` |
@@ -354,3 +355,9 @@ MVP 不自动清理、不提供删除接口。
 不单独建表：backstage 与 base 同属 `platform-core`，页面偏好（筛选预设 + 列设置，主 PRD §10.2）统一存储于 `base.user_table_prefs`（B-5），以 `page_key` 区分功能页。
 
 **表间关系**：`systems` 1—N `business_sections` 1—N `functions`；`permission_groups` 1—N `permission_group_items`；`approval_requests` 1—N `approval_actions`、1—1 `profile_change_requests`；`backups`/`restores` 关联 `background_tasks`；表格偏好引用 `base.user_table_prefs`（B-5）。
+
+## 11. 只读视图（Migration Runner 迁移后统一执行，脚本见 `scripts/db-views/`）
+
+- **`backstage.site_roles`**（01-site-roles.sql，主 PRD §9.4、backstage PRD §8）：站点角色最小只读视图 = `base.users` 的 `user_id / name / is_super_admin / status`（`deleted_at IS NULL`）；hr 等其它部署单元经此视图读取站点角色，不直连 users 表。
+- **`backstage.operation_logs_union`**（02-operation-logs-union.sql，主 PRD §3.3）：base/backstage/asset/hr/fin 各 schema 同构 `operation_logs` 的联合视图，`action_type` 统一转 `text`；新增模块时必须同步扩展。
+- **hr `v_user_titles`**（03-user-titles.sql，hr PRD §8）：职称视图归 hr 部署单元（见 `hr.md`）。

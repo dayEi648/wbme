@@ -52,11 +52,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // 会话中途失效（含账号注销/待激活）：明确提示后跳登录，不产生无提示跳转（base PRD §3）
+  // 会话中途失效（含账号注销/待激活）：明确提示后跳登录，不产生无提示跳转（base PRD §3）；
+  // silent（未登录首访的 SESSION_EXPIRED）仅清理本地态并跳转，不弹提示
   useEffect(() => {
-    setSessionExpiredHandler((messageText?: string) => {
+    setSessionExpiredHandler((messageText?: string, silent?: boolean) => {
       setUser(null);
-      message.error(messageText ?? '登录状态已失效，请重新登录');
+      if (!silent) {
+        message.error(messageText ?? '登录状态已失效，请重新登录');
+      }
       navigate('/login', { replace: true });
     });
     void refresh();

@@ -95,6 +95,16 @@ function buildPackages() {
   console.log('[dev] 共享包构建完成');
 }
 
+/** 生成 Prisma Client（src 下 generated 目录不提交，全新 clone 无产物；generate 幂等，重复执行安全） */
+function generatePrisma() {
+  const result = spawnSync('pnpm', ['prisma:generate'], { cwd: root, stdio: 'inherit' });
+  if (result.status !== 0) {
+    console.error('[dev] Prisma Client 生成失败，停止启动');
+    process.exit(1);
+  }
+  console.log('[dev] Prisma Client 生成完成');
+}
+
 /** 全新环境（clone 后未构建）下各服务 dist 不存在：先构建缺失的服务，保证 `pnpm dev` 一条命令起全套 */
 function buildMissingServices() {
   const missing = SERVICES.filter(
@@ -188,6 +198,7 @@ function startServices() {
 }
 
 await checkDependencies();
+generatePrisma();
 buildPackages();
 buildMissingServices();
 runMigrationRunner();
