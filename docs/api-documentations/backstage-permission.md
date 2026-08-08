@@ -1,4 +1,4 @@
-# backstage 权限管理 API 文档（阶段3，T3-2）
+# backstage 权限管理 API 文档（阶段3，T3-2 员工授权 + T3-3 权限组）
 
 > 统一前缀 `/api/v1`；错误结构、幂等键、分页遵循主 PRD §9.5。
 > 本文档随接口提交同步维护；文档与实现不一致视为任务未完成（实现规划通用任务约定）。
@@ -52,16 +52,21 @@
 ## P4 批量授权（增量）`POST /permission/grants/batch`
 
 - 入参：`{ userIds: number[]（≤100 且不重复）, grants: [{ functionCode, dataScope }], groupIds?: number[], idempotencyKey? }`
-  - `groupIds` 为权限组展开预留入参（T3-3 实现展开；本期传非空返回 `VALIDATION_FAILED`）
+  - `grants` 与 `groupIds` 至少一项非空；授权内容 = 逐项功能 ∪ 权限组展开，同一功能按**最宽数据范围**合并生效（公司 > 部门 > 本人）
+  - **权限组展开**（T3-3）：读取未删除组的明细展开为逐项授权快照，不产生员工与组的关联（之后改组/删组不影响已授权员工）；
+    组内失效项（功能已从目录移除或数据范围档位已失效）**跳过且不计入授权**，其余正常展开（主 PRD §3.1「不再可从组内展开」），
+    跳过明细随响应 `skippedGroupItems` 返回（仅携带 groupIds 时返回该字段）；
+    任一组不存在或已软删除 → `RESOURCE_NOT_FOUND`（已删组不再可展开）；
+    组含"权限管理"功能时，权限管理员操作同样返回 `PERMISSION_MANAGEMENT_GRANT_FORBIDDEN`（委派规则对组展开等同强制）
 - 语义：为所选员工**追加**授权（已持有的功能+档位自动跳过），不改动已有授权；
   先整批校验（存在性/账号状态/自我修改/超管保护），任一目标失败则整批回滚，**不产生任何写入**；
   全部通过后单事务完成：用户行锁（按 id 有序）串行化 + 逐人递增版本 + 逐人操作日志；
   批量场景不携带目标授权版本（列表多选无版本上下文），并发安全由行锁与版本递增保证
-- 成功：`{ ok: true, userIds }`（幂等重放返回原结果，不重复产生授权/版本递增/日志）
+- 成功：`{ ok: true, userIds, skippedGroupItems? }`（幂等重放返回原结果，不重复产生授权/版本递增/日志）
 - 失败：`GRANT_BATCH_BLOCKED`(422，`details.failures: [{ userId, code, message }]`，code ∈
   `TARGET_NOT_FOUND / TARGET_DEACTIVATED / SELF_MODIFICATION / SUPER_ADMIN_TARGET`) /
-  授权项非法同 P3 / `IDEMPOTENCY_KEY_REUSED`(409) / `VALIDATION_FAILED`(400 空数组/超上限/重复标识)
-- 操作日志：CREATE；逐人明细 + 批次汇总（含幂等键）
+  授权项非法同 P3 / `RESOURCE_NOT_FOUND`(404 权限组) / `IDEMPOTENCY_KEY_REUSED`(409) / `VALIDATION_FAILED`(400 空内容/超上限/重复标识)
+- 操作日志：CREATE；逐人明细 + 批次汇总（含幂等键；摘要标注展开的组名与失效跳过数）
 
 ## P5 批量撤销 `POST /permission/revocations/batch`
 
@@ -69,3 +74,44 @@
 - 语义：撤销所选员工在操作人可管理范围内的**全部**功能授权；范围外与目录外授权行不受影响；
   范围内无授权的目标跳过（不递增版本、不写日志）；整批语义与 P4 一致
 - 成功/失败/日志：同 P4（actionType=DELETE）
+
+## 权限组（授权预设，backstage PRD §4；全部要求"权限管理"功能或超管）
+
+- 权限组是命名的授权预设（可跨系统），**不是授权单位**：授予员工时展开为员工功能授权快照，
+  之后修改/删除权限组不影响已授权员工（快照语义，组与员工无关联）；
+  组明细校验与授权项同规则（目录注册 + 档位合法 + "权限管理"功能仅超管可入组）；
+  组名唯一约束覆盖已软删除组（S-6）：已删组名称仍被占用；已软删除组不再可展开；
+  单人"修改权限"（P3）不接受 groupIds：前端先取组明细展开合并进勾选状态，再按完整状态提交（backstage PRD §4）。
+
+### G1 权限组列表 `GET /permission/groups`
+
+- 入参（query）：`page?`、`pageSize?`（同 P1 分页约定）
+- 成功：`{ data: [{ id, name, description, itemCount, createdAt, updatedAt }], pagination }`（不含已软删除，按 id 升序）
+
+### G2 查看组内权限 `GET /permission/groups/{id}`
+
+- 成功：`{ id, name, description, items: [{ functionCode, dataScope, name, systemCode, sectionCode, valid }] }`
+  - `valid=false` 表示该项已失效（功能移除/档位失效）：保留在组内展示但展开时跳过
+- 失败：`RESOURCE_NOT_FOUND`(404 不存在或已删除)
+
+### G3 创建权限组 `POST /permission/groups`
+
+- 入参：`{ name（≤50，唯一）, description?（≤500）, items: [{ functionCode, dataScope }]（可空；同一功能+档位不可重复）, idempotencyKey? }`
+- 成功：`{ id }`（幂等重放返回首次创建结果）
+- 失败：`GROUP_NAME_CONFLICT`(409) / `FUNCTION_NOT_REGISTERED`(422) / `SCOPE_NOT_SUPPORTED`(422) /
+  `PERMISSION_MANAGEMENT_GRANT_FORBIDDEN`(422) / `VALIDATION_FAILED`(400)
+- 操作日志：CREATE，摘要含明细列表
+
+### G4 编辑权限组 `PUT /permission/groups/{id}`
+
+- 入参：同 G3（明细**事务内全量替换**，S-7）；不影响已按该组授权的员工
+- 成功：`{ ok: true }`；失败：`RESOURCE_NOT_FOUND`(404) / `GROUP_NAME_CONFLICT`(409) / 明细校验同 G3
+- 操作日志：UPDATE，摘要含名称/描述与明细的变更前后内容
+
+### G5 批量删除权限组 `POST /permission/groups/batch-delete`
+
+- 入参：`{ groupIds: number[]（≤100 且不重复）, idempotencyKey? }`（软删除；全有或全无，主 PRD §2.6）
+- 成功：`{ ok: true, groupIds }`（同键重放返回原成功结果，即使组已删除；新键删除不存在的组才报错）
+- 失败：`GROUP_BATCH_BLOCKED`(422，`details.failures: [{ groupId, code, message }]`，code = `GROUP_NOT_FOUND`，整批不变更) /
+  `IDEMPOTENCY_KEY_REUSED`(409) / `VALIDATION_FAILED`(400)
+- 操作日志：DELETE；逐组明细 + 批次汇总（含幂等键）

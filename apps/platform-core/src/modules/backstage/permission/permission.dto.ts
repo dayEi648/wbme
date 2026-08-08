@@ -68,15 +68,14 @@ export class BatchGrantDto extends IdempotentDto {
   @Type(() => Number)
   userIds!: number[];
 
-  /** 逐项追加的功能授权（含数据范围） */
+  /** 逐项追加的功能授权（含数据范围）；与 groupIds 至少一项非空（服务层校验） */
   @IsArray()
-  @ArrayNotEmpty()
   @ArrayMaxSize(BATCH_LIMIT)
   @ValidateNested({ each: true })
   @Type(() => GrantItemDto)
   grants!: GrantItemDto[];
 
-  /** 权限组展开（预留入参，T3-3 实现展开；本期传非空即拒绝） */
+  /** 权限组展开（T3-3）：组内失效项跳过不计入授权，展开为员工授权快照，不产生组关联 */
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(BATCH_LIMIT)

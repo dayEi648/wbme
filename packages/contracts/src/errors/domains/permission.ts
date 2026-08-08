@@ -67,4 +67,21 @@ export const permissionErrors = {
     message: '部分目标无法完成权限变更，整批未生效',
     detailsFields: ['failures'],
   },
+  /** 权限组名称已被使用（S-6 名称唯一约束覆盖已软删除组） */
+  GROUP_NAME_CONFLICT: {
+    code: 'GROUP_NAME_CONFLICT',
+    type: 'CONFLICT',
+    domain: 'PERMISSION',
+    httpStatus: 409,
+    message: '权限组名称已被使用',
+  },
+  /** 批量删除权限组：任一目标不存在/已删除则整批回滚并逐项返回原因（主 PRD §2.6） */
+  GROUP_BATCH_BLOCKED: {
+    code: 'GROUP_BATCH_BLOCKED',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '部分权限组无法删除，整批未生效',
+    detailsFields: ['failures'],
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;
