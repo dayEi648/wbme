@@ -11,6 +11,7 @@ try {
   // 环境变量由外部注入时跳过
 }
 import { PrismaService } from '../../../prisma.service';
+import { ensurePermissionCatalog } from '../../../test-support/ensure-permission-catalog';
 import { AuthorizationService } from './authorization.service';
 import { GrantService } from './grant.service';
 import { FunctionPermissionGuard, REQUIRED_FUNCTION_KEY } from './function-permission.guard';
@@ -51,6 +52,8 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)('员工授权 CRUD（T3-2 版本/�
     redis = new Redis(REDIS_URL ?? 'redis://localhost:6379');
     service = new GrantService(prisma, new SessionService(redis));
     authorization = new AuthorizationService(prisma);
+    // CI 全新库只有迁移没有 seed：目录注册由本规格幂等保证，不依赖执行顺序
+    await ensurePermissionCatalog(prisma);
     await cleanupLeftovers();
     superOp = await createUser({ name: `${TEST_NAME_PREFIX}超管`, isSuperAdmin: true });
     permAdmin = await createUser({ name: `${TEST_NAME_PREFIX}权管` });

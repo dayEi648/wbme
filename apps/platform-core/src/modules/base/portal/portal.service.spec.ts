@@ -10,6 +10,7 @@ try {
   // 环境变量由外部注入时跳过
 }
 import { PrismaService } from '../../../prisma.service';
+import { ensurePermissionCatalog } from '../../../test-support/ensure-permission-catalog';
 import { PortalService } from './portal.service';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -33,6 +34,8 @@ describe.skipIf(!DATABASE_URL)('门户入口推导（T3-4 真实授权核对）'
   beforeAll(async () => {
     prisma = new PrismaService();
     portal = new PortalService(prisma);
+    // CI 全新库只有迁移没有 seed：目录注册由本规格幂等保证，不依赖执行顺序
+    await ensurePermissionCatalog(prisma);
     await cleanupLeftovers();
   });
 

@@ -14,6 +14,7 @@ try {
 }
 import type { Prisma, PrismaClient } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
+import { ensurePermissionCatalog } from '../../../test-support/ensure-permission-catalog';
 import type { HrLifecycleGateway, HrRestorePreviewResponse } from './hr-lifecycle.client';
 import { UserLifecycleService } from './user-lifecycle.service';
 
@@ -40,6 +41,8 @@ describe.skipIf(!DATABASE_URL)('账号生命周期（T3-5 后半：批量注销/
 
   beforeAll(async () => {
     prisma = new PrismaService();
+    // CI 全新库只有迁移没有 seed：目录注册由本规格幂等保证，不依赖执行顺序
+    await ensurePermissionCatalog(prisma);
     await cleanupLeftovers();
     superOp = await createUser({ name: `${TEST_NAME_PREFIX}超管`, isSuperAdmin: true });
   });

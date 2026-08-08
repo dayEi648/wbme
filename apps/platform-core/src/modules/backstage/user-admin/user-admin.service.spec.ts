@@ -12,6 +12,7 @@ try {
   // 环境变量由外部注入时跳过
 }
 import { PrismaService } from '../../../prisma.service';
+import { ensurePermissionCatalog } from '../../../test-support/ensure-permission-catalog';
 import { AdminAuthController } from '../../base/auth/admin-auth.controller';
 import { ApprovalController } from '../../base/approval-proxy/approval.controller';
 import { AuthorizationService } from '../permission/authorization.service';
@@ -44,6 +45,8 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
     prisma = new PrismaService();
     service = new UserAdminService(prisma);
     authorization = new AuthorizationService(prisma);
+    // CI 全新库只有迁移没有 seed：目录注册由本规格幂等保证，不依赖执行顺序
+    await ensurePermissionCatalog(prisma);
     await cleanupLeftovers();
     superOp = await createUser({ name: `${TEST_NAME_PREFIX}超管`, isSuperAdmin: true });
     userAdmin = await createUser({ name: `${TEST_NAME_PREFIX}用管` });
