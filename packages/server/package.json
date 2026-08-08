@@ -1,0 +1,30 @@
+{
+  "name": "@wbme/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WBME NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器（主 PRD §9.6）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "@wbme/contracts": "workspace:*",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "ioredis": "^6.0.0",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/platform-express": "^11.1.28",
+    "@nestjs/testing": "^11.1.28",
+    "@types/express": "^5.0.0",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.1.0"
+  }
+}

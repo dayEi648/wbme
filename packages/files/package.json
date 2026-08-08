@@ -1,0 +1,14 @@
+{
+  "name": "@wbme/files",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WBME 统一文件存储：OSS 预签名与图片处理约定（主 PRD §9.2，T4-10 实现）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.build.json"
+  }
+}

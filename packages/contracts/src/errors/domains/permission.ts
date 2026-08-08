@@ -1,0 +1,53 @@
+import type { ErrorEntry } from '../types';
+
+/** PERMISSION 域错误目录：功能授权、权限组、超级管理员保护（主 PRD §3.1） */
+export const permissionErrors = {
+  /** 授权版本冲突：保存时携带的版本已过期（backstage PRD §4） */
+  GRANT_VERSION_CONFLICT: {
+    code: 'GRANT_VERSION_CONFLICT',
+    type: 'CONFLICT',
+    domain: 'PERMISSION',
+    httpStatus: 409,
+    message: '权限已被他人更新，请刷新后重试',
+  },
+  /** 操作人不能修改自己的授权（防止自我提权，主 PRD §3.1） */
+  GRANT_SELF_FORBIDDEN: {
+    code: 'GRANT_SELF_FORBIDDEN',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '不能修改自己的权限',
+  },
+  /** 最后一名超级管理员不可卸任/降级（主 PRD §3.1） */
+  LAST_SUPER_ADMIN: {
+    code: 'LAST_SUPER_ADMIN',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '系统必须保留至少一名超级管理员',
+  },
+  /** 超级管理员账号仅可由超级管理员管理（backstage PRD §3） */
+  SUPER_ADMIN_TARGET_ONLY: {
+    code: 'SUPER_ADMIN_TARGET_ONLY',
+    type: 'AUTHORIZATION',
+    domain: 'PERMISSION',
+    httpStatus: 403,
+    message: '超级管理员账号仅可由超级管理员管理',
+  },
+  /** "权限管理"功能仅超级管理员可授予或撤销（主 PRD §3.1） */
+  PERMISSION_MANAGEMENT_GRANT_FORBIDDEN: {
+    code: 'PERMISSION_MANAGEMENT_GRANT_FORBIDDEN',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '"权限管理"功能仅超级管理员可授予或撤销',
+  },
+  /** 功能不支持所选数据范围档位（主 PRD §3.1） */
+  SCOPE_NOT_SUPPORTED: {
+    code: 'SCOPE_NOT_SUPPORTED',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '该功能不支持所选数据范围',
+  },
+} as const satisfies Readonly<Record<string, ErrorEntry>>;

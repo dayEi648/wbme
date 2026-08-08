@@ -25,8 +25,10 @@ Thumbs.db
 .env.local
 .env.*.local
 .env.development
+.env.dev
 .env.test
 .env.production
+!.env.example
 
 # 日志
 logs
@@ -52,8 +54,11 @@ pip-delete-this-directory.txt
 
 # 编译输出
 /dist
-/node_modules
+node_modules/
 /build
+
+# Prisma Client 生成物（CI/安装时 prisma generate 重新生成）
+**/src/generated/
 *.js
 *.js.map
 *.d.ts

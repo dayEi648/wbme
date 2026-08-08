@@ -1,0 +1,14 @@
+{
+  "name": "@wbme/tasks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WBME 统一后台任务共享模块：任务表受限创建与状态条件更新、Outbox 语义（主 PRD §9.1）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.build.json"
+  }
+}

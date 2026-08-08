@@ -1,0 +1,26 @@
+{
+  "name": "@wbme/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WBME BullMQ Worker 部署单元：消费统一后台任务（主 PRD §9.1，T4-2 实现）",
+  "scripts": {
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.1.28",
+    "@wbme/contracts": "workspace:*",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.24",
+    "@nestjs/testing": "^11.1.28"
+  }
+}

@@ -42,8 +42,8 @@
 
 ## 5. 开发环境
 
-- 两人各自本地 `docker compose up`（PostgreSQL + Redis），**不共享开发数据库**，避免迁移与数据互相污染。
-- 数据库结构变更只通过迁移文件随代码走；开发环境的 compose 启动时由一次性 Migration Runner 执行迁移（主 PRD §9.9）。
+- 开发环境不使用 Docker（容器化仅用于生产部署），两人各自使用本机安装的 PostgreSQL 与 Redis 服务，**不共享开发数据库**，避免迁移与数据互相污染。
+- 数据库结构变更只通过迁移文件随代码走；开发环境启动脚本先执行一次性 Migration Runner 再启动各服务（主 PRD §9.9）。
 
 ## 6. 机密管理
 
@@ -55,7 +55,7 @@
 1. **GitHub 账号与权限**：确认个人 GitHub 账号；联系仓库 owner（dayEi648）把自己添加为仓库 **Collaborators**（Settings → Collaborators，写权限）。
 2. **本机 SSH 认证**（每台机器一次）：生成 `ssh-keygen -t ed25519 -C "github"`，把 `~/.ssh/id_ed25519.pub` 内容添加到**个人** GitHub（Settings → SSH and GPG keys → New SSH key）。首次连接 GitHub 若提示 Host key verification failed，执行 `ssh-keyscan -H github.com >> ~/.ssh/known_hosts`（指纹与 GitHub 官方公布值比对确认）。
 3. **克隆与安装**：`git clone git@github.com:dayEi648/wbme.git`；安装 pnpm（corepack 或独立安装），项目根执行 `pnpm install`（国内镜像源）。
-4. **本地环境**：`docker compose up`（PostgreSQL + Redis + 各服务），Migration Runner 随启动执行迁移（主 PRD §9.9）。
+4. **本地环境**：安装并启动本地 PostgreSQL 与 Redis（macOS 可用 `brew install postgresql@18 redis`），项目根执行 `pnpm dev` 一条命令启动各服务与 Worker，Migration Runner 随启动先执行迁移（主 PRD §9.9）。
 5. **日常开发**：`git pull --rebase` 后提交 `git push`，认证一次配置后全程无感；提交规范见 §2。
 
 > 认证方式说明：每人用**自己的** GitHub 账号与 SSH key，互不共享；仓库写权限由 owner 通过 Collaborators 控制。若个人偏好 HTTPS，可改用 Personal Access Token + macOS Keychain 记忆，效果相同。

@@ -1,0 +1,18 @@
+{
+  "name": "@wbme/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WBME 共享契约：错误码目录、BusinessException、DTO 基类、枚举与字符串联合类型",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1"
+  }
+}

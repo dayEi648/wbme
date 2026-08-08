@@ -1,0 +1,20 @@
+{
+  "name": "@wbme/migration-runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WBME Migration Runner：按部署单元顺序执行 Prisma 迁移的一次性 CLI（主 PRD §9.9，T0-6 实现）",
+  "scripts": {
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0"
+  }
+}

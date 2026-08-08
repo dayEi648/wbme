@@ -1,0 +1,26 @@
+{
+  "name": "wbme",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WBME Enterprise Management Platform monorepo",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "build:packages": "pnpm -r --filter './packages/**' build",
+    "prisma:generate": "pnpm -r --filter @wbme/platform-core --filter @wbme/asset --filter @wbme/hr --filter @wbme/fin exec prisma generate",
+    "dev": "node scripts/dev.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "eslint": "^10.8.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  }
+}

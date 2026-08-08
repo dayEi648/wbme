@@ -1,0 +1,11 @@
+# WBME monorepo workspaces：apps 为部署单元与前端，packages 为 @wbme 共享包
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+  '@prisma/client': true
+  esbuild: true
+minimumReleaseAgeExclude:
+  - eslint@10.8.1
