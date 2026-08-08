@@ -11,6 +11,7 @@
  * 退出方式：Ctrl+C 或 SIGTERM 时依次终止全部子进程。
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
@@ -93,6 +94,29 @@ function buildPackages() {
   console.log('[dev] 共享包构建完成');
 }
 
+/** 全新环境（clone 后未构建）下各服务 dist 不存在：先构建缺失的服务，保证 `pnpm dev` 一条命令起全套 */
+function buildMissingServices() {
+  const missing = SERVICES.filter(
+    (s) => s.cmd[0] === 'node' && !existsSync(resolve(root, 'apps', s.name, 'dist', 'main.js')),
+  );
+  if (missing.length === 0) {
+    return;
+  }
+  console.log(`[dev] 检测到未构建的服务（${missing.map((s) => s.name).join(' / ')}），先执行构建...`);
+  for (const service of missing) {
+    const result = spawnSync('pnpm', ['--filter', `@wbme/${service.name}`, 'build'], {
+      cwd: root,
+      stdio: 'inherit',
+      env: process.env,
+    });
+    if (result.status !== 0) {
+      console.error(`[dev] ${service.name} 构建失败，停止启动`);
+      process.exit(1);
+    }
+    console.log(`[dev] ${service.name} 构建完成`);
+  }
+}
+
 function runMigrationRunner() {
   const result = spawnSync('pnpm', ['--filter', '@wbme/migration-runner', 'start'], {
     cwd: root,
@@ -115,6 +139,11 @@ function startServices() {
       env: process.env,
     });
     child.on('exit', (code) => {
+      if (service.name === 'worker' && code === 0) {
+        // Worker 当前为空实现（T4-2 接入 BullMQ 消费者后常驻），启动即退出属正常
+        console.log('[dev] worker 空实现已启动即退出（正常，T4-2 接入任务消费者后常驻）');
+        return;
+      }
       console.error(`[dev] ${service.name} 退出（code=${code}）`);
     });
     children.push({ name: service.name, child });
@@ -137,5 +166,6 @@ function startServices() {
 
 await checkDependencies();
 buildPackages();
+buildMissingServices();
 runMigrationRunner();
 startServices();

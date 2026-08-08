@@ -63,37 +63,37 @@ enum SettingValueType {
 /// 唯一键 (business_key, year) 含软删除行（软删除记录仍占用业务唯一键），为普通唯一约束；
 /// year 四位公历年与全部手工金额 >= 0 的 CHECK 由迁移 SQL 补充。
 model Project {
-  id                    Int              @id @default(autoincrement())
-  name                  String
-  year                  Int
-  businessKey           String           @map("business_key")
-  completenessDocs      Json?            @map("completeness_docs")
-  regionId              Int?             @map("region_id")
-  regionName            String?          @map("region_name")
-  progressId            Int?             @map("progress_id")
-  progressName          String?          @map("progress_name")
-  progressSemantic      AmountSemantic?  @map("progress_semantic")
-  bizCategoryId         Int?             @map("biz_category_id")
-  bizCategoryName       String?          @map("biz_category_name")
-  partyA                String?          @map("party_a")
-  generalContractor     String?          @map("general_contractor")
-  managementFee         String?          @map("management_fee")
-  subcontractors        String[]         @default([])
-  contractStartDate     DateTime?        @db.Date @map("contract_start_date")
-  contractEndDate       DateTime?        @db.Date @map("contract_end_date")
-  contractAmount        Decimal?         @db.Decimal(18, 2) @map("contract_amount")
-  paymentNode           String?          @map("payment_node")
-  tentativeAuditedAmount Decimal?        @db.Decimal(18, 2) @map("tentative_audited_amount")
-  settlement            Decimal?         @db.Decimal(18, 2)
-  miscExpense           Decimal?         @db.Decimal(18, 2) @map("misc_expense")
-  remark                String?
-  dataRevision          Int              @default(0) @map("data_revision")
-  createdBy             Int?             @map("created_by")
-  createdAt             DateTime         @default(now()) @map("created_at")
-  updatedBy             Int?             @map("updated_by")
-  updatedAt             DateTime         @updatedAt @map("updated_at")
-  deletedBy             Int?             @map("deleted_by")
-  deletedAt             DateTime?        @map("deleted_at")
+  id                     Int             @id @default(autoincrement())
+  name                   String
+  year                   Int
+  businessKey            String          @map("business_key")
+  completenessDocs       Json?           @map("completeness_docs")
+  regionId               Int?            @map("region_id")
+  regionName             String?         @map("region_name")
+  progressId             Int?            @map("progress_id")
+  progressName           String?         @map("progress_name")
+  progressSemantic       AmountSemantic? @map("progress_semantic")
+  bizCategoryId          Int?            @map("biz_category_id")
+  bizCategoryName        String?         @map("biz_category_name")
+  partyA                 String?         @map("party_a")
+  generalContractor      String?         @map("general_contractor")
+  managementFee          String?         @map("management_fee")
+  subcontractors         String[]        @default([])
+  contractStartDate      DateTime?       @map("contract_start_date") @db.Date
+  contractEndDate        DateTime?       @map("contract_end_date") @db.Date
+  contractAmount         Decimal?        @map("contract_amount") @db.Decimal(18, 2)
+  paymentNode            String?         @map("payment_node")
+  tentativeAuditedAmount Decimal?        @map("tentative_audited_amount") @db.Decimal(18, 2)
+  settlement             Decimal?        @db.Decimal(18, 2)
+  miscExpense            Decimal?        @map("misc_expense") @db.Decimal(18, 2)
+  remark                 String?
+  dataRevision           Int             @default(0) @map("data_revision")
+  createdBy              Int?            @map("created_by")
+  createdAt              DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy              Int?            @map("updated_by")
+  updatedAt              DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedBy              Int?            @map("deleted_by")
+  deletedAt              DateTime?       @map("deleted_at") @db.Timestamptz(3)
 
   invoices            Invoice[]
   receipts            Receipt[]
@@ -111,10 +111,10 @@ model Invoice {
   project      Project   @relation(fields: [projectId], references: [id])
   projectId    Int       @map("project_id")
   amount       Decimal   @db.Decimal(18, 2)
-  occurredDate DateTime? @db.Date @map("occurred_date")
+  occurredDate DateTime? @map("occurred_date") @db.Date
   remark       String?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([projectId])
   @@map("invoices")
@@ -127,10 +127,10 @@ model Receipt {
   project      Project   @relation(fields: [projectId], references: [id])
   projectId    Int       @map("project_id")
   amount       Decimal   @db.Decimal(18, 2)
-  occurredDate DateTime? @db.Date @map("occurred_date")
+  occurredDate DateTime? @map("occurred_date") @db.Date
   remark       String?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([projectId])
   @@map("receipts")
@@ -143,10 +143,10 @@ model SubcontractPayment {
   project      Project   @relation(fields: [projectId], references: [id])
   projectId    Int       @map("project_id")
   amount       Decimal   @db.Decimal(18, 2)
-  occurredDate DateTime? @db.Date @map("occurred_date")
+  occurredDate DateTime? @map("occurred_date") @db.Date
   remark       String?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([projectId])
   @@map("subcontract_payments")
@@ -165,7 +165,7 @@ model ProjectOperation {
   field        String?
   before       Json?
   after        Json?
-  createdAt    DateTime      @default(now()) @map("created_at")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([projectId, createdAt])
   @@index([createdAt])
@@ -176,16 +176,16 @@ model ProjectOperation {
 /// F-6 finance_dict_items 财务字典（物理删除）
 /// CHECK（PROGRESS 类型必填 semantic）由迁移 SQL 补充。
 model FinanceDictItem {
-  id        Int              @id @default(autoincrement())
-  dictType  FinanceDictType  @map("dict_type")
+  id        Int             @id @default(autoincrement())
+  dictType  FinanceDictType @map("dict_type")
   name      String
   semantic  AmountSemantic?
-  sort      Int              @default(0)
-  status    DictStatus       @default(ACTIVE)
-  createdBy Int?             @map("created_by")
-  createdAt DateTime         @default(now()) @map("created_at")
-  updatedBy Int?             @map("updated_by")
-  updatedAt DateTime         @updatedAt @map("updated_at")
+  sort      Int             @default(0)
+  status    DictStatus      @default(ACTIVE)
+  createdBy Int?            @map("created_by")
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy Int?            @map("updated_by")
+  updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([dictType, name])
   @@map("finance_dict_items")
@@ -201,8 +201,8 @@ model FinanceSetting {
   valueType SettingValueType @map("value_type")
   label     String
   updatedBy Int?             @map("updated_by")
-  updatedAt DateTime         @updatedAt @map("updated_at")
-  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("finance_settings")
   @@schema("fin")
@@ -224,7 +224,7 @@ model OperationLog {
   requestFingerprint  String?   @map("request_fingerprint")
   resultReference     Json?     @map("result_reference")
   requestId           String?   @map("request_id")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([system, createdAt])
   @@index([operatorId, createdAt])
@@ -241,10 +241,9 @@ model UserTablePref {
   prefType  TablePrefType @map("pref_type")
   name      String?
   content   Json
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@index([userId, pageKey])
   @@map("user_table_prefs")
   @@schema("fin")
 }

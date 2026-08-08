@@ -248,16 +248,16 @@ enum TablePrefType {
 
 /// A-1 asset_categories 分类（物理删除；部分唯一索引由迁移 SQL 补充）
 model AssetCategory {
-  id        Int        @id @default(autoincrement())
+  id        Int            @id @default(autoincrement())
   parent    AssetCategory? @relation("CategoryTree", fields: [parentId], references: [id])
-  parentId  Int?       @map("parent_id")
+  parentId  Int?           @map("parent_id")
   name      String
-  sort      Int        @default(0)
-  status    DictStatus @default(ACTIVE)
-  createdBy Int?       @map("created_by")
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedBy Int?       @map("updated_by")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  sort      Int            @default(0)
+  status    DictStatus     @default(ACTIVE)
+  createdBy Int?           @map("created_by")
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy Int?           @map("updated_by")
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   children AssetCategory[] @relation("CategoryTree")
 
@@ -273,9 +273,9 @@ model AssetDictItem {
   sort      Int           @default(0)
   status    DictStatus    @default(ACTIVE)
   createdBy Int?          @map("created_by")
-  createdAt DateTime      @default(now()) @map("created_at")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy Int?          @map("updated_by")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([dictType, name])
   @@map("asset_dict_items")
@@ -288,33 +288,33 @@ model AssetDictItem {
 
 /// A-3 assets 固定资产台账（软删除）
 model Asset {
-  id                 Int           @id @default(autoincrement())
-  name               String
-  categoryId         Int?          @map("category_id")
-  categoryName       String?       @map("category_name")
-  specModel          String?       @map("spec_model")
-  amount             Decimal       @db.Decimal(18, 2)
-  purchaseAt         DateTime?     @db.Date @map("purchase_at")
-  usageStatus        AssetStatus   @default(IDLE) @map("usage_status")
-  ownership          AssetOwnership
-  ownerName          String?       @map("owner_name")
-  departmentId       Int?          @map("department_id")
-  departmentName     String?       @map("department_name")
-  responsibleUserId  Int?          @map("responsible_user_id")
-  responsibleUserName String?      @map("responsible_user_name")
-  currentUserId      Int?          @map("current_user_id")
-  currentUserName    String?       @map("current_user_name")
-  imageOssKey        String?       @map("image_oss_key")
-  remark             String?
-  createdBy          Int?          @map("created_by")
-  createdAt          DateTime      @default(now()) @map("created_at")
-  updatedBy          Int?          @map("updated_by")
-  updatedAt          DateTime      @updatedAt @map("updated_at")
-  deletedBy          Int?          @map("deleted_by")
-  deletedAt          DateTime?     @map("deleted_at")
+  id                  Int            @id @default(autoincrement())
+  name                String
+  categoryId          Int?           @map("category_id")
+  categoryName        String?        @map("category_name")
+  specModel           String?        @map("spec_model")
+  amount              Decimal        @db.Decimal(18, 2)
+  purchaseAt          DateTime?      @map("purchase_at") @db.Date
+  usageStatus         AssetStatus    @default(IDLE) @map("usage_status")
+  ownership           AssetOwnership
+  ownerName           String?        @map("owner_name")
+  departmentId        Int?           @map("department_id")
+  departmentName      String?        @map("department_name")
+  responsibleUserId   Int?           @map("responsible_user_id")
+  responsibleUserName String?        @map("responsible_user_name")
+  currentUserId       Int?           @map("current_user_id")
+  currentUserName     String?        @map("current_user_name")
+  imageOssKey         String?        @map("image_oss_key")
+  remark              String?
+  createdBy           Int?           @map("created_by")
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy           Int?           @map("updated_by")
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedBy           Int?           @map("deleted_by")
+  deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(3)
 
-  transfers   AssetTransfer[]
-  changes     AssetChange[]
+  transfers    AssetTransfer[]
+  changes      AssetChange[]
   repairOrders RepairOrder[]
 
   @@map("assets")
@@ -323,20 +323,20 @@ model Asset {
 
 /// A-4 asset_transfers 调度记录（只追加）
 model AssetTransfer {
-  id               Int      @id @default(autoincrement())
-  asset            Asset    @relation(fields: [assetId], references: [id])
-  assetId          Int      @map("asset_id")
-  fromDepartmentId Int?     @map("from_department_id")
-  fromDepartmentName String? @map("from_department_name")
-  toDepartmentId   Int?     @map("to_department_id")
-  toDepartmentName String?  @map("to_department_name")
-  fromUserId       Int?     @map("from_user_id")
-  fromUserName     String?  @map("from_user_name")
-  toUserId         Int?     @map("to_user_id")
-  toUserName       String?  @map("to_user_name")
-  operatorId       Int      @map("operator_id")
-  operatorName     String   @map("operator_name")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                 Int      @id @default(autoincrement())
+  asset              Asset    @relation(fields: [assetId], references: [id])
+  assetId            Int      @map("asset_id")
+  fromDepartmentId   Int?     @map("from_department_id")
+  fromDepartmentName String?  @map("from_department_name")
+  toDepartmentId     Int?     @map("to_department_id")
+  toDepartmentName   String?  @map("to_department_name")
+  fromUserId         Int?     @map("from_user_id")
+  fromUserName       String?  @map("from_user_name")
+  toUserId           Int?     @map("to_user_id")
+  toUserName         String?  @map("to_user_name")
+  operatorId         Int      @map("operator_id")
+  operatorName       String   @map("operator_name")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("asset_transfers")
   @@schema("asset")
@@ -351,7 +351,7 @@ model AssetChange {
   after        Json
   operatorId   Int      @map("operator_id")
   operatorName String   @map("operator_name")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("asset_changes")
   @@schema("asset")
@@ -359,23 +359,23 @@ model AssetChange {
 
 /// A-6 repair_orders 维修单（不删除；部分唯一索引由迁移 SQL 补充）
 model RepairOrder {
-  id              Int          @id @default(autoincrement())
-  asset           Asset        @relation(fields: [assetId], references: [id])
-  assetId         Int          @map("asset_id")
-  status          RepairStatus @default(PENDING)
-  version         Int          @default(1)
-  faultDescription String      @map("fault_description")
-  reportedAt      DateTime     @map("reported_at")
-  preStatus       AssetStatus  @map("pre_status")
-  startedAt       DateTime?    @map("started_at")
-  completedAt     DateTime?    @map("completed_at")
-  result          String?
-  actualCost      Decimal?     @db.Decimal(18, 2) @map("actual_cost")
-  postStatus      AssetStatus? @map("post_status")
-  createdBy       Int?         @map("created_by")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedBy       Int?         @map("updated_by")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+  id               Int          @id @default(autoincrement())
+  asset            Asset        @relation(fields: [assetId], references: [id])
+  assetId          Int          @map("asset_id")
+  status           RepairStatus @default(PENDING)
+  version          Int          @default(1)
+  faultDescription String       @map("fault_description")
+  reportedAt       DateTime     @map("reported_at") @db.Timestamptz(3)
+  preStatus        AssetStatus  @map("pre_status")
+  startedAt        DateTime?    @map("started_at") @db.Timestamptz(3)
+  completedAt      DateTime?    @map("completed_at") @db.Timestamptz(3)
+  result           String?
+  actualCost       Decimal?     @map("actual_cost") @db.Decimal(18, 2)
+  postStatus       AssetStatus? @map("post_status")
+  createdBy        Int?         @map("created_by")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy        Int?         @map("updated_by")
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   actions RepairOrderAction[]
 
@@ -385,15 +385,15 @@ model RepairOrder {
 
 /// A-7 repair_order_actions 维修状态流转（只追加）
 model RepairOrderAction {
-  id         Int          @id @default(autoincrement())
-  order      RepairOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId    Int          @map("order_id")
-  action     RepairAction
-  fromStatus RepairStatus @map("from_status")
-  toStatus   RepairStatus @map("to_status")
-  operatorId Int          @map("operator_id")
-  operatorName String     @map("operator_name")
-  createdAt  DateTime     @default(now()) @map("created_at")
+  id           Int          @id @default(autoincrement())
+  order        RepairOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId      Int          @map("order_id")
+  action       RepairAction
+  fromStatus   RepairStatus @map("from_status")
+  toStatus     RepairStatus @map("to_status")
+  operatorId   Int          @map("operator_id")
+  operatorName String       @map("operator_name")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("repair_order_actions")
   @@schema("asset")
@@ -405,26 +405,26 @@ model RepairOrderAction {
 
 /// A-8 consumables 品种（物理删除；CHECK 约束由迁移 SQL 补充）
 model Consumable {
-  id            Int            @id @default(autoincrement())
-  name          String         @unique
-  categoryId    Int?           @map("category_id")
-  categoryName  String?        @map("category_name")
-  unitId        Int?           @map("unit_id")
-  unitName      String         @map("unit_name")
-  type          ConsumableType
-  quotaCycle    QuotaCycle?    @map("quota_cycle")
-  quotaLimit    Int?           @map("quota_limit")
-  returnDays    Int?           @map("return_days")
-  maxHolding    Int?           @map("max_holding")
-  referencePrice Decimal?      @db.Decimal(18, 2) @map("reference_price")
-  safetyStock   Int            @default(0) @map("safety_stock")
-  imageOssKey   String?        @map("image_oss_key")
-  remark        String?
-  status        DictStatus     @default(ACTIVE)
-  createdBy     Int?           @map("created_by")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedBy     Int?           @map("updated_by")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+  id             Int            @id @default(autoincrement())
+  name           String         @unique
+  categoryId     Int?           @map("category_id")
+  categoryName   String?        @map("category_name")
+  unitId         Int?           @map("unit_id")
+  unitName       String         @map("unit_name")
+  type           ConsumableType
+  quotaCycle     QuotaCycle?    @map("quota_cycle")
+  quotaLimit     Int?           @map("quota_limit")
+  returnDays     Int?           @map("return_days")
+  maxHolding     Int?           @map("max_holding")
+  referencePrice Decimal?       @map("reference_price") @db.Decimal(18, 2)
+  safetyStock    Int            @default(0) @map("safety_stock")
+  imageOssKey    String?        @map("image_oss_key")
+  remark         String?
+  status         DictStatus     @default(ACTIVE)
+  createdBy      Int?           @map("created_by")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy      Int?           @map("updated_by")
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   inventoryItems InventoryItem[]
 
@@ -441,9 +441,9 @@ model Warehouse {
   sort      Int        @default(0)
   status    DictStatus @default(ACTIVE)
   createdBy Int?       @map("created_by")
-  createdAt DateTime   @default(now()) @map("created_at")
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy Int?       @map("updated_by")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   children Warehouse[] @relation("WarehouseTree")
 
@@ -453,17 +453,17 @@ model Warehouse {
 
 /// A-10 inventory_items 库存条目（CHECK 约束与部分唯一索引由迁移 SQL 补充）
 model InventoryItem {
-  id            Int      @id @default(autoincrement())
+  id            Int        @id @default(autoincrement())
   consumable    Consumable @relation(fields: [consumableId], references: [id])
-  consumableId  Int      @map("consumable_id")
+  consumableId  Int        @map("consumable_id")
   spec          String
-  warehouseId   Int?     @map("warehouse_id")
-  warehouseName String   @map("warehouse_name")
-  warehousePath String   @map("warehouse_path")
-  bookQty       Int      @default(0) @map("book_qty")
-  reservedQty   Int      @default(0) @map("reserved_qty")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  warehouseId   Int?       @map("warehouse_id")
+  warehouseName String     @map("warehouse_name")
+  warehousePath String     @map("warehouse_path")
+  bookQty       Int        @default(0) @map("book_qty")
+  reservedQty   Int        @default(0) @map("reserved_qty")
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("inventory_items")
   @@schema("asset")
@@ -471,25 +471,25 @@ model InventoryItem {
 
 /// A-11 batches 批次（CHECK 约束由迁移 SQL 补充）
 model Batch {
-  id              Int         @id @default(autoincrement())
-  inventoryItemId Int         @map("inventory_item_id")
-  sourceBatchId   Int?        @map("source_batch_id")
-  consumableId    Int         @map("consumable_id")
-  consumableName  String      @map("consumable_name")
+  id              Int      @id @default(autoincrement())
+  inventoryItemId Int      @map("inventory_item_id")
+  sourceBatchId   Int?     @map("source_batch_id")
+  consumableId    Int      @map("consumable_id")
+  consumableName  String   @map("consumable_name")
   spec            String
-  warehouseName   String      @map("warehouse_name")
-  warehousePath   String      @map("warehouse_path")
-  supplierId      Int?        @map("supplier_id")
-  supplierName    String?     @map("supplier_name")
-  brandId         Int?        @map("brand_id")
-  brandName       String?     @map("brand_name")
-  unitPrice       Decimal?    @db.Decimal(18, 2) @map("unit_price")
+  warehouseName   String   @map("warehouse_name")
+  warehousePath   String   @map("warehouse_path")
+  supplierId      Int?     @map("supplier_id")
+  supplierName    String?  @map("supplier_name")
+  brandId         Int?     @map("brand_id")
+  brandName       String?  @map("brand_name")
+  unitPrice       Decimal? @map("unit_price") @db.Decimal(18, 2)
   remark          String?
-  receivedAt      DateTime    @map("received_at")
-  remainingQty    Int         @default(0) @map("remaining_qty")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedBy       Int?        @map("updated_by")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  receivedAt      DateTime @map("received_at") @db.Timestamptz(3)
+  remainingQty    Int      @default(0) @map("remaining_qty")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy       Int?     @map("updated_by")
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   corrections BatchCorrection[]
 
@@ -509,7 +509,7 @@ model BatchCorrection {
   reason       String
   operatorId   Int      @map("operator_id")
   operatorName String   @map("operator_name")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("batch_corrections")
   @@schema("asset")
@@ -537,7 +537,7 @@ model StockFlow {
   refId           Int?          @map("ref_id")
   operatorId      Int           @map("operator_id")
   operatorName    String        @map("operator_name")
-  createdAt       DateTime      @default(now()) @map("created_at")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([inventoryItemId, createdAt])
   @@index([batchId])
@@ -559,7 +559,7 @@ model InventoryTransfer {
   remark              String?
   operatorId          Int      @map("operator_id")
   operatorName        String   @map("operator_name")
-  createdAt           DateTime @default(now()) @map("created_at")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   batchItems TransferBatchItem[]
 
@@ -569,12 +569,12 @@ model InventoryTransfer {
 
 /// A-15 transfer_batch_items 调拨批次分配明细（只追加；CHECK 约束由迁移 SQL 补充）
 model TransferBatchItem {
-  id             Int              @id @default(autoincrement())
-  transfer       InventoryTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  transferId     Int              @map("transfer_id")
-  sourceBatchId  Int              @map("source_batch_id")
-  targetBatchId  Int              @map("target_batch_id")
-  qty            Int
+  id            Int               @id @default(autoincrement())
+  transfer      InventoryTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  transferId    Int               @map("transfer_id")
+  sourceBatchId Int               @map("source_batch_id")
+  targetBatchId Int               @map("target_batch_id")
+  qty           Int
 
   @@map("transfer_batch_items")
   @@schema("asset")
@@ -586,29 +586,29 @@ model TransferBatchItem {
 
 /// A-16 approval_requests 审批头（通用契约 backstage.md §S-16；部分唯一索引由迁移 SQL 补充）
 model ApprovalRequest {
-  id                         Int                 @id @default(autoincrement())
-  applicationNo              String              @unique @map("application_no")
-  requestType                ApprovalRequestType @map("request_type")
-  applicantId                Int                 @map("applicant_id")
-  applicantName              String              @map("applicant_name")
-  applicantDepartmentSnapshot Json?              @map("applicant_department_snapshot")
-  proxyId                    Int?                @map("proxy_id")
-  proxyName                  String?             @map("proxy_name")
-  refRequestId               Int?                @map("ref_request_id")
-  status                     ApprovalStatus      @default(DRAFT)
-  version                    Int                 @default(1)
-  submittedAt                DateTime?           @map("submitted_at")
-  cancelledBy                Int?                @map("cancelled_by")
-  cancelledAt                DateTime?           @map("cancelled_at")
-  cancelSource               CancelSource?       @map("cancel_source")
-  processorId                Int?                @map("processor_id")
-  processorName              String?             @map("processor_name")
-  processedAt                DateTime?           @map("processed_at")
-  opinion                    String?
-  createdBy                  Int?                @map("created_by")
-  createdAt                  DateTime            @default(now()) @map("created_at")
-  updatedBy                  Int?                @map("updated_by")
-  updatedAt                  DateTime            @updatedAt @map("updated_at")
+  id                          Int                 @id @default(autoincrement())
+  applicationNo               String              @unique @map("application_no")
+  requestType                 ApprovalRequestType @map("request_type")
+  applicantId                 Int                 @map("applicant_id")
+  applicantName               String              @map("applicant_name")
+  applicantDepartmentSnapshot Json?               @map("applicant_department_snapshot")
+  proxyId                     Int?                @map("proxy_id")
+  proxyName                   String?             @map("proxy_name")
+  refRequestId                Int?                @map("ref_request_id")
+  status                      ApprovalStatus      @default(DRAFT)
+  version                     Int                 @default(1)
+  submittedAt                 DateTime?           @map("submitted_at") @db.Timestamptz(3)
+  cancelledBy                 Int?                @map("cancelled_by")
+  cancelledAt                 DateTime?           @map("cancelled_at") @db.Timestamptz(3)
+  cancelSource                CancelSource?       @map("cancel_source")
+  processorId                 Int?                @map("processor_id")
+  processorName               String?             @map("processor_name")
+  processedAt                 DateTime?           @map("processed_at") @db.Timestamptz(3)
+  opinion                     String?
+  createdBy                   Int?                @map("created_by")
+  createdAt                   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy                   Int?                @map("updated_by")
+  updatedAt                   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   actions                ApprovalActionRecord[]
   stockInItems           StockInItem[]
@@ -628,15 +628,15 @@ model ApprovalRequest {
 
 /// A-17 approval_actions 审批处理记录（只追加，backstage.md §S-17 同构）
 model ApprovalActionRecord {
-  id           Int            @id @default(autoincrement())
+  id           Int             @id @default(autoincrement())
   request      ApprovalRequest @relation(fields: [requestId], references: [id])
-  requestId    Int            @map("request_id")
+  requestId    Int             @map("request_id")
   action       ApprovalAction
-  actorId      Int            @map("actor_id")
-  actorName    String         @map("actor_name")
+  actorId      Int             @map("actor_id")
+  actorName    String          @map("actor_name")
   opinion      String?
-  cancelSource CancelSource?  @map("cancel_source")
-  createdAt    DateTime       @default(now()) @map("created_at")
+  cancelSource CancelSource?   @map("cancel_source")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([requestId, createdAt])
   @@map("approval_actions")
@@ -645,23 +645,23 @@ model ApprovalActionRecord {
 
 /// A-18 stock_in_items 入库申请明细（CHECK 约束由迁移 SQL 补充）
 model StockInItem {
-  id            Int         @id @default(autoincrement())
-  request       ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId     Int         @map("request_id")
-  consumableId  Int         @map("consumable_id")
-  consumableName String      @map("consumable_name")
-  supplierId    Int?        @map("supplier_id")
-  supplierName  String?     @map("supplier_name")
-  brandId       Int?        @map("brand_id")
-  brandName     String?     @map("brand_name")
-  spec          String
-  warehouseId   Int         @map("warehouse_id")
-  warehouseName String      @map("warehouse_name")
-  warehousePath String      @map("warehouse_path")
-  qty           Int
-  unitPrice     Decimal?    @db.Decimal(18, 2) @map("unit_price")
-  receivedAt    DateTime    @map("received_at")
-  createdAt     DateTime    @default(now()) @map("created_at")
+  id             Int             @id @default(autoincrement())
+  request        ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId      Int             @map("request_id")
+  consumableId   Int             @map("consumable_id")
+  consumableName String          @map("consumable_name")
+  supplierId     Int?            @map("supplier_id")
+  supplierName   String?         @map("supplier_name")
+  brandId        Int?            @map("brand_id")
+  brandName      String?         @map("brand_name")
+  spec           String
+  warehouseId    Int             @map("warehouse_id")
+  warehouseName  String          @map("warehouse_name")
+  warehousePath  String          @map("warehouse_path")
+  qty            Int
+  unitPrice      Decimal?        @map("unit_price") @db.Decimal(18, 2)
+  receivedAt     DateTime        @map("received_at") @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([requestId, consumableId, spec, warehouseId])
   @@map("stock_in_items")
@@ -670,20 +670,20 @@ model StockInItem {
 
 /// A-19 stock_change_items 库存变更申请明细（CHECK 约束由迁移 SQL 补充）
 model StockChangeItem {
-  id              Int         @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   request         ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId       Int         @map("request_id")
-  inventoryItemId Int         @map("inventory_item_id")
-  consumableName  String      @map("consumable_name")
+  requestId       Int             @map("request_id")
+  inventoryItemId Int             @map("inventory_item_id")
+  consumableName  String          @map("consumable_name")
   spec            String
-  warehouseName   String      @map("warehouse_name")
-  warehousePath   String      @map("warehouse_path")
-  changeTypeId    Int?        @map("change_type_id")
-  changeTypeName  String?     @map("change_type_name")
+  warehouseName   String          @map("warehouse_name")
+  warehousePath   String          @map("warehouse_path")
+  changeTypeId    Int?            @map("change_type_id")
+  changeTypeName  String?         @map("change_type_name")
   reason          String
   qty             Int
-  changedAt       DateTime    @map("changed_at")
-  createdAt       DateTime    @default(now()) @map("created_at")
+  changedAt       DateTime        @map("changed_at") @db.Timestamptz(3)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([requestId, inventoryItemId])
   @@map("stock_change_items")
@@ -692,17 +692,17 @@ model StockChangeItem {
 
 /// A-20 consumable_request_items 申领清单明细（普通 + 代交共享清单；CHECK 约束由迁移 SQL 补充）
 model ConsumableRequestItem {
-  id              Int         @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   request         ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId       Int         @map("request_id")
-  inventoryItemId Int         @map("inventory_item_id")
-  consumableName  String      @map("consumable_name")
+  requestId       Int             @map("request_id")
+  inventoryItemId Int             @map("inventory_item_id")
+  consumableName  String          @map("consumable_name")
   spec            String
-  warehouseName   String      @map("warehouse_name")
-  warehousePath   String      @map("warehouse_path")
+  warehouseName   String          @map("warehouse_name")
+  warehousePath   String          @map("warehouse_path")
   qty             Int
   purpose         String?
-  createdAt       DateTime    @default(now()) @map("created_at")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([requestId, inventoryItemId])
   @@map("consumable_request_items")
@@ -711,13 +711,13 @@ model ConsumableRequestItem {
 
 /// A-21 agent_recipients 代领受领人名单
 model AgentRecipient {
-  id                Int      @id @default(autoincrement())
-  request           ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId         Int      @map("request_id")
-  userId            Int      @map("user_id")
-  userName          String   @map("user_name")
-  departmentSnapshot Json    @map("department_snapshot")
-  createdAt         DateTime @default(now()) @map("created_at")
+  id                 Int             @id @default(autoincrement())
+  request            ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId          Int             @map("request_id")
+  userId             Int             @map("user_id")
+  userName           String          @map("user_name")
+  departmentSnapshot Json            @map("department_snapshot")
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([requestId, userId])
   @@map("agent_recipients")
@@ -736,7 +736,7 @@ model QuotaOccupation {
   requestId      Int         @map("request_id")
   qty            Int
   status         QuotaStatus @default(RESERVED)
-  createdAt      DateTime    @default(now()) @map("created_at")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([userId, consumableId, cycleKey])
   @@map("quota_occupations")
@@ -745,24 +745,24 @@ model QuotaOccupation {
 
 /// A-23 borrow_records 借还记录（个人 + 清单级代领；CHECK 约束由迁移 SQL 补充）
 model BorrowRecord {
-  id               Int         @id @default(autoincrement())
-  recordType       BorrowType  @map("record_type")
-  userId           Int?        @map("user_id")
-  userName         String?     @map("user_name")
-  departmentSnapshot Json?     @map("department_snapshot")
-  agentRequestId   Int?        @map("agent_request_id")
-  requestId        Int         @map("request_id")
-  inventoryItemId  Int         @map("inventory_item_id")
-  consumableName   String      @map("consumable_name")
-  spec             String
-  warehouseName    String      @map("warehouse_name")
-  warehousePath    String      @map("warehouse_path")
-  qty              Int
-  borrowedAt       DateTime    @map("borrowed_at")
-  dueAt            DateTime    @map("due_at")
-  returnedQty      Int         @default(0) @map("returned_qty")
-  writtenOffQty    Int         @default(0) @map("written_off_qty")
-  createdAt        DateTime    @default(now()) @map("created_at")
+  id                 Int        @id @default(autoincrement())
+  recordType         BorrowType @map("record_type")
+  userId             Int?       @map("user_id")
+  userName           String?    @map("user_name")
+  departmentSnapshot Json?      @map("department_snapshot")
+  agentRequestId     Int?       @map("agent_request_id")
+  requestId          Int        @map("request_id")
+  inventoryItemId    Int        @map("inventory_item_id")
+  consumableName     String     @map("consumable_name")
+  spec               String
+  warehouseName      String     @map("warehouse_name")
+  warehousePath      String     @map("warehouse_path")
+  qty                Int
+  borrowedAt         DateTime   @map("borrowed_at") @db.Timestamptz(3)
+  dueAt              DateTime   @map("due_at") @db.Timestamptz(3)
+  returnedQty        Int        @default(0) @map("returned_qty")
+  writtenOffQty      Int        @default(0) @map("written_off_qty")
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
 
   borrowActionItems    BorrowActionItem[]
   agentSettlementItems AgentSettlementItem[]
@@ -776,15 +776,15 @@ model BorrowRecord {
 
 /// A-24 borrow_action_items 归还/核销申请明细（CHECK 约束由迁移 SQL 补充）
 model BorrowActionItem {
-  id             Int          @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   request        ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId      Int          @map("request_id")
-  borrowRecord   BorrowRecord @relation(fields: [borrowRecordId], references: [id])
-  borrowRecordId Int          @map("borrow_record_id")
+  requestId      Int             @map("request_id")
+  borrowRecord   BorrowRecord    @relation(fields: [borrowRecordId], references: [id])
+  borrowRecordId Int             @map("borrow_record_id")
   qty            Int
-  writeOffType   WriteOffType? @map("write_off_type")
+  writeOffType   WriteOffType?   @map("write_off_type")
   reason         String?
-  createdAt      DateTime     @default(now()) @map("created_at")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([requestId, borrowRecordId])
   @@map("borrow_action_items")
@@ -793,16 +793,16 @@ model BorrowActionItem {
 
 /// A-25 agent_settlement_items 代领结清申请明细（CHECK 约束由迁移 SQL 补充）
 model AgentSettlementItem {
-  id             Int          @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   request        ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId      Int          @map("request_id")
-  borrowRecord   BorrowRecord @relation(fields: [borrowRecordId], references: [id])
-  borrowRecordId Int          @map("borrow_record_id")
+  requestId      Int             @map("request_id")
+  borrowRecord   BorrowRecord    @relation(fields: [borrowRecordId], references: [id])
+  borrowRecordId Int             @map("borrow_record_id")
   qty            Int
   method         SettleMethod
-  writeOffType   WriteOffType? @map("write_off_type")
+  writeOffType   WriteOffType?   @map("write_off_type")
   reason         String?
-  createdAt      DateTime     @default(now()) @map("created_at")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([requestId, borrowRecordId, method])
   @@map("agent_settlement_items")
@@ -811,25 +811,25 @@ model AgentSettlementItem {
 
 /// A-26 direct_disposal_records 注销员工借还直接处置记录（只追加）
 model DirectDisposalRecord {
-  id                Int           @id @default(autoincrement())
-  disposalType      DisposalType  @map("disposal_type")
-  borrowRecordId    Int?          @map("borrow_record_id")
-  agentRequestId    Int?          @map("agent_request_id")
-  userId            Int?          @map("user_id")
-  userName          String?       @map("user_name")
-  departmentSnapshot Json?        @map("department_snapshot")
-  inventoryItemId   Int           @map("inventory_item_id")
-  consumableName    String        @map("consumable_name")
-  spec              String
-  warehouseName     String        @map("warehouse_name")
-  warehousePath     String        @map("warehouse_path")
-  qty               Int
-  writeOffType      WriteOffType? @map("write_off_type")
-  reason            String?
-  processorId       Int           @map("processor_id")
-  processorName     String        @map("processor_name")
-  stockFlowRefs     Json?         @map("stock_flow_refs")
-  createdAt         DateTime      @default(now()) @map("created_at")
+  id                 Int           @id @default(autoincrement())
+  disposalType       DisposalType  @map("disposal_type")
+  borrowRecordId     Int?          @map("borrow_record_id")
+  agentRequestId     Int?          @map("agent_request_id")
+  userId             Int?          @map("user_id")
+  userName           String?       @map("user_name")
+  departmentSnapshot Json?         @map("department_snapshot")
+  inventoryItemId    Int           @map("inventory_item_id")
+  consumableName     String        @map("consumable_name")
+  spec               String
+  warehouseName      String        @map("warehouse_name")
+  warehousePath      String        @map("warehouse_path")
+  qty                Int
+  writeOffType       WriteOffType? @map("write_off_type")
+  reason             String?
+  processorId        Int           @map("processor_id")
+  processorName      String        @map("processor_name")
+  stockFlowRefs      Json?         @map("stock_flow_refs")
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("direct_disposal_records")
   @@schema("asset")
@@ -841,16 +841,16 @@ model DirectDisposalRecord {
 
 /// A-27 qr_codes 二维码（部分唯一索引由迁移 SQL 补充）
 model QrCode {
-  id         Int         @id @default(autoincrement())
-  publicId   String      @unique @map("public_id")
+  id         Int          @id @default(autoincrement())
+  publicId   String       @unique @map("public_id")
   targetType QrTargetType @map("target_type")
-  targetId   Int?        @map("target_id")
-  status     QrStatus    @default(ACTIVE)
-  revokedAt  DateTime?   @map("revoked_at")
-  createdBy  Int         @map("created_by")
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedBy  Int?        @map("updated_by")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
+  targetId   Int?         @map("target_id")
+  status     QrStatus     @default(ACTIVE)
+  revokedAt  DateTime?    @map("revoked_at") @db.Timestamptz(3)
+  createdBy  Int          @map("created_by")
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy  Int?         @map("updated_by")
+  updatedAt  DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("qr_codes")
   @@schema("asset")
@@ -868,8 +868,8 @@ model AssetSetting {
   valueType SettingValueType @map("value_type")
   label     String
   updatedBy Int?             @map("updated_by")
-  updatedAt DateTime         @updatedAt @map("updated_at")
-  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("asset_settings")
   @@schema("asset")
@@ -890,7 +890,7 @@ model AssetOperationLog {
   requestFingerprint  String?   @map("request_fingerprint")
   resultReference     Json?     @map("result_reference")
   requestId           String?   @map("request_id")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([system, createdAt])
   @@index([operatorId, createdAt])
@@ -906,10 +906,9 @@ model AssetUserTablePref {
   prefType  TablePrefType @map("pref_type")
   name      String?
   content   Json
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@index([userId, pageKey])
   @@map("user_table_prefs")
   @@schema("asset")
 }

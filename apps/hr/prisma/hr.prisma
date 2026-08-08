@@ -117,7 +117,7 @@ model OrgMeta {
   id             Int      @id @default(autoincrement())
   userOrgVersion Int      @default(0) @map("user_org_version")
   orgTreeVersion Int      @default(0) @map("org_tree_version")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("org_meta")
   @@schema("hr")
@@ -131,15 +131,15 @@ model Department {
   sort      Int        @default(0)
   status    DeptStatus @default(ACTIVE)
   createdBy Int?       @map("created_by")
-  createdAt DateTime   @default(now()) @map("created_at")
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy Int?       @map("updated_by")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  parent            Department?          @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children          Department[]         @relation("DepartmentTree")
-  departmentLeaders DepartmentLeader[]
+  parent              Department?          @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children            Department[]         @relation("DepartmentTree")
+  departmentLeaders   DepartmentLeader[]
   positionDepartments PositionDepartment[]
-  userDepartments   UserDepartment[]
+  userDepartments     UserDepartment[]
 
   @@index([parentId])
   @@map("departments")
@@ -153,7 +153,7 @@ model DepartmentLeader {
   userId       Int      @map("user_id")
   userName     String   @map("user_name")
   createdBy    Int      @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
@@ -171,9 +171,9 @@ model Position {
   sort           Int            @default(0)
   allowSelfApply Boolean        @default(false) @map("allow_self_apply")
   createdBy      Int?           @map("created_by")
-  createdAt      DateTime       @default(now()) @map("created_at")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy      Int?           @map("updated_by")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   positionDepartments PositionDepartment[]
   userPositions       UserPosition[]
@@ -188,7 +188,7 @@ model PositionDepartment {
   id           Int      @id @default(autoincrement())
   positionId   Int      @map("position_id")
   departmentId Int      @map("department_id")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   position   Position   @relation(fields: [positionId], references: [id], onDelete: Cascade)
   department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
@@ -208,11 +208,11 @@ model TitleRule {
   status        RuleStatus @default(ACTIVE)
   sort          Int        @default(0)
   createdBy     Int?       @map("created_by")
-  createdAt     DateTime   @default(now()) @map("created_at")
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy     Int?       @map("updated_by")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedBy     Int?       @map("deleted_by")
-  deletedAt     DateTime?  @map("deleted_at")
+  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(3)
 
   @@map("title_rules")
   @@schema("hr")
@@ -224,7 +224,7 @@ model UserDepartment {
   userId       Int      @map("user_id")
   departmentId Int      @map("department_id")
   createdBy    Int      @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
@@ -239,8 +239,8 @@ model UserPosition {
   userId     Int      @id @map("user_id")
   positionId Int?     @map("position_id")
   assignedBy Int      @map("assigned_by")
-  assignedAt DateTime @default(now()) @map("assigned_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   position Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
 
@@ -255,7 +255,7 @@ model OrgCompatRecord {
   restoreRequestId   String   @map("restore_request_id")
   clearedDepartments Json?    @map("cleared_departments")
   positionCleared    Boolean  @default(false) @map("position_cleared")
-  createdAt          DateTime @default(now()) @map("created_at")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("org_compat_records")
   @@schema("hr")
@@ -263,29 +263,29 @@ model OrgCompatRecord {
 
 /// H-10 approval_requests 审批头（hr，S-16 同构契约）
 model HrApprovalRequest {
-  id                          Int              @id @default(autoincrement())
-  applicationNo               String           @unique @map("application_no")
-  requestType                 HrRequestType    @map("request_type")
-  applicantId                 Int              @map("applicant_id")
-  applicantName               String           @map("applicant_name")
-  applicantDepartmentSnapshot Json?            @map("applicant_department_snapshot")
-  proxyId                     Int?             @map("proxy_id")
-  proxyName                   String?          @map("proxy_name")
-  refRequestId                Int?             @map("ref_request_id")
-  status                      ApprovalStatus   @default(DRAFT)
-  version                     Int              @default(1)
-  submittedAt                 DateTime?        @map("submitted_at")
-  cancelledBy                 Int?             @map("cancelled_by")
-  cancelledAt                 DateTime?        @map("cancelled_at")
-  cancelSource                CancelSource?    @map("cancel_source")
-  processorId                 Int?             @map("processor_id")
-  processorName               String?          @map("processor_name")
-  processedAt                 DateTime?        @map("processed_at")
+  id                          Int            @id @default(autoincrement())
+  applicationNo               String         @unique @map("application_no")
+  requestType                 HrRequestType  @map("request_type")
+  applicantId                 Int            @map("applicant_id")
+  applicantName               String         @map("applicant_name")
+  applicantDepartmentSnapshot Json?          @map("applicant_department_snapshot")
+  proxyId                     Int?           @map("proxy_id")
+  proxyName                   String?        @map("proxy_name")
+  refRequestId                Int?           @map("ref_request_id")
+  status                      ApprovalStatus @default(DRAFT)
+  version                     Int            @default(1)
+  submittedAt                 DateTime?      @map("submitted_at") @db.Timestamptz(3)
+  cancelledBy                 Int?           @map("cancelled_by")
+  cancelledAt                 DateTime?      @map("cancelled_at") @db.Timestamptz(3)
+  cancelSource                CancelSource?  @map("cancel_source")
+  processorId                 Int?           @map("processor_id")
+  processorName               String?        @map("processor_name")
+  processedAt                 DateTime?      @map("processed_at") @db.Timestamptz(3)
   opinion                     String?
-  createdBy                   Int?             @map("created_by")
-  createdAt                   DateTime         @default(now()) @map("created_at")
-  updatedBy                   Int?             @map("updated_by")
-  updatedAt                   DateTime         @updatedAt @map("updated_at")
+  createdBy                   Int?           @map("created_by")
+  createdAt                   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy                   Int?           @map("updated_by")
+  updatedAt                   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   actions               HrApprovalAction[]
   overtimeItems         OvertimeItem[]
@@ -301,14 +301,14 @@ model HrApprovalRequest {
 
 /// H-11 approval_actions 审批处理记录（只追加，S-17 同构契约）
 model HrApprovalAction {
-  id          Int            @id @default(autoincrement())
-  requestId   Int            @map("request_id")
-  action      ApprovalAction
-  actorId     Int            @map("actor_id")
-  actorName   String         @map("actor_name")
-  opinion     String?
-  cancelSource CancelSource? @map("cancel_source")
-  createdAt   DateTime       @default(now()) @map("created_at")
+  id           Int            @id @default(autoincrement())
+  requestId    Int            @map("request_id")
+  action       ApprovalAction
+  actorId      Int            @map("actor_id")
+  actorName    String         @map("actor_name")
+  opinion      String?
+  cancelSource CancelSource?  @map("cancel_source")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
   request HrApprovalRequest @relation(fields: [requestId], references: [id])
 
@@ -324,12 +324,12 @@ model OvertimeItem {
   userId             Int      @map("user_id")
   userName           String   @map("user_name")
   departmentSnapshot Json     @map("department_snapshot")
-  overtimeDate       DateTime @db.Date @map("overtime_date")
+  overtimeDate       DateTime @map("overtime_date") @db.Date
   startMinute        Int      @map("start_minute")
   endMinute          Int      @map("end_minute")
   reason             String
   holidaySnapshot    Json     @map("holiday_snapshot")
-  createdAt          DateTime @default(now()) @map("created_at")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   request HrApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
@@ -350,7 +350,7 @@ model PositionChangeRequest {
   targetDepartmentName String   @map("target_department_name")
   targetPositionId     Int      @map("target_position_id")
   targetPositionName   String   @map("target_position_name")
-  createdAt            DateTime @default(now()) @map("created_at")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   request HrApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
@@ -360,13 +360,13 @@ model PositionChangeRequest {
 
 /// H-14 holiday_results 节假日 API 结果
 model HolidayResult {
-  holidayDate DateTime        @id @db.Date @map("holiday_date")
+  holidayDate DateTime        @id @map("holiday_date") @db.Date
   dateType    HolidayDateType @map("date_type")
   weekday     Int
   providerId  String          @map("provider_id")
   rawDigest   String          @map("raw_digest")
   normalized  Json
-  fetchedAt   DateTime        @map("fetched_at")
+  fetchedAt   DateTime        @map("fetched_at") @db.Timestamptz(3)
 
   @@map("holiday_results")
   @@schema("hr")
@@ -380,8 +380,8 @@ model HrSetting {
   valueType SettingValueType @map("value_type")
   label     String
   updatedBy Int?             @map("updated_by")
-  updatedAt DateTime         @updatedAt @map("updated_at")
-  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("hr_settings")
   @@schema("hr")
@@ -395,9 +395,9 @@ model HrDict {
   sort      Int        @default(0)
   status    DictStatus @default(ACTIVE)
   createdBy Int?       @map("created_by")
-  createdAt DateTime   @default(now()) @map("created_at")
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy Int?       @map("updated_by")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([dictType, name])
   @@map("hr_dicts")
@@ -419,7 +419,7 @@ model HrOperationLog {
   requestFingerprint  String?   @map("request_fingerprint")
   resultReference     Json?     @map("result_reference")
   requestId           String?   @map("request_id")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([system, createdAt])
   @@index([operatorId, createdAt])
@@ -435,10 +435,9 @@ model HrUserTablePref {
   prefType  TablePrefType @map("pref_type")
   name      String?
   content   Json
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@index([userId, pageKey])
   @@map("user_table_prefs")
   @@schema("hr")
 }

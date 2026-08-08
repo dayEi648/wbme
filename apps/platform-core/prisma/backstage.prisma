@@ -175,8 +175,8 @@ model System {
   productStatus ProductStatus @default(COMING_SOON) @map("product_status")
   sort          Int           @default(0)
   updatedBy     Int?          @map("updated_by")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   sections  BusinessSection[]
   functions Function[]
@@ -187,16 +187,16 @@ model System {
 
 /// S-2 business_sections 业务板块
 model BusinessSection {
-  id          Int     @id @default(autoincrement())
-  system      System  @relation(fields: [systemId], references: [id])
-  systemId    Int     @map("system_id")
+  id          Int      @id @default(autoincrement())
+  system      System   @relation(fields: [systemId], references: [id])
+  systemId    Int      @map("system_id")
   code        String
   name        String
   description String?
-  sort        Int     @default(0)
-  updatedBy   Int?    @map("updated_by")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  sort        Int      @default(0)
+  updatedBy   Int?     @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   functions Function[]
 
@@ -207,19 +207,19 @@ model BusinessSection {
 
 /// S-3 functions 功能（启动对账新增/移除，移除=物理删除行）
 model Function {
-  id               Int      @id @default(autoincrement())
-  system           System   @relation(fields: [systemId], references: [id])
-  systemId         Int      @map("system_id")
+  id               Int             @id @default(autoincrement())
+  system           System          @relation(fields: [systemId], references: [id])
+  systemId         Int             @map("system_id")
   section          BusinessSection @relation(fields: [sectionId], references: [id])
-  sectionId        Int      @map("section_id")
-  code             String   @unique
+  sectionId        Int             @map("section_id")
+  code             String          @unique
   name             String
-  dataScopeOptions String[] @default([]) @map("data_scope_options")
-  sort             Int      @default(0)
+  dataScopeOptions String[]        @default([]) @map("data_scope_options")
+  sort             Int             @default(0)
   description      String?
-  updatedBy        Int?     @map("updated_by")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  createdAt        DateTime @default(now()) @map("created_at")
+  updatedBy        Int?            @map("updated_by")
+  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("functions")
   @@schema("backstage")
@@ -229,7 +229,7 @@ model Function {
 model PermissionCatalogMeta {
   id             Int      @id @default(autoincrement())
   catalogVersion Int      @default(0) @map("catalog_version")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("permission_catalog_meta")
   @@schema("backstage")
@@ -242,7 +242,7 @@ model EmployeeGrant {
   functionCode String    @map("function_code")
   dataScope    DataScope @map("data_scope")
   grantedBy    Int       @map("granted_by")
-  grantedAt    DateTime  @default(now()) @map("granted_at")
+  grantedAt    DateTime  @default(now()) @map("granted_at") @db.Timestamptz(3)
 
   @@unique([userId, functionCode, dataScope])
   @@map("employee_grants")
@@ -251,15 +251,15 @@ model EmployeeGrant {
 
 /// S-6 permission_groups 权限组（软删除）
 model PermissionGroup {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
   description String?
-  createdBy   Int?     @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedBy   Int?     @map("updated_by")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  deletedBy   Int?     @map("deleted_by")
-  deletedAt   DateTime? @map("deleted_at")
+  createdBy   Int?      @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy   Int?      @map("updated_by")
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedBy   Int?      @map("deleted_by")
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   items PermissionGroupItem[]
 
@@ -291,8 +291,8 @@ model SystemSetting {
   label     String
   sensitive Boolean          @default(false)
   updatedBy Int?             @map("updated_by")
-  updatedAt DateTime         @updatedAt @map("updated_at")
-  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("system_settings")
   @@schema("backstage")
@@ -307,18 +307,18 @@ model ErrorLog {
   errorCategory   String      @map("error_category")
   deployCommit    String      @map("deploy_commit")
   fingerprint     String
-  bucketStart     DateTime    @map("bucket_start")
-  firstSeenAt     DateTime    @map("first_seen_at")
-  lastSeenAt      DateTime    @map("last_seen_at")
+  bucketStart     DateTime    @map("bucket_start") @db.Timestamptz(3)
+  firstSeenAt     DateTime    @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt      DateTime    @map("last_seen_at") @db.Timestamptz(3)
   occurrenceCount Int         @default(1) @map("occurrence_count")
   firstRequestId  String?     @map("first_request_id")
   lastRequestId   String?     @map("last_request_id")
   sample          String?
   status          ErrorStatus @default(PENDING)
   handledBy       Int?        @map("handled_by")
-  handledAt       DateTime?   @map("handled_at")
+  handledAt       DateTime?   @map("handled_at") @db.Timestamptz(3)
   remark          String?
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([status, lastSeenAt])
   @@map("error_logs")
@@ -327,16 +327,16 @@ model ErrorLog {
 
 /// S-10 security_logs 安全日志（只追加）
 model SecurityLog {
-  id           Int              @id @default(autoincrement())
+  id           Int               @id @default(autoincrement())
   eventType    SecurityEventType @map("event_type")
-  actorId      Int?             @map("actor_id")
-  targetUserId Int?             @map("target_user_id")
+  actorId      Int?              @map("actor_id")
+  targetUserId Int?              @map("target_user_id")
   result       SecurityResult
   reason       String?
-  sourceIp     String?          @map("source_ip")
+  sourceIp     String?           @map("source_ip")
   context      Json?
-  requestId    String?          @map("request_id")
-  createdAt    DateTime         @default(now()) @map("created_at")
+  requestId    String?           @map("request_id")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("security_logs")
   @@schema("backstage")
@@ -344,24 +344,24 @@ model SecurityLog {
 
 /// S-11 background_tasks 统一后台任务事实表（只追加，兼作轻量 Outbox）
 model BackgroundTask {
-  id              Int               @id @default(autoincrement())
-  taskUuid        String            @unique @map("task_uuid")
-  taskType        String            @map("task_type")
-  module          String
-  initiatorId     Int?              @map("initiator_id")
-  initiatorType   TaskInitiatorType @map("initiator_type")
-  ref             Json?
-  status          TaskStatus        @default(PENDING_ENQUEUE)
-  progress        Int               @default(0)
-  startedAt       DateTime?         @map("started_at")
-  finishedAt      DateTime?         @map("finished_at")
-  attempts        Int               @default(0)
-  nextRetryAt     DateTime?         @map("next_retry_at")
-  timeoutAt       DateTime?         @map("timeout_at")
-  leaseOwner      String?           @map("lease_owner")
-  leaseExpiresAt  DateTime?         @map("lease_expires_at")
-  lastError       String?           @map("last_error")
-  createdAt       DateTime          @default(now()) @map("created_at")
+  id             Int               @id @default(autoincrement())
+  taskUuid       String            @unique @map("task_uuid") @db.Uuid
+  taskType       String            @map("task_type")
+  module         String
+  initiatorId    Int?              @map("initiator_id")
+  initiatorType  TaskInitiatorType @map("initiator_type")
+  ref            Json?
+  status         TaskStatus        @default(PENDING_ENQUEUE)
+  progress       Int               @default(0)
+  startedAt      DateTime?         @map("started_at") @db.Timestamptz(3)
+  finishedAt     DateTime?         @map("finished_at") @db.Timestamptz(3)
+  attempts       Int               @default(0)
+  nextRetryAt    DateTime?         @map("next_retry_at") @db.Timestamptz(3)
+  timeoutAt      DateTime?         @map("timeout_at") @db.Timestamptz(3)
+  leaseOwner     String?           @map("lease_owner")
+  leaseExpiresAt DateTime?         @map("lease_expires_at") @db.Timestamptz(3)
+  lastError      String?           @map("last_error")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([status, nextRetryAt])
   @@index([status, leaseExpiresAt])
@@ -376,7 +376,7 @@ model ReleaseLog {
   version        String
   commitSha      String   @map("commit_sha")
   commitSubjects Json?    @map("commit_subjects")
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("release_logs")
   @@schema("backstage")
@@ -388,14 +388,14 @@ model Announcement {
   title       String
   content     String?
   status      AnnouncementStatus @default(DRAFT)
-  publishedAt DateTime?          @map("published_at")
+  publishedAt DateTime?          @map("published_at") @db.Timestamptz(3)
   publisherId Int?               @map("publisher_id")
   createdBy   Int?               @map("created_by")
-  createdAt   DateTime           @default(now()) @map("created_at")
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy   Int?               @map("updated_by")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedBy   Int?               @map("deleted_by")
-  deletedAt   DateTime?          @map("deleted_at")
+  deletedAt   DateTime?          @map("deleted_at") @db.Timestamptz(3)
 
   @@index([status])
   @@map("announcements")
@@ -404,21 +404,24 @@ model Announcement {
 
 /// S-14 backups 备份记录（按保留天数物理清理）
 model Backup {
-  id            Int          @id @default(autoincrement())
-  taskUuid      String?      @unique @map("task_uuid")
-  taskType      BackupType   @map("task_type")
-  status        BackupStatus @default(RUNNING)
-  backupTime    DateTime     @map("backup_time")
-  pgVersion     String?      @map("pg_version")
-  fileSize      BigInt?      @map("file_size")
-  checksum      String?
-  ossObjectKey  String?      @map("oss_object_key")
-  ossManifestKey String?     @map("oss_manifest_key")
-  error         String?
-  startedAt     DateTime     @map("started_at")
-  finishedAt    DateTime?    @map("finished_at")
-  createdBy     Int?         @map("created_by")
-  createdAt     DateTime     @default(now()) @map("created_at")
+  id             Int          @id @default(autoincrement())
+  taskUuid       String?      @unique @map("task_uuid") @db.Uuid
+  taskType       BackupType   @map("task_type")
+  status         BackupStatus @default(RUNNING)
+  backupTime     DateTime     @map("backup_time") @db.Timestamptz(3)
+  pgVersion      String?      @map("pg_version")
+  fileSize       BigInt?      @map("file_size")
+  checksum       String?
+  ossObjectKey   String?      @map("oss_object_key")
+  ossManifestKey String?      @map("oss_manifest_key")
+  error          String?
+  startedAt      DateTime     @map("started_at") @db.Timestamptz(3)
+  finishedAt     DateTime?    @map("finished_at") @db.Timestamptz(3)
+  createdBy      Int?         @map("created_by")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  restoresByBackup    Restore[] @relation("backup_restore")
+  restoresByEmergency Restore[] @relation("emergency_backup_restore")
 
   @@map("backups")
   @@schema("backstage")
@@ -426,17 +429,19 @@ model Backup {
 
 /// S-15 restores 恢复记录（只追加）
 model Restore {
-  id               Int           @id @default(autoincrement())
-  restoreUuid      String        @unique @map("restore_uuid")
-  backupId         Int?          @map("backup_id")
-  emergencyBackupId Int?         @map("emergency_backup_id")
-  status           RestoreStatus @default(PENDING)
-  stage            String?
-  initiatedBy      Int           @map("initiated_by")
-  initiatedAt      DateTime      @map("initiated_at")
-  finishedAt       DateTime?     @map("finished_at")
-  error            String?
-  createdAt        DateTime      @default(now()) @map("created_at")
+  id                Int           @id @default(autoincrement())
+  restoreUuid       String        @unique @map("restore_uuid")
+  backup            Backup?       @relation("backup_restore", fields: [backupId], references: [id], onDelete: SetNull)
+  backupId          Int?          @map("backup_id")
+  emergencyBackup   Backup?       @relation("emergency_backup_restore", fields: [emergencyBackupId], references: [id], onDelete: SetNull)
+  emergencyBackupId Int?          @map("emergency_backup_id")
+  status            RestoreStatus @default(PENDING)
+  stage             String?
+  initiatedBy       Int           @map("initiated_by")
+  initiatedAt       DateTime      @map("initiated_at") @db.Timestamptz(3)
+  finishedAt        DateTime?     @map("finished_at") @db.Timestamptz(3)
+  error             String?
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("restores")
   @@schema("backstage")
@@ -444,31 +449,31 @@ model Restore {
 
 /// S-16 approval_requests 审批头（通用契约；request_type 各模块定义自身枚举）
 model ApprovalRequest {
-  id                         Int                @id @default(autoincrement())
-  applicationNo              String             @unique @map("application_no")
-  requestType                ApprovalRequestType @map("request_type")
-  applicantId                Int                @map("applicant_id")
-  applicantName              String             @map("applicant_name")
-  applicantDepartmentSnapshot Json?             @map("applicant_department_snapshot")
-  proxyId                    Int?               @map("proxy_id")
-  proxyName                  String?            @map("proxy_name")
-  refRequestId               Int?               @map("ref_request_id")
-  status                     ApprovalStatus     @default(DRAFT)
-  version                    Int                @default(1)
-  submittedAt                DateTime?          @map("submitted_at")
-  cancelledBy                Int?               @map("cancelled_by")
-  cancelledAt                DateTime?          @map("cancelled_at")
-  cancelSource               CancelSource?      @map("cancel_source")
-  processorId                Int?               @map("processor_id")
-  processorName              String?            @map("processor_name")
-  processedAt                DateTime?          @map("processed_at")
-  opinion                    String?
-  createdBy                  Int?               @map("created_by")
-  createdAt                  DateTime           @default(now()) @map("created_at")
-  updatedBy                  Int?               @map("updated_by")
-  updatedAt                  DateTime           @updatedAt @map("updated_at")
+  id                          Int                 @id @default(autoincrement())
+  applicationNo               String              @unique @map("application_no")
+  requestType                 ApprovalRequestType @map("request_type")
+  applicantId                 Int                 @map("applicant_id")
+  applicantName               String              @map("applicant_name")
+  applicantDepartmentSnapshot Json?               @map("applicant_department_snapshot")
+  proxyId                     Int?                @map("proxy_id")
+  proxyName                   String?             @map("proxy_name")
+  refRequestId                Int?                @map("ref_request_id")
+  status                      ApprovalStatus      @default(DRAFT)
+  version                     Int                 @default(1)
+  submittedAt                 DateTime?           @map("submitted_at") @db.Timestamptz(3)
+  cancelledBy                 Int?                @map("cancelled_by")
+  cancelledAt                 DateTime?           @map("cancelled_at") @db.Timestamptz(3)
+  cancelSource                CancelSource?       @map("cancel_source")
+  processorId                 Int?                @map("processor_id")
+  processorName               String?             @map("processor_name")
+  processedAt                 DateTime?           @map("processed_at") @db.Timestamptz(3)
+  opinion                     String?
+  createdBy                   Int?                @map("created_by")
+  createdAt                   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedBy                   Int?                @map("updated_by")
+  updatedAt                   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  actions            ApprovalActionRecord[]
+  actions              ApprovalActionRecord[]
   profileChangeRequest ProfileChangeRequest?
 
   @@index([status, submittedAt])
@@ -481,15 +486,15 @@ model ApprovalRequest {
 
 /// S-17 approval_actions 审批处理记录（只追加）
 model ApprovalActionRecord {
-  id          Int            @id @default(autoincrement())
-  request     ApprovalRequest @relation(fields: [requestId], references: [id])
-  requestId   Int            @map("request_id")
-  action      ApprovalAction
-  actorId     Int            @map("actor_id")
-  actorName   String         @map("actor_name")
-  opinion     String?
-  cancelSource CancelSource? @map("cancel_source")
-  createdAt   DateTime       @default(now()) @map("created_at")
+  id           Int             @id @default(autoincrement())
+  request      ApprovalRequest @relation(fields: [requestId], references: [id])
+  requestId    Int             @map("request_id")
+  action       ApprovalAction
+  actorId      Int             @map("actor_id")
+  actorName    String          @map("actor_name")
+  opinion      String?
+  cancelSource CancelSource?   @map("cancel_source")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([requestId, createdAt])
   @@map("approval_actions")
@@ -498,16 +503,16 @@ model ApprovalActionRecord {
 
 /// S-18 profile_change_requests 资料修改申请明细（1:1 审批头）
 model ProfileChangeRequest {
-  id                Int            @id @default(autoincrement())
-  request           ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId         Int            @unique @map("request_id")
-  userId            Int            @map("user_id")
-  userName          String         @map("user_name")
-  departmentSnapshot Json?         @map("department_snapshot")
-  oldName           String         @map("old_name")
-  newName           String         @map("new_name")
-  oldGender         Gender         @map("old_gender")
-  newGender         Gender         @map("new_gender")
+  id                 Int             @id @default(autoincrement())
+  request            ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId          Int             @unique @map("request_id")
+  userId             Int             @map("user_id")
+  userName           String          @map("user_name")
+  departmentSnapshot Json?           @map("department_snapshot")
+  oldName            String          @map("old_name")
+  newName            String          @map("new_name")
+  oldGender          Gender          @map("old_gender")
+  newGender          Gender          @map("new_gender")
 
   @@map("profile_change_requests")
   @@schema("backstage")
@@ -528,7 +533,7 @@ model BackstageOperationLog {
   requestFingerprint  String?   @map("request_fingerprint")
   resultReference     Json?     @map("result_reference")
   requestId           String?   @map("request_id")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([system, createdAt])
   @@index([operatorId, createdAt])

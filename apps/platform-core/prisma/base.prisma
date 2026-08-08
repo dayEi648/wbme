@@ -59,13 +59,13 @@ model User {
   permissionVersion Int        @default(0) @map("permission_version")
   lifecycleVersion  Int        @default(0) @map("lifecycle_version")
   restoredBy        Int?       @map("restored_by")
-  restoredAt        DateTime?  @map("restored_at")
+  restoredAt        DateTime?  @map("restored_at") @db.Timestamptz(3)
   createdBy         Int?       @map("created_by")
-  createdAt         DateTime   @default(now()) @map("created_at")
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy         Int?       @map("updated_by")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedBy         Int?       @map("deleted_by")
-  deletedAt         DateTime?  @map("deleted_at")
+  deletedAt         DateTime?  @map("deleted_at") @db.Timestamptz(3)
 
   activationInvitations ActivationInvitation[]
   dingtalkBindings      DingtalkBinding[]
@@ -83,11 +83,11 @@ model ActivationInvitation {
   userId    Int              @map("user_id")
   tokenHash String           @map("token_hash")
   status    InvitationStatus @default(VALID)
-  expiresAt DateTime         @map("expires_at")
-  usedAt    DateTime?        @map("used_at")
-  revokedAt DateTime?        @map("revoked_at")
+  expiresAt DateTime         @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime?        @map("used_at") @db.Timestamptz(3)
+  revokedAt DateTime?        @map("revoked_at") @db.Timestamptz(3)
   createdBy Int?             @map("created_by")
-  createdAt DateTime         @default(now()) @map("created_at")
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("activation_invitations")
   @@schema("base")
@@ -100,9 +100,9 @@ model DingtalkBinding {
   userId          Int           @map("user_id")
   dingtalkUnionId String        @unique @map("dingtalk_union_id")
   status          BindingStatus @default(BOUND)
-  unboundAt       DateTime?     @map("unbound_at")
+  unboundAt       DateTime?     @map("unbound_at") @db.Timestamptz(3)
   createdBy       Int?          @map("created_by")
-  createdAt       DateTime      @default(now()) @map("created_at")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("dingtalk_bindings")
   @@schema("base")
@@ -123,7 +123,7 @@ model OperationLog {
   requestFingerprint  String?   @map("request_fingerprint")
   resultReference     Json?     @map("result_reference")
   requestId           String?   @map("request_id")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([system, createdAt])
   @@index([operatorId, createdAt])
@@ -139,10 +139,9 @@ model UserTablePref {
   prefType  TablePrefType @map("pref_type")
   name      String?
   content   Json
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@index([userId, pageKey])
   @@map("user_table_prefs")
   @@schema("base")
 }

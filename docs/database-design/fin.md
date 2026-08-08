@@ -23,7 +23,7 @@
 | `party_a` | `text` | NULL | 甲方 |
 | `general_contractor` | `text` | NULL | 总包方 |
 | `management_fee` | `text` | NULL | 管理费（可能不为数字） |
-| `subcontractors` | `text[]` | NULL | 分包方（手输数组，可多项） |
+| `subcontractors` | `text[]` | NOT NULL，默认空数组 | 分包方（手输数组，可多项；Prisma 不支持可空标量数组，空数组语义等价于可空） |
 | `contract_start_date` | `date` | NULL | 合同开始日期 |
 | `contract_end_date` | `date` | NULL | 合同完工日期 |
 | `contract_amount` | `numeric(18,2)` | NULL | 合同金额 |

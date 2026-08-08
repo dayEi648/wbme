@@ -18,14 +18,25 @@ jobs:
     name: Lint / Typecheck / Test / Build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      # Redis 集成测试(启动探测/健康探针/命名空间)依赖真实 Redis
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # pnpm 版本以 package.json 的 packageManager 字段为唯一来源
+      # （与 action-setup 的 version 键同时存在会报 Multiple versions of pnpm specified）
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,6 +51,10 @@ jobs:
       - name: Generate Prisma clients
         run: pnpm prisma:generate
 
+      # 共享包先构建:typecheck/test 依赖各包的 dist(.d.ts),全新环境必须先出产物
+      - name: Build shared packages
+        run: pnpm build:packages
+
       - name: Lint
         run: pnpm lint
 
@@ -48,6 +63,9 @@ jobs:
 
       - name: Test
         run: pnpm test
+        env:
+          # Redis 集成测试(启动探测/健康探针/命名空间)依赖真实 Redis
+          REDIS_URL: redis://localhost:6379
 
       - name: Build
         run: pnpm build
