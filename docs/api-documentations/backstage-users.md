@@ -2,7 +2,7 @@
 
 > 统一前缀 `/api/v1`；错误结构、幂等键、分页遵循主 PRD §9.5。
 > 本文档随接口提交同步维护；文档与实现不一致视为任务未完成（实现规划通用任务约定）。
-> 批量注销/批量恢复与账号生命周期编排随 T3-5 后半迭代补充；本文已包含 hr 内部接口契约（供 T6-8 实现）。
+> 本文含批量注销/恢复（账号生命周期编排）与 hr 内部接口契约（供 T6-8 实现）。
 
 ## 通用约定
 
@@ -45,6 +45,46 @@
 - 成功：`{ ok: true }`；失败：`RESOURCE_NOT_FOUND`(404) / `ACCOUNT_DEACTIVATED`(422) /
   `SUPER_ADMIN_TARGET_ONLY`(403) / `VALIDATION_FAILED`(400 无实际变更) / `IDEMPOTENCY_KEY_REUSED`(409)
 - 操作日志：UPDATE（含变更前后姓名/性别）
+
+## U5 批量注销 `POST /users/deactivations/batch`
+
+- 入参：`{ userIds: number[]（≤100 且不重复）, idempotencyKey? }`（仅批量入口，无单个注销；二次确认由前端负责）
+- 前置校验（任一失败整批回滚、零写入，`USER_BATCH_BLOCKED` 422，`details.failures: [{ userId, code, message }]`）：
+  `TARGET_NOT_FOUND / TARGET_DEACTIVATED / SELF_MODIFICATION（不能注销自己）/ SUPER_ADMIN_TARGET / LAST_SUPER_ADMIN（批内含全部可用超管）`
+- 单一本地事务三件套（backstage PRD §3）：
+  ① base 注销：`status=DEACTIVATED` + 注销时间/操作人 + `session_version` 递增（全部会话下次请求即失效）
+    + `lifecycle_version` 递增 + 目标全部未使用邀请立即失效；
+  ② 取消该批用户全部待审批资料修改申请（账号资料型，`cancel_source=ACCOUNT_DEACTIVATED`；
+    加班/库存等业务型待审批记录不受影响，审批接口不得因申请人已注销拒绝处理）；
+  ③ 每名用户一条"账号生命周期处理"任务（`PENDING_ENQUEUE`，`task_uuid` 由稳定业务键
+    `ACCOUNT_LIFECYCLE:DEACTIVATED:{userId}:{lifecycleVersion}` 派生，ref 含 userId/deactivatedAt/lifecycleVersion；
+    hr 下线不阻塞注销，恢复后继续消费，T4-2/T6-8）。
+- 成功：`{ ok: true, userIds }`（幂等重放返回原结果，不重复建任务/日志）
+- 操作日志：DELETE；逐人明细 + 批次汇总（含幂等键）
+
+## U6 恢复预览 `POST /users/restorations/preview`
+
+- 入参：`{ userIds: number[]（≤100 且不重复） }`
+- 语义：实际调用 hr `restore-preview` 内部接口（就绪检查——hr 停止/未就绪/超时/无效响应 →
+  `HR_SERVICE_UNAVAILABLE` 503，零变更）；返回逐目标差异供确认页展示
+- 成功：`{ restoreRequestId: uuid, items: [{ userId, name, phoneMasked, lifecycleVersion, restoreStatus,
+  restorable, blockedReason?, revokedGrants: [{ functionCode, dataScope, name }], removedDepartmentNames?, positionCleared? }] }`
+  - `blockedReason`（本地侧）：`TARGET_NOT_FOUND / TARGET_NOT_DEACTIVATED / SUPER_ADMIN_TARGET / PHONE_OCCUPIED`
+    （手机号被其他待激活/正常账号占用，待占用解除后重试）；hr 侧原因码原样透传
+  - `revokedGrants`：恢复时将被移除的授权（目录未注册或数据范围失效）；`restoreStatus`：待激活恢复后仍待激活
+- 失败：`HR_SERVICE_UNAVAILABLE`(503) / `FORBIDDEN`(403)
+
+## U7 恢复确认 `POST /users/restorations/confirm`
+
+- 入参：`{ restoreRequestId: uuid（预览返回的稳定恢复请求 ID）, targets: [{ userId, lifecycleVersion }], idempotencyKey? }`
+- 两阶段安全顺序（backstage PRD §3）：本地预校验（存在/已注销/版本匹配/超管目标/手机号占用，
+  任一失败 `USER_BATCH_BLOCKED` 且不调 hr、零变更）→ **hr 整批幂等应用**（同 restoreRequestId 重试返回原结果；
+  hr 4xx 整批拒绝 → `CONFLICT` 409，请重新预览）→ 本地事务：行锁 + 逐目标版本条件复核
+  （漂移 → `CONFLICT`，hr 已成功时同 ID 重试完成本地恢复）→ 清除注销标记、写恢复人/时间、
+  `lifecycle_version`/`permission_version` 递增、权限兼容性清理（失效授权物理删除、明细入日志）。
+  不创建新账号、旧会话不恢复（用户需重新登录）
+- 成功：`{ ok: true, userIds }`（幂等重放返回原结果，不再调 hr）
+- 操作日志：UPDATE；逐人明细（含被移除授权）+ 批次汇总（含恢复请求 ID 引用）
 
 ## hr 内部接口契约（账号生命周期恢复，供 T6-8 实现；调用方 platform-core → hr）
 

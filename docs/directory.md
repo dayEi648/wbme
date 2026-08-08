@@ -22,7 +22,7 @@
 
 | 路径 | 用途 |
 | --- | --- |
-| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy；backstage 见 `src/modules/backstage/`：permission-catalog 权限目录启动对账、permission 员工授权 CRUD 与权限组（含授权校验基础：授权查询服务/函数权限守卫）、user-admin 用户管理（创建/列表/编辑，生命周期编排随后续迭代）） |
+| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy；backstage 见 `src/modules/backstage/`：permission-catalog 权限目录启动对账、permission 员工授权 CRUD 与权限组（含授权校验基础：授权查询服务/函数权限守卫）、user-admin 用户管理（CRUD/邀请/重置/解锁 + 批量注销/恢复与账号生命周期编排）） |
 | `apps/asset/` | 资产系统部署单元 |
 | `apps/hr/` | 人事系统部署单元 |
 | `apps/fin/` | 财务系统部署单元 |

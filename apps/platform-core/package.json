@@ -19,6 +19,7 @@
     "@node-rs/argon2": "^2.0.2",
     "@wbme/contracts": "workspace:*",
     "@wbme/server": "workspace:*",
+    "@wbme/tasks": "workspace:*",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "ioredis": "^6.0.0",

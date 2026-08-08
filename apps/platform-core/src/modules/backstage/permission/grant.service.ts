@@ -29,6 +29,7 @@ import {
   writeBackstageOperationLog,
   type OperationLogOperator,
 } from './operation-log.util';
+import { lockUserRowsForUpdate } from '../user-lock.util';
 import type { BatchGrantDto, BatchRevokeDto, SaveEmployeeGrantsDto, SearchEmployeesDto } from './permission.dto';
 
 /**
@@ -599,6 +600,6 @@ export class GrantService {
    * @param userIds 目标用户标识
    */
   private async lockUserRows(tx: Prisma.TransactionClient, userIds: readonly number[]): Promise<void> {
-    await tx.$queryRaw`SELECT id FROM base.users WHERE id = ANY(${[...userIds]}::int[]) ORDER BY id FOR UPDATE`;
+    return lockUserRowsForUpdate(tx, userIds);
   }
 }

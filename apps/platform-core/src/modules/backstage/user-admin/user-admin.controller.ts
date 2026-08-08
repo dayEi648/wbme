@@ -3,7 +3,8 @@ import { USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
 import { UserAdminService } from './user-admin.service';
-import { CreateUserDto, ListUsersDto, UpdateUserDto } from './user-admin.dto';
+import { UserLifecycleService } from './user-lifecycle.service';
+import { BatchDeactivateDto, CreateUserDto, ListUsersDto, RestoreConfirmDto, RestorePreviewDto, UpdateUserDto } from './user-admin.dto';
 
 /**
  * 用户管理（backstage PRD §3；实现规划 T3-5）。
@@ -16,7 +17,10 @@ import { CreateUserDto, ListUsersDto, UpdateUserDto } from './user-admin.dto';
 @UseGuards(FunctionPermissionGuard)
 @RequireFunction(USER_MANAGE_FUNCTION_CODE)
 export class UserAdminController {
-  constructor(private readonly users: UserAdminService) {}
+  constructor(
+    private readonly users: UserAdminService,
+    private readonly lifecycle: UserLifecycleService,
+  ) {}
 
   /** 创建用户（待激活基础账号；手机号在待激活与正常账号间唯一） */
   @Post()
@@ -44,5 +48,23 @@ export class UserAdminController {
     @Body() dto: UpdateUserDto,
   ): Promise<unknown> {
     return this.users.updateUser(operatorId, targetUserId, dto);
+  }
+
+  /** 批量注销（整批全有或全无；同事务：账号注销 + 待审批资料修改取消 + 生命周期任务） */
+  @Post('deactivations/batch')
+  batchDeactivate(@CurrentUser() operatorId: number, @Body() dto: BatchDeactivateDto): Promise<unknown> {
+    return this.lifecycle.batchDeactivate(operatorId, dto);
+  }
+
+  /** 恢复预览（实际调用 hr 内部接口；hr 不可用则 503 HR_SERVICE_UNAVAILABLE） */
+  @Post('restorations/preview')
+  previewRestore(@CurrentUser() operatorId: number, @Body() dto: RestorePreviewDto): Promise<unknown> {
+    return this.lifecycle.previewRestore(operatorId, dto);
+  }
+
+  /** 恢复确认（稳定恢复请求 ID + 生命周期版本；hr 整批应用成功后本地事务完成恢复） */
+  @Post('restorations/confirm')
+  confirmRestore(@CurrentUser() operatorId: number, @Body() dto: RestoreConfirmDto): Promise<unknown> {
+    return this.lifecycle.confirmRestore(operatorId, dto);
   }
 }
