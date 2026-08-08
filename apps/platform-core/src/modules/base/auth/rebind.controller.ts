@@ -66,12 +66,11 @@ export class RebindController {
       throw new BusinessException(accountErrors.BINDING_NOT_FOUND);
     }
     const flowId = await this.flows.issue('REBIND', { userId, verifiedFlags: ['OLD_IDENTITY_VERIFIED'] });
-    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure(), '/api/v1/auth/rebind'));
+    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
     await this.securityLog.record('BINDING_CHANGED_ISSUED', 'SUCCESS', { actorId: userId, sourceIp: req.ip ?? 'unknown' });
     res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
-    // 前端凭流程 Cookie 调 A4(purpose=REBIND) 获取钉钉授权 URL
-    const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
-    return { authorizeUrl: `${origin}/auth/dingtalk/authorize?purpose=REBIND` };
+    // 前端凭流程 Cookie 调 A4(purpose=REBIND) 获取钉钉授权 URL（同源相对路径，经 /api/v1 代理）
+    return { authorizeUrl: `/api/v1/auth/dingtalk/authorize?purpose=REBIND` };
   }
 
   /** M3 换绑凭证兑换（超管代发；兑换成功发 Path 限定换绑流程 Cookie） */
@@ -83,7 +82,7 @@ export class RebindController {
     const tokenHash = this.token.hash(dto.token);
     const result = await this.rebind.redeem(dto.token, tokenHash);
     const flowId = await this.flows.issue('REBIND', { userId: result.userId });
-    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure(), '/api/v1/auth/rebind'));
+    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
     return { user: { id: result.userId, name: result.name } };
   }
@@ -93,7 +92,7 @@ export class RebindController {
   @Post('confirm')
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'rebind-confirm', keyType: 'ip', limit: 10, windowSeconds: 60 })
-  async confirm(@Req() req: Request): Promise<{ ok: true }> {
+  async confirm(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<{ ok: true }> {
     const flowId = parseCookies(req.headers.cookie)[FLOW_COOKIE];
     if (!flowId) {
       throw new BusinessException(accountErrors.FLOW_SESSION_INVALID);
@@ -107,6 +106,8 @@ export class RebindController {
       { unionId: flow.unionId, mobile: flow.mobile ?? '', stateCode: flow.stateCode ?? '' },
       req.ip ?? 'unknown',
     );
+    // 流程会话已消费，清除一次性流程 Cookie（base PRD §7.3：确认成功后即删）
+    res.clearCookie(FLOW_COOKIE, { path: '/api/v1/auth' });
     return { ok: true };
   }
 }

@@ -1,4 +1,4 @@
-import type { DingtalkGateway, DingtalkOrgMember, DingtalkUserInfo } from './dingtalk.gateway';
+import { DingtalkNotMemberError, type DingtalkGateway, type DingtalkOrgMember, type DingtalkUserInfo } from './dingtalk.gateway';
 
 /**
  * 测试用 FakeDingtalkGateway：可编程 unionId/手机号/组织不匹配/超时。
@@ -11,6 +11,8 @@ export class FakeDingtalkGateway implements DingtalkGateway {
     member: DingtalkOrgMember;
     /** 授权码 → token 时抛"组织不匹配"（corpId 与部署配置不一致） */
     orgMismatch?: boolean;
+    /** 成员查询明确返回"非本组织成员"（DingtalkNotMemberError） */
+    notMember?: boolean;
     /** 模拟钉钉超时/不可用 */
     unavailable?: boolean;
   };
@@ -51,6 +53,9 @@ export class FakeDingtalkGateway implements DingtalkGateway {
   async getOrgMemberByUnionId(): Promise<DingtalkOrgMember> {
     if (this.behavior.unavailable) {
       throw new Error('fetch failed: ETIMEDOUT');
+    }
+    if (this.behavior.notMember) {
+      throw new DingtalkNotMemberError('钉钉成员查询返回非本组织成员');
     }
     return this.behavior.member;
   }

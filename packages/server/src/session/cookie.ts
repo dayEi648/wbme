@@ -30,15 +30,17 @@ export function csrfCookieOptions(secure: boolean): CookieOptions {
 }
 
 /**
- * 一次性流程 Cookie：Path 仅覆盖对应流程路由（如 /api/v1/auth/activation）。
- * 凭证只在兑换请求体出现一次，兑换成功后由流程 Cookie 承接后续步骤。
+ * 一次性流程 Cookie：Path 覆盖 /api/v1/auth 前缀。
+ * 钉钉授权发起/回调（/api/v1/auth/dingtalk/*）与各流程路由
+ * （/api/v1/auth/activation|registration|password/reset|rebind）统一可达；
+ * 流程标识在回调侧随一次性 state 携带（base PRD §2），Cookie 仅作流程持有凭证。
  */
-export function flowCookieOptions(secure: boolean, flowPathPrefix: string): CookieOptions {
+export function flowCookieOptions(secure: boolean): CookieOptions {
   return {
     httpOnly: true,
     secure,
     sameSite: 'lax',
-    path: flowPathPrefix,
+    path: '/api/v1/auth',
   };
 }
 

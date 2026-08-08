@@ -72,6 +72,8 @@ model User {
 
   @@index([phone])
   @@index([status, deletedAt])
+  // 手机号唯一仅限"待激活 + 正常"（注销手机号转为历史快照，docs/database-design/base.md B-1）
+  @@unique([phone], map: "users_phone_active_unique", where: raw("status IN ('PENDING_ACTIVATION', 'ACTIVE') AND deleted_at IS NULL"))
   @@map("users")
   @@schema("base")
 }
@@ -89,6 +91,8 @@ model ActivationInvitation {
   createdBy Int?             @map("created_by")
   createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  // 同一账号最多一个有效邀请（docs/database-design/base.md B-2）
+  @@unique([userId], map: "activation_invitations_user_valid_unique", where: raw("status = 'VALID'"))
   @@map("activation_invitations")
   @@schema("base")
 }
@@ -104,6 +108,8 @@ model DingtalkBinding {
   createdBy       Int?          @map("created_by")
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  // 一个账号同时最多一条有效绑定（docs/database-design/base.md B-3）
+  @@unique([userId], map: "dingtalk_bindings_user_bound_unique", where: raw("status = 'BOUND'"))
   @@map("dingtalk_bindings")
   @@schema("base")
 }

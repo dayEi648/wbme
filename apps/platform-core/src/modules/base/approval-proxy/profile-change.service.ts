@@ -131,6 +131,17 @@ export class ProfileChangeService {
           data: { name: detail.newName, gender: detail.newGender },
         });
       }
+      // 审批动作流水（S-17 approval_actions：审批记录作为审计信息保留，base PRD §6）
+      const processor = await tx.user.findUnique({ where: { id: processorId }, select: { name: true } });
+      await tx.approvalActionRecord.create({
+        data: {
+          requestId,
+          action,
+          actorId: processorId,
+          actorName: processor?.name ?? '',
+          opinion: opinion ?? null,
+        },
+      });
     });
   }
 }

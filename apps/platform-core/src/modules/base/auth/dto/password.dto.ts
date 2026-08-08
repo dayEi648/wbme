@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 import { IdempotentDto } from '@wbme/contracts';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../password.service';
 
@@ -14,11 +14,11 @@ export class ChangePasswordDto extends IdempotentDto {
   @MaxLength(PASSWORD_MAX_LENGTH)
   newPassword!: string;
 
-  @IsOptional()
+  /** 二次输入（base PRD §2：要求二次输入一致；后端强制，不依赖前端） */
   @IsString()
   @MinLength(PASSWORD_MIN_LENGTH)
   @MaxLength(PASSWORD_MAX_LENGTH)
-  confirmPassword?: string;
+  confirmPassword!: string;
 }
 
 /** A10 重置确认（重置流程 Cookie） */
@@ -28,11 +28,11 @@ export class ResetPasswordDto extends IdempotentDto {
   @MaxLength(PASSWORD_MAX_LENGTH)
   newPassword!: string;
 
-  @IsOptional()
+  /** 二次输入（base PRD §2：要求二次输入一致；后端强制，不依赖前端） */
   @IsString()
   @MinLength(PASSWORD_MIN_LENGTH)
   @MaxLength(PASSWORD_MAX_LENGTH)
-  confirmPassword?: string;
+  confirmPassword!: string;
 }
 
 /** A12 自助换绑发起（登录态：验证平台密码后进入钉钉授权） */

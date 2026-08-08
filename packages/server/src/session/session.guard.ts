@@ -3,7 +3,6 @@ import {
   ExecutionContext,
   Inject,
   Injectable,
-  UnauthorizedException,
   createParamDecorator,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -64,7 +63,8 @@ export class SessionGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const sessionId = request.cookies?.[SESSION_COOKIE] ?? this.readCookieHeader(request, SESSION_COOKIE);
     if (!sessionId) {
-      throw new UnauthorizedException();
+      // 无会话 Cookie 与"会话已失效"统一为 SESSION_EXPIRED（前端统一跳转登录，base PRD §3）
+      throw new BusinessException(frameworkErrors.SESSION_EXPIRED);
     }
 
     const data = await this.session.read(sessionId);

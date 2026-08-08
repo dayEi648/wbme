@@ -24,31 +24,31 @@
 ### A4 授权发起 `GET /auth/dingtalk/authorize?purpose=&returnTo=`
 公开（ACTIVATION/RESET/REBIND 需对应一次性流程 Cookie）。
 - purpose：`LOGIN` / `REGISTRATION` / `ACTIVATION` / `RESET` / `REBIND`
-- 成功：`{ authorizeUrl }`（服务端签名 URL，含一次性 state，TTL 5 分钟）
+- 成功：`{ authorizeUrl }`（服务端签名 URL，含一次性 state，TTL 5 分钟；流程类用途的流程标识随 state 携带，钉钉跳转与回调只带 state/nonce 与流程标识，base PRD §2）
 - 失败：`DINGTALK_CONFIG_MISSING`(503 未配置) / `FLOW_SESSION_INVALID`(422) / `RATE_LIMITED`(429)
 
 ### A5 钉钉回调 `GET /auth/dingtalk/callback?code=&state=`
 公开 GET（CSRF 由一次性 state 承担）。校验 state（取用即删）→ 授权码换 token → 组织校验（corpId 与部署配置一致 + 组织成员 active）→ 按 purpose 分流。
-- 成功：302 到前端（LOGIN 已绑定 → /portal 并下发会话 Cookie；未绑定 → /register；ACTIVATION/RESET/REBIND → 对应完成页）
-- 失败：302 到 `/login?error={code}`（`DINGTALK_ORG_MISMATCH` / `DINGTALK_STATE_INVALID` / `DINGTALK_ALREADY_BOUND` / `DEPENDENCY_UNAVAILABLE` 等）
-- 钉钉超时/不可用按依赖不可用处理，不得误报组织不匹配、不得跳过校验
+- 成功：302 到前端（LOGIN 已绑定 → /portal 并下发会话 Cookie；未绑定 → /register；ACTIVATION/RESET/REBIND → 对应完成页，流程标识由一次性 state 取出，回调路径无需携带流程 Cookie）
+- 失败：302 到 `/login?error={code}`（`DINGTALK_ORG_MISMATCH`（含钉钉明确返回"非本组织成员"） / `DINGTALK_STATE_INVALID` / `DINGTALK_ALREADY_BOUND` / `DEPENDENCY_UNAVAILABLE` 等）
+- 钉钉超时/5xx/网络错误按依赖不可用处理，不得误报组织不匹配、不得跳过校验；仅钉钉明确拒绝（成员查询 401/403/404 或未返回成员）才提示组织不匹配
 
 ## 激活与注册（auth/activation、auth/registration）
 
 ### A6 激活凭证兑换 `POST /auth/activation/redeem`
 公开 + 限流。入参 `{ token }`（URL fragment 凭证，仅此一次出现在请求体）。
-- 成功：`{ user: { id, name, phoneMasked } }` + `Set-Cookie: wbme_flow`（Path=/api/v1/auth/activation 一次性流程 Cookie，TTL 30 分钟）+ `wbme_csrf`
+- 成功：`{ user: { id, name, phoneMasked } }` + `Set-Cookie: wbme_flow`（Path=/api/v1/auth，覆盖钉钉授权/回调与激活流程，TTL 30 分钟）+ `wbme_csrf`
 - 失败：`INVITATION_INVALID`(422 无效/过期/已使用) / `ACCOUNT_ACTIVATED`(422 已激活) / `RATE_LIMITED`(429)
 
 ### A7 激活确认 `POST /auth/activation/confirm`
-激活流程 Cookie。入参 `{ name, gender, password, confirmPassword?, idempotencyKey? }`。
+激活流程 Cookie。入参 `{ name, gender, password, confirmPassword, idempotencyKey? }`（confirmPassword 必填且必须与 password 一致，后端强制）。
 - 单事务：绑钉钉（unionId 未绑定）+ 手机号改为钉钉返回（占用则拒绝）+ 写密码（Argon2id）+ ACTIVE + 邀请标记 USED
 - 成功：自动登录，同 A1 响应（会话 Cookie + CSRF Cookie）
 - 失败：`FLOW_SESSION_INVALID` / `PHONE_TAKEN` / `DINGTALK_ALREADY_BOUND` / `PHONE_MISSING_FROM_DINGTALK` / `RATE_LIMITED`
 - 安全事件：ACCOUNT_ACTIVATED / PHONE_SYNCED（脱敏前后值）
 
 ### A8 注册确认 `POST /auth/registration/confirm`
-注册流程 Cookie。入参同 A7。
+注册流程 Cookie。入参同 A7（confirmPassword 必填且必须与 password 一致）。
 - 单事务：创建账号（普通员工，ACTIVE）+ 绑钉钉 + 手机号 = 钉钉返回
 - 失败：`PENDING_ACCOUNT_EXISTS`(422 待激活基础账号占用) / `PHONE_TAKEN` / `DINGTALK_ALREADY_BOUND` / `FLOW_SESSION_INVALID`
 
@@ -58,18 +58,18 @@
 ## 密码（auth/password）
 
 ### A9 修改密码 `POST /auth/password/change`
-登录态。入参 `{ currentPassword, newPassword, confirmPassword?, idempotencyKey? }`。
+登录态。入参 `{ currentPassword, newPassword, confirmPassword, idempotencyKey? }`（confirmPassword 必填且必须与 newPassword 一致）。
 - 成功：`{ ok: true }`；session_version 递增 → 全部会话立即失效（重新登录）
 - 失败：`OLD_PASSWORD_INCORRECT`(401) / `INVALID_CREDENTIALS`(422 策略不符)
 - 安全事件：PASSWORD_CHANGED（成功/失败）
 
 ### 重置凭证兑换 `POST /auth/password/reset/redeem`
 公开 + 限流。入参 `{ token }`（M2 生成的 fragment 凭证）。
-- 成功：`{ user: { id, name } }` + `wbme_flow`（Path=/api/v1/auth/password/reset）+ `wbme_csrf`
+- 成功：`{ user: { id, name } }` + `wbme_flow`（Path=/api/v1/auth）+ `wbme_csrf`
 - 失败：`INVITATION_INVALID` / `USER_NOT_ACTIVE`(422)
 
 ### A10 重置确认 `POST /auth/password/reset/confirm`
-重置流程 Cookie。入参 `{ newPassword, confirmPassword?, idempotencyKey? }`。
+重置流程 Cookie。入参 `{ newPassword, confirmPassword, idempotencyKey? }`（confirmPassword 必填且必须与 newPassword 一致）。
 - 校验：钉钉 unionId 与账号现有绑定一致（不一致 → `DINGTALK_ORG_MISMATCH`）
 - 成功：新密码 + session_version 递增（全会话失效）+ 手机号按钉钉返回同步（占用则跳过）
 - 安全事件：PASSWORD_RESET_COMPLETED / PHONE_SYNCED / PHONE_SYNC_CONFLICT
@@ -78,7 +78,7 @@
 
 ### A12 自助换绑发起 `POST /auth/rebind/self-initiate`
 登录态。入参 `{ password, idempotencyKey? }`。验证平台密码 + 已有有效绑定。
-- 成功：`{ authorizeUrl }`（purpose=REBIND）+ `wbme_flow`（Path=/api/v1/auth/rebind）+ `wbme_csrf`
+- 成功：`{ authorizeUrl }`（同源相对路径 `/api/v1/auth/dingtalk/authorize?purpose=REBIND`，前端凭流程 Cookie 请求）+ `wbme_flow`（Path=/api/v1/auth）+ `wbme_csrf`
 - 失败：`OLD_PASSWORD_INCORRECT` / `BINDING_NOT_FOUND`(409 无绑定)
 
 ### 换绑凭证兑换 `POST /auth/rebind/redeem`

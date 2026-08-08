@@ -16,7 +16,7 @@ import type { Request, Response } from 'express';
 import { PrismaService } from '../../../prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { FlowSessionService } from '../auth/flows/flow-session.service';
-import { DINGTALK_GATEWAY, DingtalkUnavailableError, type DingtalkGateway } from './dingtalk.gateway';
+import { DINGTALK_GATEWAY, DingtalkNotMemberError, DingtalkUnavailableError, type DingtalkGateway } from './dingtalk.gateway';
 import { DingtalkGatewayImpl } from './dingtalk.gateway.impl';
 import { DINGTALK_PURPOSES, DingtalkStateService, type DingtalkPurpose } from './dingtalk.state.service';
 
@@ -30,9 +30,9 @@ function publicOrigin(): string {
   return process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
 }
 
-/** 钉钉回调地址（与开发者后台一致） */
+/** 钉钉回调地址（与开发者后台一致；须指向后端 /api/v1 路由，经前端/Nginx 代理转发） */
 function dingtalkRedirectUri(): string {
-  return process.env.DINGTALK_REDIRECT_URI ?? `${publicOrigin()}/auth/dingtalk/callback`;
+  return process.env.DINGTALK_REDIRECT_URI ?? `${publicOrigin()}/api/v1/auth/dingtalk/callback`;
 }
 
 /**
@@ -61,9 +61,12 @@ export class DingtalkController {
     @Req() req: Request,
   ): Promise<{ authorizeUrl: string }> {
     const purpose = this.resolvePurpose(purposeRaw);
-    // 流程类用途（激活/重置/换绑）必须持有对应的一次性流程 Cookie（兑换或发起时签发）
+    // 流程类用途（激活/重置/换绑）必须持有对应的一次性流程 Cookie（兑换或发起时签发）；
+    // 流程标识随一次性 state 交给钉钉回调（base PRD §2：回调只携带 state/nonce 和流程标识，
+    // 不依赖流程 Cookie 覆盖钉钉路径）
+    let flowId: string | undefined;
     if (purpose === 'ACTIVATION' || purpose === 'RESET' || purpose === 'REBIND') {
-      const flowId = this.readCookie(req, FLOW_COOKIE);
+      flowId = this.readCookie(req, FLOW_COOKIE);
       const flow = await this.flows.read(flowId ?? '', purpose);
       if (!flow) {
         throw new BusinessException(accountErrors.FLOW_SESSION_INVALID);
@@ -73,7 +76,7 @@ export class DingtalkController {
     if (!impl.isConfigured?.()) {
       throw new BusinessException(accountErrors.DINGTALK_CONFIG_MISSING);
     }
-    const state = await this.state.issue(purpose, returnTo);
+    const state = await this.state.issue(purpose, returnTo, flowId);
     return { authorizeUrl: this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
   }
 
@@ -123,8 +126,9 @@ export class DingtalkController {
         return;
       }
       if (purpose === 'ACTIVATION' || purpose === 'RESET' || purpose === 'REBIND') {
-        // 流程 Cookie 必须存在且用途匹配，回调后把钉钉身份（含手机号）写入流程会话
-        const flowId = this.readCookie(req, FLOW_COOKIE);
+        // 流程标识由一次性 state 携带（回调请求路径不在流程 Cookie 的 Path 范围内），
+        // 回调后把钉钉身份（含手机号）写入流程会话
+        const flowId = stateData.flowId;
         const flow = await this.flows.assert(flowId ?? '', purpose);
         await this.flows.update(flowId ?? '', { ...flow, unionId: info.unionId, mobile, stateCode });
         const target = purpose === 'ACTIVATION' ? '/activate/complete' : purpose === 'RESET' ? '/reset-password/complete' : '/rebind/complete';
@@ -135,6 +139,11 @@ export class DingtalkController {
     } catch (error) {
       if (error instanceof BusinessException) {
         this.redirect(res, `/login?error=${error.entry.code}`);
+        return;
+      }
+      // 钉钉明确确认非本组织成员：提示"当前钉钉账号不属于本公司组织"（base PRD §2）
+      if (error instanceof DingtalkNotMemberError) {
+        this.redirect(res, '/login?error=DINGTALK_ORG_MISMATCH');
         return;
       }
       if (error instanceof DingtalkUnavailableError) {
@@ -159,9 +168,9 @@ export class DingtalkController {
       this.redirect(res, '/portal');
       return;
     }
-    // 未绑定：手机号占用检查后进入扫码注册完善页
+    // 未绑定：手机号占用检查后进入扫码注册完善页（手机号取自本次钉钉授权结果，随流程会话保存）
     await this.ensureRegistrable(info.unionId, info.mobile, info.stateCode);
-    const flowId = await this.flows.issue('REGISTRATION', { unionId: info.unionId });
+    const flowId = await this.flows.issue('REGISTRATION', { unionId: info.unionId, mobile: info.mobile, stateCode: info.stateCode });
     this.setFlowCookie(res, 'REGISTRATION', flowId);
     this.redirect(res, '/register');
   }
@@ -194,12 +203,8 @@ export class DingtalkController {
     }
   }
 
-  private setFlowCookie(res: Response, purpose: string, flowId: string): void {
-    res.cookie(
-      FLOW_COOKIE,
-      flowId,
-      flowCookieOptions(cookieSecure(), `/api/v1/auth/${purpose === 'REGISTRATION' ? 'registration' : purpose.toLowerCase()}`),
-    );
+  private setFlowCookie(res: Response, _purpose: string, flowId: string): void {
+    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
   }
 
   private redirect(res: Response, path: string): void {

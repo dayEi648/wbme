@@ -4,13 +4,15 @@
 // multiSchema：base + backstage 两个 PostgreSQL schema，单一 Prisma Client、单一迁移序列；
 // 模型通过 @@schema 声明归属，平台核心内允许建立跨 base/backstage 的外键。
 //
-// 表设计中 PostgreSQL 专属能力（部分唯一索引、CHECK 约束）不在 Prisma schema 表达，
-// 由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
+// 表设计中的部分唯一索引（手机号唯一/单有效邀请/单有效绑定）已在模型 @@unique(where: ...)
+// 声明，防止未来 migrate diff 误删（partialIndexes preview 特性）；
+// CHECK 约束等其余 PostgreSQL 专属能力仍由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {

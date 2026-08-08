@@ -21,13 +21,28 @@ describe('资料修改审批（P3/X1）', () => {
   let service: ProfileChangeService;
   const createdIds: number[] = [];
 
+  /** 固定测试手机号段（清理用） */
+  const TEST_PHONES = ['+8613900000501', '+8613900000502', '+8613900000503'];
+
   beforeAll(async () => {
     prisma = new PrismaService();
     service = new ProfileChangeService(prisma);
+    // 幂等清理上次运行残留（固定测试手机号段；approval_actions 外键无级联需先行删除）
+    const leftovers = await prisma.client.user.findMany({
+      where: { phone: { in: TEST_PHONES } },
+      select: { id: true },
+    });
+    if (leftovers.length > 0) {
+      const ids = leftovers.map((u) => u.id);
+      await prisma.client.approvalActionRecord.deleteMany({ where: { request: { applicantId: { in: ids } } } });
+      await prisma.client.approvalRequest.deleteMany({ where: { applicantId: { in: ids } } });
+      await prisma.client.user.deleteMany({ where: { id: { in: ids } } });
+    }
   });
 
   afterAll(async () => {
-    // 清理审批头（明细级联删除）+ 用户
+    // 清理顺序：动作流水（外键无级联）→ 审批头（明细级联删除）→ 用户
+    await prisma.client.approvalActionRecord.deleteMany({ where: { request: { applicantId: { in: createdIds } } } });
     await prisma.client.approvalRequest.deleteMany({ where: { applicantId: { in: createdIds } } });
     await prisma.client.user.deleteMany({ where: { id: { in: createdIds } } });
     await prisma.client.$disconnect();

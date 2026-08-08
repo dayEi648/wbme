@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, accountErrors, frameworkErrors, maskPhone } from '@wbme/contracts';
 import { PrismaService } from '../../../prisma.service';
+import { Prisma } from '../../../generated/prisma/client';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import { SecurityLogService } from '../security-log/security-log.service';
 import { TokenService } from './token.service';
@@ -38,29 +39,31 @@ export class AdminInvitationService {
 
     const rawToken = this.token.generate();
     const validSeconds = await this.settings.getNumber(SETTING_KEYS.INVITATION_VALID_SECONDS);
-    await this.prisma.client.$transaction(async (tx) => {
-      // 重新生成：旧有效邀请立即失效（条件更新，部分唯一索引 (user_id) WHERE status='VALID' 并发安全）
-      await tx.activationInvitation.updateMany({
-        where: { userId: targetUserId, status: 'VALID' },
-        data: { status: 'REVOKED', revokedAt: new Date() },
-      });
-      await tx.activationInvitation.create({
-        data: {
-          userId: targetUserId,
-          tokenHash: this.token.hash(rawToken),
-          expiresAt: new Date(Date.now() + validSeconds * 1000),
-          createdBy: adminId,
-        },
-      });
-      // 操作日志（CREATE；管理员生成邀请）
-      await tx.operationLog.create({
-        data: {
-          operatorId: adminId,
-          system: 'BACKSTAGE',
-          feature: 'user_manage',
-          actionType: 'CREATE',
-          summary: `为待激活账号 ${maskPhone(user.phone)} 生成激活邀请`,
-        },
+    await this.withRetryOnDuplicate(async () => {
+      await this.prisma.client.$transaction(async (tx) => {
+        // 重新生成：旧有效邀请立即失效（条件更新，部分唯一索引 (user_id) WHERE status='VALID' 并发安全）
+        await tx.activationInvitation.updateMany({
+          where: { userId: targetUserId, status: 'VALID' },
+          data: { status: 'REVOKED', revokedAt: new Date() },
+        });
+        await tx.activationInvitation.create({
+          data: {
+            userId: targetUserId,
+            tokenHash: this.token.hash(rawToken),
+            expiresAt: new Date(Date.now() + validSeconds * 1000),
+            createdBy: adminId,
+          },
+        });
+        // 操作日志（CREATE；管理员生成邀请）
+        await tx.operationLog.create({
+          data: {
+            operatorId: adminId,
+            system: 'BACKSTAGE',
+            feature: 'user_manage',
+            actionType: 'CREATE',
+            summary: `为待激活账号 ${maskPhone(user.phone)} 生成激活邀请`,
+          },
+        });
       });
     });
 
@@ -114,23 +117,29 @@ export class AdminInvitationService {
     return { rebindUrl: await this.issueCredential(adminId, targetUserId, 'rebind') };
   }
 
-  /** 通用凭证签发（激活/重置/换绑共用 activation_invitations 表；同账号同时最多一个有效凭证） */
+  /**
+   * 通用凭证签发（激活/重置/换绑共用 activation_invitations 表；同账号同时最多一个有效凭证）。
+   * 并发重试：两个并发请求同时 updateMany 后都 create 时，后者撞部分唯一索引 P2002，
+   * 重试整个事务（重试时 updateMany 会把前者创建的 VALID 记录 REVOKE 掉）即可成功。
+   */
   private async issueCredential(adminId: number, targetUserId: number, fragmentPath: string): Promise<string> {
     const rawToken = this.token.generate();
     const validSeconds = await this.settings.getNumber(SETTING_KEYS.INVITATION_VALID_SECONDS);
-    await this.prisma.client.$transaction(async (tx) => {
-      // 重新生成：旧有效凭证立即失效（条件更新 + 部分唯一索引并发安全）
-      await tx.activationInvitation.updateMany({
-        where: { userId: targetUserId, status: 'VALID' },
-        data: { status: 'REVOKED', revokedAt: new Date() },
-      });
-      await tx.activationInvitation.create({
-        data: {
-          userId: targetUserId,
-          tokenHash: this.token.hash(rawToken),
-          expiresAt: new Date(Date.now() + validSeconds * 1000),
-          createdBy: adminId,
-        },
+    await this.withRetryOnDuplicate(async () => {
+      await this.prisma.client.$transaction(async (tx) => {
+        // 重新生成：旧有效凭证立即失效（条件更新 + 部分唯一索引并发安全）
+        await tx.activationInvitation.updateMany({
+          where: { userId: targetUserId, status: 'VALID' },
+          data: { status: 'REVOKED', revokedAt: new Date() },
+        });
+        await tx.activationInvitation.create({
+          data: {
+            userId: targetUserId,
+            tokenHash: this.token.hash(rawToken),
+            expiresAt: new Date(Date.now() + validSeconds * 1000),
+            createdBy: adminId,
+          },
+        });
       });
     });
     await this.securityLog.record('INVITATION_ISSUED', 'SUCCESS', { actorId: adminId, targetUserId });
@@ -142,5 +151,22 @@ export class AdminInvitationService {
   private activationUrl(rawToken: string): string {
     const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
     return `${origin}/activate#${rawToken}`;
+  }
+
+  /**
+   * 部分唯一索引并发冲突重试（P2002：同账号单有效凭证）。
+   * 重试次数有限（默认 2 次），仍冲突则原样上抛由调用方处理。
+   */
+  private async withRetryOnDuplicate<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      const isDuplicate =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+      if (isDuplicate && attempts > 1) {
+        return this.withRetryOnDuplicate(fn, attempts - 1);
+      }
+      throw error;
+    }
   }
 }

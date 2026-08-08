@@ -99,6 +99,10 @@ function buildMissingServices() {
   const missing = SERVICES.filter(
     (s) => s.cmd[0] === 'node' && !existsSync(resolve(root, 'apps', s.name, 'dist', 'main.js')),
   );
+  // Migration Runner 的 start 直接运行 dist/index.js，同样可能未构建
+  if (!existsSync(resolve(root, 'apps', 'migration-runner', 'dist', 'index.js'))) {
+    missing.push({ name: 'migration-runner' });
+  }
   if (missing.length === 0) {
     return;
   }

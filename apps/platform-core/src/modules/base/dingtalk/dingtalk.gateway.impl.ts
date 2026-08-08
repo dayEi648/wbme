@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DingtalkUnavailableError, type DingtalkGateway, type DingtalkOrgMember, type DingtalkUserInfo } from './dingtalk.gateway';
+import {
+  DingtalkNotMemberError,
+  DingtalkUnavailableError,
+  type DingtalkGateway,
+  type DingtalkOrgMember,
+  type DingtalkUserInfo,
+} from './dingtalk.gateway';
 
 /**
  * 钉钉官方 OAuth2 网页扫码登录实现（base PRD §2，2026-08 官方流程）。
@@ -103,10 +109,10 @@ export class DingtalkGatewayImpl implements DingtalkGateway {
       departmentIds?: number[];
     }>(`https://api.dingtalk.io/v1.0/contact/users/${encodeURIComponent(unionId)}`, {
       headers: { 'x-acs-dingtalk-access-token': appToken },
-    });
+    }, { notMemberStatuses: [401, 403, 404] });
     if (!member.unionId) {
       // 用户不属于本公司组织（接口按组织上下文查询，非本组织返回错误或空）
-      throw new DingtalkUnavailableError('钉钉组织成员查询未返回该成员');
+      throw new DingtalkNotMemberError('钉钉组织成员查询未返回该成员');
     }
     return {
       unionId: member.unionId,
@@ -137,19 +143,25 @@ export class DingtalkGatewayImpl implements DingtalkGateway {
     return body.accessToken;
   }
 
-  /** 统一请求：超时、错误响应与非预期结构均按"依赖不可用"处理 */
-  private async request<T>(url: string, init: RequestInit): Promise<T> {
+  /**
+   * 统一请求：超时、5xx 与网络错误按"依赖不可用"处理；
+   * 显式声明的业务性拒绝状态码（如成员查询的 401/403/404）按"非本组织成员"处理
+   * （base PRD §2：组织不匹配提示"不属于本公司组织"，不得误报依赖不可用）。
+   */
+  private async request<T>(url: string, init: RequestInit, opts: { notMemberStatuses?: number[] } = {}): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DingtalkGatewayImpl.REQUEST_TIMEOUT);
     try {
       const response = await fetch(url, { ...init, signal: controller.signal });
       if (!response.ok) {
-        // 403/404 等业务性拒绝同样视为不可用（组织校验语义由 corpId/active 承担）
+        if (opts.notMemberStatuses?.includes(response.status)) {
+          throw new DingtalkNotMemberError(`钉钉接口业务性拒绝（HTTP ${response.status}）`);
+        }
         throw new DingtalkUnavailableError(`钉钉接口响应异常（HTTP ${response.status}）`);
       }
       return (await response.json()) as T;
     } catch (error) {
-      if (error instanceof DingtalkUnavailableError) {
+      if (error instanceof DingtalkUnavailableError || error instanceof DingtalkNotMemberError) {
         throw error;
       }
       const aborted = error instanceof Error && error.name === 'AbortError';

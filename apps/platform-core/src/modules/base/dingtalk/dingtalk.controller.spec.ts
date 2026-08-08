@@ -110,7 +110,8 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
     expect(res.status).toBe(200);
     expect(res.body.authorizeUrl).toContain('login.dingtalk.io/oauth2/auth');
     expect(res.body.authorizeUrl).toContain('state=');
-    expect(res.body.authorizeUrl).toContain(`redirect_uri=${encodeURIComponent('http://localhost:5173/auth/dingtalk/callback')}`);
+    // 回调地址须指向后端 /api/v1 路由（经前端/Nginx 代理转发，base PRD §2）
+    expect(res.body.authorizeUrl).toContain(`redirect_uri=${encodeURIComponent('http://localhost:5173/api/v1/auth/dingtalk/callback')}`);
   });
 
   it('A4 流程类用途（ACTIVATION）缺少流程 Cookie 拒绝', async () => {
@@ -131,6 +132,7 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
 
   it('A5 state 重放：同一 state 第二次拒绝', async () => {
     await cleanStates();
+    authService.loginWithDingtalk = async () => null;
     gateway.behavior.orgMismatch = false;
     const state = await new DingtalkStateService(redis).issue('LOGIN');
     const first = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
@@ -138,6 +140,46 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
     expect(first.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/register`); // 未绑定 → 注册
     const second = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
     expect(second.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/login?error=DINGTALK_STATE_INVALID`);
+  });
+
+  it('A5 未绑定扫码注册：流程会话保留钉钉授权手机号（base PRD §2 手机号取自授权结果）', async () => {
+    await cleanStates();
+    authService.loginWithDingtalk = async () => null;
+    const state = await new DingtalkStateService(redis).issue('LOGIN');
+    const res = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/register`);
+    const cookies = String(res.headers['set-cookie'] ?? []);
+    const flowCookie = cookies.match(/wbme_flow=([^;]+)/);
+    expect(flowCookie).toBeTruthy();
+    const flow = await new FlowSessionService(redis).read(decodeURIComponent(flowCookie![1]!), 'REGISTRATION');
+    expect(flow?.mobile).toBe('13800138000');
+    expect(flow?.stateCode).toBe('86');
+    expect(flow?.unionId).toBe('fake-union-001');
+  });
+
+  it('A5 流程类回调：state 携带流程标识 → 302 完成页并写入钉钉身份（base PRD §2 state/nonce+流程标识）', async () => {
+    await cleanStates();
+    const flows = new FlowSessionService(redis);
+    const flowId = await flows.issue('ACTIVATION', { userId: 7 });
+    const state = await new DingtalkStateService(redis).issue('ACTIVATION', undefined, flowId);
+    const res = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/activate/complete`);
+    const flow = await flows.read(flowId, 'ACTIVATION');
+    expect(flow?.unionId).toBe('fake-union-001');
+    expect(flow?.mobile).toBe('13800138000');
+  });
+
+  it('A5 非本组织成员 → 302 DINGTALK_ORG_MISMATCH（不误报依赖不可用，base PRD §2）', async () => {
+    await cleanStates();
+    authService.loginWithDingtalk = async () => null;
+    gateway.behavior.notMember = true;
+    const state = await new DingtalkStateService(redis).issue('LOGIN');
+    const res = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/login?error=DINGTALK_ORG_MISMATCH`);
+    gateway.behavior.notMember = false;
   });
 
   it('A5 已绑定账号扫码 → 302 /portal 并下发会话 Cookie', async () => {

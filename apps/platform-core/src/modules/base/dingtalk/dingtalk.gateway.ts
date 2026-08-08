@@ -53,3 +53,15 @@ export class DingtalkUnavailableError extends Error {
     this.name = 'DingtalkUnavailableError';
   }
 }
+
+/**
+ * 网关异常：确认该钉钉账号不属于本公司组织（base PRD §2）。
+ * 仅当钉钉明确拒绝（如成员查询返回 403/404 或未返回成员）时抛出；
+ * 超时/5xx/网络错误仍走 DingtalkUnavailableError，不得误报为组织不匹配。
+ */
+export class DingtalkNotMemberError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = 'DingtalkNotMemberError';
+  }
+}

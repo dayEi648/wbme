@@ -76,6 +76,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Migration Runner 的 start 直接运行 dist 产物（build:packages 只构建 ./packages/**），
+      # 迁移步骤前必须先构建，否则 MODULE_NOT_FOUND 导致 CI 失败
+      - name: Build migration runner
+        run: pnpm --filter @wbme/migration-runner build
+
       # 在 CI PostgreSQL 上执行 4 套迁移序列与只读视图脚本（集成测试前置）
       - name: Run migrations on CI database
         run: pnpm --filter @wbme/migration-runner start

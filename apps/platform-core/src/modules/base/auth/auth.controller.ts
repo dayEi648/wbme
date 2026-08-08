@@ -28,12 +28,15 @@ function cookieSecure(): boolean {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  /** A1 手机号 + 密码登录（公开；IP 与手机号双维限流） */
+  /**
+   * A1 手机号 + 密码登录（公开；IP 限流）。
+   * 防爆破由登录保护承担：账号锁（按账号连续失败）+ IP 锁（按来源 IP 窗口累计），
+   * 参数全部读系统设置（base PRD §4）；此处仅做来源 IP 节流。
+   */
   @Public()
   @Post('login/password')
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'login', keyType: 'ip', limit: 20, windowSeconds: 60 })
-  @RateLimit({ scope: 'login', keyType: 'raw', key: 'phone', limit: 10, windowSeconds: 60 })
   async login(
     @Body() dto: LoginPasswordDto,
     @Req() req: Request,

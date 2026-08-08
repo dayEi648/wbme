@@ -46,9 +46,9 @@ export class ActivationController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<unknown> {
     const result = await this.activation.redeem(dto.token);
-    // 兑换成功 → 一次性流程 Cookie（Path 仅覆盖激活流程）+ CSRF Cookie（确认请求双提交）
+    // 兑换成功 → 一次性流程 Cookie（覆盖钉钉授权/回调与激活流程）+ CSRF Cookie（确认请求双提交）
     const flowId = await this.flows.issue('ACTIVATION', { userId: result.userId });
-    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure(), '/api/v1/auth/activation'));
+    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
     return { user: { id: result.userId, name: result.name, phoneMasked: result.phoneMasked } };
   }
@@ -62,7 +62,7 @@ export class ActivationController {
     @Res({ passthrough: true }) res: Response,
     @Body() dto: ConfirmProfileDto,
   ): Promise<unknown> {
-    if (dto.confirmPassword !== undefined && dto.confirmPassword !== dto.password) {
+    if (dto.confirmPassword !== dto.password) {
       throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
     }
     const flowId = this.readFlowCookie(req);
@@ -88,7 +88,7 @@ export class ActivationController {
     );
     res.cookie(SESSION_COOKIE, result.sessionId, sessionCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, result.csrfToken, csrfCookieOptions(cookieSecure()));
-    res.clearCookie(FLOW_COOKIE, { path: '/api/v1/auth/activation' });
+    res.clearCookie(FLOW_COOKIE, { path: '/api/v1/auth' });
     return { user: result.user, sessionExpiresAt: result.sessionExpiresAt };
   }
 

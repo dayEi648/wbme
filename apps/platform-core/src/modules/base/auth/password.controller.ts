@@ -49,7 +49,7 @@ export class PasswordController {
     @Body() dto: ChangePasswordDto,
     @Req() req: Request,
   ): Promise<{ ok: true }> {
-    if (dto.confirmPassword !== undefined && dto.confirmPassword !== dto.newPassword) {
+    if (dto.confirmPassword !== dto.newPassword) {
       throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
     }
     await this.auth.changePassword(userId, dto.currentPassword, dto.newPassword, req.ip ?? 'unknown');
@@ -65,7 +65,7 @@ export class PasswordController {
     const tokenHash = this.token.hash(dto.token);
     const result = await this.reset.redeem(dto.token, tokenHash);
     const flowId = await this.flows.issue('RESET', { userId: result.userId });
-    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure(), '/api/v1/auth/password/reset'));
+    res.cookie(FLOW_COOKIE, flowId, flowCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, this.csrf.issue(), csrfCookieOptions(cookieSecure()));
     return { user: { id: result.userId, name: result.name } };
   }
@@ -75,8 +75,12 @@ export class PasswordController {
   @Post('reset/confirm')
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'reset-confirm', keyType: 'ip', limit: 10, windowSeconds: 60 })
-  async resetConfirm(@Req() req: Request, @Body() dto: ResetPasswordDto): Promise<{ ok: true }> {
-    if (dto.confirmPassword !== undefined && dto.confirmPassword !== dto.newPassword) {
+  async resetConfirm(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() dto: ResetPasswordDto,
+  ): Promise<{ ok: true }> {
+    if (dto.confirmPassword !== dto.newPassword) {
       throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
     }
     const flowId = parseCookies(req.headers.cookie)[FLOW_COOKIE];
@@ -97,6 +101,8 @@ export class PasswordController {
       },
       req.ip ?? 'unknown',
     );
+    // 流程会话已消费，清除一次性流程 Cookie（base PRD §7.3：确认成功后即删）
+    res.clearCookie(FLOW_COOKIE, { path: '/api/v1/auth' });
     return { ok: true };
   }
 }

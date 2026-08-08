@@ -60,7 +60,7 @@ export class RegistrationController {
     @Res({ passthrough: true }) res: Response,
     @Body() dto: ConfirmProfileDto,
   ): Promise<unknown> {
-    if (dto.confirmPassword !== undefined && dto.confirmPassword !== dto.password) {
+    if (dto.confirmPassword !== dto.password) {
       throw new BusinessException(accountErrors.INVALID_CREDENTIALS);
     }
     const flowId = parseCookies(req.headers.cookie)[FLOW_COOKIE];
@@ -85,7 +85,7 @@ export class RegistrationController {
     );
     res.cookie(SESSION_COOKIE, result.sessionId, sessionCookieOptions(cookieSecure()));
     res.cookie(CSRF_COOKIE, result.csrfToken, csrfCookieOptions(cookieSecure()));
-    res.clearCookie(FLOW_COOKIE, { path: '/api/v1/auth/registration' });
+    res.clearCookie(FLOW_COOKIE, { path: '/api/v1/auth' });
     return { user: result.user, sessionExpiresAt: result.sessionExpiresAt };
   }
 }

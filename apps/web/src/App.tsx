@@ -7,6 +7,7 @@ import ResetPasswordPage, { ResetCompletePage } from './pages/reset-password/Res
 import RebindPage, { RebindCompletePage } from './pages/rebind/RebindPage';
 import PortalPage from './pages/portal/PortalPage';
 import MePage from './pages/me/MePage';
+import BuildingPage from './pages/building/BuildingPage';
 import { RequireAuth } from './request/session';
 
 /** 路由表（T9-3 认证与门户；业务系统页面随对应后端检查点推进） */
@@ -41,8 +42,8 @@ export default function App() {
         }
       />
 
-      {/* 默认落登录 */}
-      <Route path="*" element={<LoginPage />} />
+      {/* 未匹配路由：建设中占位（业务系统入口已可见但页面未上线；不再兜底到登录页） */}
+      <Route path="*" element={<BuildingPage />} />
     </Routes>
   );
 }
