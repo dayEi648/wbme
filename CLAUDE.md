@@ -15,6 +15,8 @@
     - Try frequently using websearch tool to obtain the latest information from internet, such as the latest features of a certain dependency.
     - You must use the appropriate SKILL to assist you in completing the task, even if a certain SKILL has only a 1% correlation with the current task.
     - The network environment is the Chinese mainland. This means that all package managers must use the domestic mirror registry.
+4. Git 操作纪律
+    - 执行 `git commit` 或 `git push` 之前，必须先征得用户明确同意，不得擅自提交或推送。
 
 ---
 
