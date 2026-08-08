@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PermissionModule } from '../../backstage/permission/permission.module';
 import { SettingsModule } from '../settings/settings.module';
 import { SecurityLogModule } from '../security-log/security-log.module';
 import { LoginProtectionModule } from '../login-protection/login-protection.module';
@@ -19,7 +20,7 @@ import { PasswordController } from './password.controller';
 
 /** base 认证模块（登录/登出/当前身份/激活/注册/邀请/改密/重置/解锁，T2-2~T2-5） */
 @Module({
-  imports: [SettingsModule, SecurityLogModule, LoginProtectionModule],
+  imports: [SettingsModule, SecurityLogModule, LoginProtectionModule, PermissionModule],
   providers: [
     PasswordService,
     TokenService,

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { BusinessException, frameworkErrors, PERMISSION_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
+import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { getRequestContext } from '@wbme/server';
 import { Prisma, type PrismaClient } from '../../../generated/prisma/client';
 
@@ -31,6 +31,26 @@ export interface IdempotentOutcome<T> {
 interface IdempotencyRecord {
   requestFingerprint: string | null;
   resultReference: Prisma.JsonValue;
+}
+
+/**
+ * 加载操作人上下文（操作日志快照 + 站点角色）。
+ * 守卫已保证账号存在且 ACTIVE，此处兜底并发删除/注销场景。
+ *
+ * @param prisma platform-core Prisma 客户端
+ * @param operatorId 操作人 id
+ * @returns 操作人上下文
+ * @throws UNAUTHORIZED 操作人不存在或已删除
+ */
+export async function loadOperationLogOperator(prisma: PrismaClient, operatorId: number): Promise<OperationLogOperator> {
+  const operator = await prisma.user.findUnique({
+    where: { id: operatorId },
+    select: { id: true, name: true, isSuperAdmin: true, deletedAt: true },
+  });
+  if (!operator || operator.deletedAt !== null) {
+    throw new BusinessException(frameworkErrors.UNAUTHORIZED);
+  }
+  return operator;
 }
 
 /**
@@ -66,12 +86,14 @@ export function fingerprintPayload(payload: unknown): string {
  * operator_departments 待 hr 组织视图接入后填充快照；requestId 取当前请求上下文。
  *
  * @param tx 事务客户端（与业务写入同事务，业务回滚日志同步回滚）
- * @param entry 日志内容；携带幂等字段时该行同时充当幂等记录
+ * @param entry 日志内容（feature = 目录中的功能编码）；携带幂等字段时该行同时充当幂等记录
  */
 export async function writeBackstageOperationLog(
   tx: Prisma.TransactionClient,
   entry: {
     operator: OperationLogOperator;
+    /** 功能编码（目录稳定编码，如 user_manage / permission_manage） */
+    feature: string;
     actionType: 'CREATE' | 'UPDATE' | 'DELETE';
     summary: string;
     idempotencyScope?: string;
@@ -85,7 +107,7 @@ export async function writeBackstageOperationLog(
       operatorId: entry.operator.id,
       operatorName: entry.operator.name,
       system: 'BACKSTAGE',
-      feature: PERMISSION_MANAGE_FUNCTION_CODE,
+      feature: entry.feature,
       actionType: entry.actionType,
       summary: entry.summary,
       idempotencyScope: entry.idempotencyScope ?? null,
@@ -120,48 +142,58 @@ function replayIdempotencyRecord<T>(record: IdempotencyRecord, fingerprint: stri
 }
 
 /**
- * 幂等执行：业务写入与日志单事务；携带幂等键时以日志唯一约束去重。
+ * 幂等预检查：查询「操作者 + 系统 + 幂等作用域 + 幂等键」记录并按指纹重放。
+ * 供跨服务两阶段写入（先查重放、再调下游、最后本地提交，backstage PRD §3 恢复顺序）使用；
+ * 单事务写操作直接用 executeIdempotentOperation 即可。
  *
- * @param prisma platform-core Prisma 客户端
- * @param options.operator 操作人上下文（日志快照）
- * @param options.scope 幂等作用域（如 `permission.grants.save`）
- * @param options.idempotencyKey 客户端幂等键（缺省则不记录幂等、直接执行）
- * @param options.fingerprint 规范化请求指纹（fingerprintPayload 产物）
- * @param options.run 业务写入：返回业务结果与日志内容；幂等日志行由本函数写入
- *   （批量场景的逐人明细日志由 run 内部另行写入，仅本行携带幂等键与结果引用）。
+ * @returns found=true 时为重放结果（同键不同指纹抛 IDEMPOTENCY_KEY_REUSED）；found=false 可继续执行
+ */
+export async function tryReplayIdempotentResult<T>(
+  prisma: PrismaClient,
+  options: { operatorId: number; scope: string; idempotencyKey: string; fingerprint: string },
+): Promise<{ found: true; result: T } | { found: false }> {
+  const existing = await findIdempotencyRecord(prisma, options.operatorId, options.scope, options.idempotencyKey);
+  if (!existing) {
+    return { found: false };
+  }
+  return { found: true, result: replayIdempotencyRecord<T>(existing, options.fingerprint) };
+}
+
+/**
+ * 幂等提交：业务写入与日志单事务（不做预检查；并发撞唯一约束时按指纹回放兜底）。
+ * 未携带幂等键时只写普通日志。
+ *
+ * @param options.run 业务写入：返回业务结果与日志内容；幂等日志行由本函数写入。
  *   约定：所有依赖数据库状态的校验（存在性、状态、版本等）必须放在 run 内执行——
- *   幂等预检查先于 run，同键重放直接返回首次结果，不因首次成功后数据变化而误判
- *   （主 PRD §9.5：同键重试返回原结果；校验失败回滚不留记录，修正后仍可重试）。
- * @returns 业务结果；同键同指纹返回首次执行的结果引用
+ *   重放先于 run 返回首次结果，不因首次成功后数据变化而误判（主 PRD §9.5）。
+ * @returns 业务结果
  * @throws IDEMPOTENCY_KEY_REUSED 同键不同指纹
  */
-export async function executeIdempotentOperation<T>(
+export async function commitIdempotentOperation<T>(
   prisma: PrismaClient,
   options: {
     operator: OperationLogOperator;
+    feature: string;
     scope: string;
     idempotencyKey?: string;
     fingerprint: string;
     run: (tx: Prisma.TransactionClient) => Promise<IdempotentOutcome<T>>;
   },
 ): Promise<T> {
-  const { operator, scope, idempotencyKey, fingerprint, run } = options;
+  const { operator, feature, scope, idempotencyKey, fingerprint, run } = options;
   if (!idempotencyKey) {
     return prisma.$transaction(async (tx) => {
       const outcome = await run(tx);
-      await writeBackstageOperationLog(tx, { operator, actionType: outcome.actionType, summary: outcome.summary });
+      await writeBackstageOperationLog(tx, { operator, feature, actionType: outcome.actionType, summary: outcome.summary });
       return outcome.result;
     });
-  }
-  const existing = await findIdempotencyRecord(prisma, operator.id, scope, idempotencyKey);
-  if (existing) {
-    return replayIdempotencyRecord<T>(existing, fingerprint);
   }
   try {
     return await prisma.$transaction(async (tx) => {
       const outcome = await run(tx);
       await writeBackstageOperationLog(tx, {
         operator,
+        feature,
         actionType: outcome.actionType,
         summary: outcome.summary,
         idempotencyScope: scope,
@@ -182,4 +214,46 @@ export async function executeIdempotentOperation<T>(
     }
     throw error;
   }
+}
+
+/**
+ * 幂等执行：业务写入与日志单事务；携带幂等键时以日志唯一约束去重。
+ *
+ * @param prisma platform-core Prisma 客户端
+ * @param options.operator 操作人上下文（日志快照）
+ * @param options.feature 功能编码（目录稳定编码）
+ * @param options.scope 幂等作用域（如 `permission.grants.save`）
+ * @param options.idempotencyKey 客户端幂等键（缺省则不记录幂等、直接执行）
+ * @param options.fingerprint 规范化请求指纹（fingerprintPayload 产物）
+ * @param options.run 业务写入：返回业务结果与日志内容；幂等日志行由本函数写入
+ *   （批量场景的逐人明细日志由 run 内部另行写入，仅本行携带幂等键与结果引用）。
+ *   约定：所有依赖数据库状态的校验（存在性、状态、版本等）必须放在 run 内执行——
+ *   幂等预检查先于 run，同键重放直接返回首次结果，不因首次成功后数据变化而误判
+ *   （主 PRD §9.5：同键重试返回原结果；校验失败回滚不留记录，修正后仍可重试）。
+ * @returns 业务结果；同键同指纹返回首次执行的结果引用
+ * @throws IDEMPOTENCY_KEY_REUSED 同键不同指纹
+ */
+export async function executeIdempotentOperation<T>(
+  prisma: PrismaClient,
+  options: {
+    operator: OperationLogOperator;
+    feature: string;
+    scope: string;
+    idempotencyKey?: string;
+    fingerprint: string;
+    run: (tx: Prisma.TransactionClient) => Promise<IdempotentOutcome<T>>;
+  },
+): Promise<T> {
+  if (options.idempotencyKey) {
+    const replayed = await tryReplayIdempotentResult<T>(prisma, {
+      operatorId: options.operator.id,
+      scope: options.scope,
+      idempotencyKey: options.idempotencyKey,
+      fingerprint: options.fingerprint,
+    });
+    if (replayed.found) {
+      return replayed.result;
+    }
+  }
+  return commitIdempotentOperation(prisma, options);
 }

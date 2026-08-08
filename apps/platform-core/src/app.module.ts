@@ -22,6 +22,7 @@ import { DingtalkModule } from './modules/base/dingtalk/dingtalk.module';
 import { PortalModule } from './modules/base/portal/portal.module';
 import { PermissionCatalogModule } from './modules/backstage/permission-catalog/permission-catalog.module';
 import { PermissionModule } from './modules/backstage/permission/permission.module';
+import { UserAdminModule } from './modules/backstage/user-admin/user-admin.module';
 
 /**
  * platform-core 根模块。
@@ -57,6 +58,7 @@ export class AppModule {
         PortalModule,
         PermissionCatalogModule,
         PermissionModule,
+        UserAdminModule,
       ],
       providers: [
         SessionIntegrityLoader,

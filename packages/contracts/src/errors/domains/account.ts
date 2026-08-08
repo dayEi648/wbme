@@ -162,6 +162,15 @@ export const accountErrors = {
     httpStatus: 409,
     message: '已有待审批的资料修改申请，请等待处理完成',
   },
+  /** 批量注销/恢复等用户整批操作：任一目标校验失败则整批回滚并逐人返回阻塞原因（backstage PRD §3、主 PRD §2.6） */
+  USER_BATCH_BLOCKED: {
+    code: 'USER_BATCH_BLOCKED',
+    type: 'BUSINESS',
+    domain: 'ACCOUNT',
+    httpStatus: 422,
+    message: '部分目标无法完成操作，整批未生效',
+    detailsFields: ['failures'],
+  },
   /** 自助重置不可用：账号不存在或未绑定钉钉（统一提示防手机号枚举，base PRD §2） */
   RESET_SELF_UNAVAILABLE: {
     code: 'RESET_SELF_UNAVAILABLE',

@@ -391,6 +391,12 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
  */
 export const PERMISSION_MANAGE_FUNCTION_CODE = 'permission_manage';
 
+/**
+ * "用户管理"功能编码（backstage PRD §1 用户板块）：用户创建/编辑/注销/恢复、
+ * 激活邀请、管理员发起密码重置、解锁账号、资料修改审批（backstage PRD §3/§5）。
+ */
+export const USER_MANAGE_FUNCTION_CODE = 'user_manage';
+
 /** 扁平化的目录功能条目：对账与守卫读取用（排序 = 各层数组下标） */
 export interface CatalogFunctionEntry {
   /** 所属系统编码 */

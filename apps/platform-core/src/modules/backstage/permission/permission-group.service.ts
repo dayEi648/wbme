@@ -1,11 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, frameworkErrors, PaginationQueryDto, permissionErrors } from '@wbme/contracts';
+import { BusinessException, frameworkErrors, PaginationQueryDto, PERMISSION_MANAGE_FUNCTION_CODE, permissionErrors } from '@wbme/contracts';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 import { grantLabel, loadCatalogMap, validateGrantItems, type FunctionMeta, type GrantItem } from './catalog-registry.util';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
+  loadOperationLogOperator,
   writeBackstageOperationLog,
   type OperationLogOperator,
 } from './operation-log.util';
@@ -156,6 +157,7 @@ export class PermissionGroupService {
     const fingerprint = fingerprintPayload({ name, description: dto.description, items: dto.items });
     return executeIdempotentOperation(this.prisma.client, {
       operator,
+      feature: PERMISSION_MANAGE_FUNCTION_CODE,
       scope: IDEMPOTENCY_SCOPE.GROUP_CREATE,
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
@@ -191,6 +193,7 @@ export class PermissionGroupService {
     const fingerprint = fingerprintPayload({ groupId, name, description: dto.description, items: dto.items });
     return executeIdempotentOperation(this.prisma.client, {
       operator,
+      feature: PERMISSION_MANAGE_FUNCTION_CODE,
       scope: IDEMPOTENCY_SCOPE.GROUP_UPDATE,
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
@@ -233,6 +236,7 @@ export class PermissionGroupService {
     const fingerprint = fingerprintPayload({ groupIds: dto.groupIds });
     return executeIdempotentOperation(this.prisma.client, {
       operator,
+      feature: PERMISSION_MANAGE_FUNCTION_CODE,
       scope: IDEMPOTENCY_SCOPE.GROUP_BATCH_DELETE,
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
@@ -259,6 +263,7 @@ export class PermissionGroupService {
         for (const groupId of [...dto.groupIds].sort((a, b) => a - b)) {
           await writeBackstageOperationLog(tx, {
             operator,
+            feature: PERMISSION_MANAGE_FUNCTION_CODE,
             actionType: 'DELETE',
             summary: `删除权限组「${names.get(groupId) ?? groupId}」（id=${groupId}）`,
           });
@@ -385,13 +390,6 @@ export class PermissionGroupService {
    * @throws UNAUTHORIZED 操作人不存在或已删除
    */
   private async loadOperator(operatorId: number): Promise<OperationLogOperator> {
-    const operator = await this.prisma.client.user.findUnique({
-      where: { id: operatorId },
-      select: { id: true, name: true, isSuperAdmin: true, deletedAt: true },
-    });
-    if (!operator || operator.deletedAt !== null) {
-      throw new BusinessException(frameworkErrors.UNAUTHORIZED);
-    }
-    return { id: operator.id, name: operator.name, isSuperAdmin: operator.isSuperAdmin };
+    return loadOperationLogOperator(this.prisma.client, operatorId);
   }
 }

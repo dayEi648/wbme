@@ -25,6 +25,7 @@ import {
 import {
   executeIdempotentOperation,
   fingerprintPayload,
+  loadOperationLogOperator,
   writeBackstageOperationLog,
   type OperationLogOperator,
 } from './operation-log.util';
@@ -241,6 +242,7 @@ export class GrantService {
     let elevated = false;
     const result = await executeIdempotentOperation(this.prisma.client, {
       operator,
+      feature: PERMISSION_MANAGE_FUNCTION_CODE,
       scope: IDEMPOTENCY_SCOPE.GRANTS_SAVE,
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
@@ -347,6 +349,7 @@ export class GrantService {
     const elevatedUserIds: number[] = [];
     const result = await executeIdempotentOperation(this.prisma.client, {
       operator,
+      feature: PERMISSION_MANAGE_FUNCTION_CODE,
       scope: IDEMPOTENCY_SCOPE.BATCH_GRANT,
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
@@ -389,6 +392,7 @@ export class GrantService {
           const added = additions.map((item) => grantLabel(catalog, item.functionCode, item.dataScope));
           await writeBackstageOperationLog(tx, {
             operator,
+            feature: PERMISSION_MANAGE_FUNCTION_CODE,
             actionType: 'CREATE',
             summary: `批量授权：为 ${target.name}（${maskPhone(target.phone)}）追加 [${added.join('、')}]`,
           });
@@ -435,6 +439,7 @@ export class GrantService {
     const fingerprint = fingerprintPayload({ userIds: dto.userIds });
     return executeIdempotentOperation(this.prisma.client, {
       operator,
+      feature: PERMISSION_MANAGE_FUNCTION_CODE,
       scope: IDEMPOTENCY_SCOPE.BATCH_REVOKE,
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
@@ -458,6 +463,7 @@ export class GrantService {
           const revoked = sortGrantRows(revocable, catalog).map((row) => grantLabel(catalog, row.functionCode, row.dataScope));
           await writeBackstageOperationLog(tx, {
             operator,
+            feature: PERMISSION_MANAGE_FUNCTION_CODE,
             actionType: 'DELETE',
             summary: `批量撤销：撤销 ${target.name}（${maskPhone(target.phone)}）的 [${revoked.join('、')}]`,
           });
@@ -519,14 +525,7 @@ export class GrantService {
    * @throws UNAUTHORIZED 操作人不存在或已删除
    */
   private async loadOperator(operatorId: number): Promise<OperationLogOperator> {
-    const operator = await this.prisma.client.user.findUnique({
-      where: { id: operatorId },
-      select: { id: true, name: true, isSuperAdmin: true, deletedAt: true },
-    });
-    if (!operator || operator.deletedAt !== null) {
-      throw new BusinessException(frameworkErrors.UNAUTHORIZED);
-    }
-    return { id: operator.id, name: operator.name, isSuperAdmin: operator.isSuperAdmin };
+    return loadOperationLogOperator(this.prisma.client, operatorId);
   }
 
   /**
