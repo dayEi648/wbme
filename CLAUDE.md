@@ -111,3 +111,9 @@ Access project resources on demand according to the current task:
 
 ## 4. Project Constraints
 
+### 4.1 Local dev dependencies (local services, no Docker)
+
+- **PostgreSQL 18**: Running as a system service (listening on 5432). Dev database `wbme-dev` (connection string in root `.env` → `DATABASE_URL`).
+- **Redis**: running as a Homebrew service (`brew services list` shows `redis started`), listening on 6379.
+- To check availability, connect directly using the `.env` connection string (`psql ... -c "SELECT 1"`, `redis-cli ping`) instead of relying on `which` / `brew list`.
+
