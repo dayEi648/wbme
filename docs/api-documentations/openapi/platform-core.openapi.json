@@ -498,6 +498,19 @@
         ],
         "type": "object"
       },
+      "FinalizeImageDto": {
+        "properties": {
+          "pendingObjectKey": {
+            "description": "客户端已上传的临时对象键（必须属于当前用户）",
+            "maxLength": 512,
+            "type": "string"
+          }
+        },
+        "required": [
+          "pendingObjectKey"
+        ],
+        "type": "object"
+      },
       "GrantItemDto": {
         "properties": {
           "dataScope": {
@@ -592,6 +605,16 @@
           "targetDepartmentId",
           "targetPositionId"
         ],
+        "type": "object"
+      },
+      "PresignImageDto": {
+        "properties": {
+          "originalFilename": {
+            "description": "原始文件名（仅用于扩展名提示；服务端不信任其内容）",
+            "maxLength": 255,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ProcessApprovalDto": {
@@ -1872,6 +1895,103 @@
         },
         "tags": [
           "数据备份"
+        ]
+      }
+    },
+    "/api/v1/files/images/download": {
+      "get": {
+        "operationId": "ImagesController_downloadUrl",
+        "parameters": [
+          {
+            "description": "正式图片对象键（images/ 前缀；拒绝备份等其它前缀）",
+            "in": "query",
+            "name": "objectKey",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "正式图片对象限时下载 URL（预签名 GET）",
+        "tags": [
+          "文件存储"
+        ]
+      }
+    },
+    "/api/v1/files/images/finalize": {
+      "post": {
+        "operationId": "ImagesController_finalizeUpload",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeImageDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "校验并重编码图片为正式对象（仅限本人临时对象）",
+        "tags": [
+          "文件存储"
+        ]
+      }
+    },
+    "/api/v1/files/images/presign": {
+      "post": {
+        "operationId": "ImagesController_presignUpload",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignImageDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "生成图片上传预签名 URL（客户端直传临时对象）",
+        "tags": [
+          "文件存储"
         ]
       }
     },

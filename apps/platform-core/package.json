@@ -22,6 +22,7 @@
     "@node-rs/argon2": "^2.0.2",
     "@wbme/approval": "workspace:*",
     "@wbme/contracts": "workspace:*",
+    "@wbme/files": "workspace:*",
     "@wbme/logging": "workspace:*",
     "@wbme/server": "workspace:*",
     "@wbme/tasks": "workspace:*",

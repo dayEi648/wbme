@@ -35,6 +35,7 @@ import { ContentModule } from './modules/backstage/content/content.module';
 import { BackupModule } from './modules/backstage/backup/backup.module';
 import { HealthStatusModule } from './modules/backstage/health-status/health-status.module';
 import { TablePrefsModule } from './modules/base/table-prefs/table-prefs.module';
+import { FilesModule } from './modules/files/files.module';
 
 /**
  * platform-core 根模块。
@@ -79,6 +80,7 @@ export class AppModule {
         BackupModule,
         HealthStatusModule,
         TablePrefsModule,
+        FilesModule,
       ],
       providers: [
         SessionIntegrityLoader,

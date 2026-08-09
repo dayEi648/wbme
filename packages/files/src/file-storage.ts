@@ -25,6 +25,15 @@ export interface FinalizeImageResult {
   size: number;
 }
 
+/** 预签名下载结果 */
+export interface PresignDownloadResult {
+  objectKey: string;
+  downloadUrl: string;
+  expiresAt: string;
+  /** 开发环境本地直读提示 */
+  localPath?: string;
+}
+
 /** 备份最小清单元数据（backstage PRD §10：清单须含类型/完成时间/库版本/大小/对象标识/SHA-256 校验和） */
 export interface BackupManifestMeta {
   /** 备份类型（写入清单；整库恢复后按此补回目录记录） */
@@ -84,6 +93,37 @@ export class FileStorageService {
       await this.deleteObject(pendingObjectKey).catch(() => undefined);
     }
     return { objectKey: targetKey, mime, size: buffer.length };
+  }
+
+  /**
+   * 为正式图片对象生成限时预签名 GET URL（主 PRD §9.2：私有正式对象限时下载）。
+   * 临时原对象（未 finalize）与备份前缀（backups/）对象不得经此通道暴露。
+   *
+   * @param objectKey 图片对象键（images/ 前缀）
+   * @param expiresSeconds 有效期秒数（缺省 IMAGE_PRESIGN_EXPIRES_SECONDS）
+   */
+  async presignDownload(
+    objectKey: string,
+    expiresSeconds: number = IMAGE_PRESIGN_EXPIRES_SECONDS,
+  ): Promise<PresignDownloadResult> {
+    if (!objectKey.startsWith(OSS_PREFIX_IMAGES)) {
+      throw new Error('图片对象键必须以 images/ 开头');
+    }
+    const expiresAt = new Date(Date.now() + expiresSeconds * 1000);
+    if (this.oss) {
+      const downloadUrl = this.oss.signatureUrl(objectKey, {
+        method: 'GET',
+        expires: expiresSeconds,
+      });
+      return { objectKey, downloadUrl, expiresAt: expiresAt.toISOString() };
+    }
+    const local = await this.local.presignGet(objectKey, expiresSeconds);
+    return {
+      objectKey,
+      downloadUrl: local.url,
+      expiresAt: local.expiresAt.toISOString(),
+      localPath: local.url.replace(/^file:\/\//, ''),
+    };
   }
 
   /**

@@ -67,6 +67,8 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 `@wbme/files`：`presignImageUpload`、`finalizeImage`、`presignBackupUpload`、`deleteObject`、`listPrefix`。
 
+平台级图片上传/下载 HTTP 端点（platform-core）：见 `files-images.md`。
+
 本地开发：`OSS_ACCESS_KEY_ID=change-me` 时使用 `.agents/tmp-oss/`。
 
 ## 恢复执行器（T4-8）
