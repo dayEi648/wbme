@@ -11,7 +11,7 @@ import {
   toApproverScope,
   assertScopeCoversAll,
   withPendingLimitMapping,
-  extractDepartmentIdFromSnapshot,
+  extractDepartmentIdsFromSnapshot,
 } from '@wbme/approval';
 import {
   BusinessException,
@@ -615,8 +615,9 @@ export class HrApprovalService {
     }
     const closure = await this.closure.closureOfUser(userId);
     const scope = toApproverScope(dataScope, closure);
-    const ids = head.overtimeItems.map((item) =>
-      extractDepartmentIdFromSnapshot(item.departmentSnapshot as unknown),
+    // 明细快照为数组（多部门员工全部部门），逐元素展开
+    const ids = head.overtimeItems.flatMap((item) =>
+      extractDepartmentIdsFromSnapshot(item.departmentSnapshot as unknown),
     );
     assertScopeCoversAll(scope, ids, head.requestType);
   }
@@ -628,7 +629,8 @@ export class HrApprovalService {
   ): Promise<Array<number | null>> {
     if (head.requestType === 'OVERTIME') {
       const items = await tx.overtimeItem.findMany({ where: { requestId: head.id } });
-      return items.map((item) => extractDepartmentIdFromSnapshot(item.departmentSnapshot as unknown));
+      // 明细快照为数组（多部门员工全部部门），逐元素展开（extractDepartmentIdsFromSnapshot）
+      return items.flatMap((item) => extractDepartmentIdsFromSnapshot(item.departmentSnapshot as unknown));
     }
     const detail = await tx.positionChangeRequest.findUnique({ where: { requestId: head.id } });
     if (!detail) {

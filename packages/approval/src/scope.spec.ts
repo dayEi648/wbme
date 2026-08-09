@@ -3,6 +3,7 @@ import { BusinessException, approvalErrors } from '@wbme/contracts';
 import {
   assertScopeCoversAll,
   extractDepartmentIdFromSnapshot,
+  extractDepartmentIdsFromSnapshot,
   isCompanyOnlyRequestType,
   resolveObjectDepartmentIds,
   scopeCoversAll,
@@ -67,5 +68,13 @@ describe('resolveObjectDepartmentIds / extractDepartmentIdFromSnapshot', () => {
     expect(extractDepartmentIdFromSnapshot({ departmentId: 8 })).toBe(8);
     expect(extractDepartmentIdFromSnapshot(9)).toBe(9);
     expect(extractDepartmentIdFromSnapshot(null)).toBeNull();
+  });
+
+  it('展开数组快照（多部门员工）', () => {
+    expect(extractDepartmentIdsFromSnapshot([{ id: 1 }, { id: 2 }])).toEqual([1, 2]);
+    expect(extractDepartmentIdsFromSnapshot([{ id: 1 }, { departmentId: 2 }, 3])).toEqual([1, 2, 3]);
+    expect(extractDepartmentIdsFromSnapshot({ id: 7 })).toEqual([7]);
+    expect(extractDepartmentIdsFromSnapshot(9)).toEqual([9]);
+    expect(extractDepartmentIdsFromSnapshot([{ id: 1 }, null])).toEqual([1, null]);
   });
 });

@@ -100,7 +100,7 @@ export function assertScopeCoversAll(
 /**
  * 从部门快照 JSON 提取部门 id（兼容 `{ id }` / `{ departmentId }` / number）。
  *
- * @param snapshot 快照 JSON
+ * @param snapshot 快照 JSON（单元素）
  * @returns 部门 id 或 null
  */
 export function extractDepartmentIdFromSnapshot(snapshot: unknown): number | null {
@@ -115,4 +115,15 @@ export function extractDepartmentIdFromSnapshot(snapshot: unknown): number | nul
     }
   }
   return null;
+}
+
+/**
+ * 从部门快照 JSON 提取全部部门 id（兼容数组/单元素；多部门员工快照为数组）。
+ *
+ * @param snapshot 快照 JSON（数组或单元素）
+ * @returns 部门 id 列表（逐元素提取，无法解析的元素为 null）
+ */
+export function extractDepartmentIdsFromSnapshot(snapshot: unknown): Array<number | null> {
+  const list = Array.isArray(snapshot) ? snapshot : [snapshot];
+  return list.map((entry) => extractDepartmentIdFromSnapshot(entry));
 }

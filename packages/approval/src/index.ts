@@ -35,6 +35,7 @@ export {
   scopeCoversAll,
   assertScopeCoversAll,
   extractDepartmentIdFromSnapshot,
+  extractDepartmentIdsFromSnapshot,
 } from './scope';
 
 export { isPrismaUniqueViolation, mapPendingLimitError, withPendingLimitMapping } from './pending-limit';
