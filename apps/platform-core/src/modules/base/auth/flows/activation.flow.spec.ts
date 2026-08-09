@@ -52,7 +52,7 @@ describe.skipIf(!REDIS_URL)('激活流程集成（base PRD §2 双通道一次�
     const password = new PasswordService();
     const csrf = new CsrfService('test-signing-key-at-least-32-chars-long!!');
     const session = new SessionService(redis);
-    const protection = new LoginProtectionService(redis, settings, securityLog);
+    const protection = new LoginProtectionService(redis, settings, securityLog, prisma);
     const phoneSync = new PhoneSyncService(prisma, securityLog);
     const auth = new AuthService(prisma, password, protection, securityLog, settings, session, csrf, phoneSync);
     activation = new ActivationFlow(prisma, token, flows, password, settings, securityLog, auth);

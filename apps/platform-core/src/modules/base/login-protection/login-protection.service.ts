@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, accountErrors } from '@wbme/contracts';
+import { BusinessException, accountErrors, frameworkErrors } from '@wbme/contracts';
 import { redisKey, REDIS_NAMESPACE } from '@wbme/server';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '@wbme/server';
+import { PrismaService } from '../../../prisma.service';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import { SecurityLogService } from '../security-log/security-log.service';
 
@@ -21,6 +22,7 @@ export class LoginProtectionService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly settings: SettingsService,
     private readonly securityLog: SecurityLogService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -95,6 +97,20 @@ export class LoginProtectionService {
    * 分别写 ACCOUNT_UNLOCK 与 IP_UNLOCK 安全日志（backstage PRD §8 事件清单）。
    */
   async unlockByAdmin(userId: number, operatorId: number): Promise<void> {
+    // 超管账号只能由另一名超管解锁（backstage PRD §3；与 M2 重置邀请同一保护语义）
+    const target = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+    if (target?.isSuperAdmin) {
+      const operator = await this.prisma.client.user.findUnique({
+        where: { id: operatorId },
+        select: { isSuperAdmin: true },
+      });
+      if (!operator?.isSuperAdmin) {
+        throw new BusinessException(frameworkErrors.FORBIDDEN);
+      }
+    }
     await this.redis.del(this.accountFailKey(userId));
     await this.redis.del(this.accountLockKey(userId));
     await this.securityLog.record('ACCOUNT_UNLOCK', 'SUCCESS', {

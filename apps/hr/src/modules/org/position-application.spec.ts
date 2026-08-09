@@ -3,6 +3,7 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hrErrors } from '@wbme/contracts';
+import type { RedisService } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { ensurePermissionCatalog } from '../../test-support/ensure-permission-catalog';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -49,7 +50,7 @@ describeDb('岗位申请（T6-6）', () => {
     positions = new PositionService(prisma);
     // 延迟注入：PositionApplicationService 依赖审批头服务，审批头服务依赖其副作用
     applications = new PositionApplicationService(prisma);
-    approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), applications);
+    approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), applications, { redis: {} } as unknown as RedisService);
     applications.bindApprovalService(approval);
     await ensurePermissionCatalog(prisma);
 

@@ -1,4 +1,4 @@
-import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Inject, Post, Put, Query } from '@nestjs/common';
 import {
   BusinessException,
@@ -17,11 +17,21 @@ import { HrOrgClient } from './hr-org.client';
 
 /** P3 资料修改（至少一项；超管直改，员工提交审批；幂等键防重复提交建单） */
 class UpdateProfileDto extends IdempotentDto {
+  @ApiProperty({
+    description: '姓名（至少一项时必填其一）',
+    required: false,
+    maxLength: 50,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   name?: string;
 
+  @ApiProperty({
+    description: '性别',
+    required: false,
+    enum: ['MALE', 'FEMALE'],
+  })
   @IsOptional()
   @IsIn(['MALE', 'FEMALE'])
   gender?: 'MALE' | 'FEMALE';

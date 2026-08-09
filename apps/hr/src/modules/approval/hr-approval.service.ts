@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Optional } from '@nestjs/common';
 import {
   APPLICATION_NO_PREFIX_OVERTIME,
   APPLICATION_NO_PREFIX_POSITION_CHANGE,
@@ -22,11 +22,14 @@ import {
   frameworkErrors,
   type DataScope,
 } from '@wbme/contracts';
+import { RedisService, runExport } from '@wbme/server';
+import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
 import { APPROVAL_SIDE_EFFECT, type ApprovalSideEffect } from './approval-side-effect';
+import { PositionApplicationService } from '../org/position-application.service';
 
 /** hr 审批申请类型 */
 export type HrRequestType = 'OVERTIME' | 'POSITION_CHANGE';
@@ -94,7 +97,10 @@ export class HrApprovalService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     private readonly closure: DepartmentClosureService,
-    @Optional() @Inject(APPROVAL_SIDE_EFFECT) private readonly sideEffect: ApprovalSideEffect | null = null,
+    // 批准副作用：直接注入实现类（forwardRef 打破与 PositionApplicationService 的构造循环；
+    // 两者互相引用，标准 Nest 循环注入模式。测试手工构造时省略参数 = null）
+    @Optional() @Inject(forwardRef(() => PositionApplicationService)) private readonly sideEffect: ApprovalSideEffect | null = null,
+    private readonly redis: RedisService = { redis: null } as unknown as RedisService,
   ) {}
 
   /**
@@ -149,6 +155,7 @@ export class HrApprovalService {
    * @returns 审批头 id
    * @throws PENDING_LIMIT_REACHED 岗位变更单待审批冲突
    */
+  /** 测试辅助：仅 hr-approval.service.spec 调用，未挂任何路由，禁止接入控制器（会绕过权限校验写真实审批单） */
   async submitTestHeader(input: SubmitTestHeaderInput): Promise<{ requestId: number }> {
     const now = new Date();
     const deptSnapshot = (input.applicantDepartmentSnapshot ?? { id: 1, name: '占位部门' }) as Prisma.InputJsonValue;
@@ -223,10 +230,9 @@ export class HrApprovalService {
       }
       assertTransitionAllowed(head.status, transition.status);
 
-      // T6：DEPARTMENT 档须覆盖批次全部申请对象（加班明细部门快照/岗位申请部门快照）
-      if (action === 'APPROVE') {
-        await this.assertScopeCovers(tx, head, access, processorId);
-      }
+      // T6：DEPARTMENT 档须覆盖批次全部申请对象（加班明细部门快照/岗位申请部门快照）；
+      // 批准与驳回统一断言（主 PRD §3.2：列表、详情与处理接口执行相同的权限与范围校验）
+      await this.assertScopeCovers(tx, head, access, processorId);
 
       const processorName = await loadUserName(tx, processorId);
       const now = new Date();
@@ -333,6 +339,83 @@ export class HrApprovalService {
       total,
       items: rows.map((row) => this.toListItem(row)),
     };
+  }
+
+  /**
+   * 审批中心导出（hr PRD §4「支持导出」；复用 T4-11 runExport：行数上限/单用户并发/120s 超时/一致性快照）。
+   * 可见性与数据范围与列表完全一致（resolveVisibleTypes + buildWhere）。
+   *
+   * @param userId 导出人
+   * @param query 筛选条件
+   * @param res Express 响应（流式写回）
+   */
+  async exportList(userId: number, query: ApprovalListQueryDto, res: Response): Promise<void> {
+    const visibleTypes = await this.resolveVisibleTypes(userId);
+    const where = visibleTypes.length === 0 ? { id: -1 } : await this.buildWhere(query, visibleTypes, userId);
+    const maxRows = await this.readExportMaxRows();
+    await runExport<{
+      application_no: string;
+      request_type: string;
+      applicant_name: string;
+      processor_name: string | null;
+      status: string;
+      opinion: string | null;
+      submitted_at: Date | null;
+      processed_at: Date | null;
+    }>({
+      userId,
+      redis: this.redis.redis,
+      maxRows,
+      filename: 'hr-approvals.xlsx',
+      columns: [
+        { header: '申请编号', value: (row) => row.application_no },
+        { header: '申请类型', value: (row) => row.request_type },
+        { header: '申请人', value: (row) => row.applicant_name },
+        { header: '处理人', value: (row) => row.processor_name ?? '' },
+        { header: '状态', value: (row) => row.status },
+        { header: '处理意见', value: (row) => row.opinion ?? '' },
+        { header: '提交时间', value: (row) => row.submitted_at?.toISOString() ?? '' },
+        { header: '处理时间', value: (row) => row.processed_at?.toISOString() ?? '' },
+      ],
+      transaction: (fn, options) =>
+        this.prisma.client.$transaction(fn, {
+          isolationLevel: 'RepeatableRead',
+          timeout: options?.timeout,
+        }),
+      fetchCount: async (tx) => {
+        const client = tx as PrismaService['client'];
+        return client.hrApprovalRequest.count({ where });
+      },
+      fetchRows: async (tx, offset, limit) => {
+        const client = tx as PrismaService['client'];
+        const rows = await client.hrApprovalRequest.findMany({
+          where,
+          orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+          skip: offset,
+          take: limit,
+        });
+        return rows.map((r) => ({
+          application_no: r.applicationNo,
+          request_type: String(r.requestType),
+          applicant_name: r.applicantName,
+          processor_name: r.processorName,
+          status: String(r.status),
+          opinion: r.opinion,
+          submitted_at: r.submittedAt,
+          processed_at: r.processedAt,
+        }));
+      },
+      res,
+    });
+  }
+
+  /** 导出行数上限（backstage.platform_settings 视图；缺省 100000） */
+  private async readExportMaxRows(): Promise<number> {
+    const rows = await this.prisma.client.$queryRaw<Array<{ value: string }>>`
+      SELECT value FROM backstage.platform_settings WHERE key = 'export.max.rows' LIMIT 1
+    `;
+    const value = Number(rows[0]?.value ?? 100000);
+    return Number.isFinite(value) && value > 0 ? value : 100000;
   }
 
   /**
@@ -610,12 +693,16 @@ export class HrApprovalService {
       (entry) => entry.requestType === 'POSITION_CHANGE' && entry.dataScope === 'DEPARTMENT',
     );
     if (departmentScopedOvertime || departmentScopedPosition) {
-      const closure = await this.closure.closureOfUser(userId);
-      const coveredIds = await this.findCoveredRequestIds(closure, {
-        overtime: departmentScopedOvertime,
-        position: departmentScopedPosition,
-      });
-      where.id = { in: coveredIds };
+      // 仅当未被"不可见类型"哨兵占用时才按闭包裁剪：
+      // 不可见类型筛选应返回空（范围外表现为不存在，主 PRD §3.2），不能被闭包覆盖
+      if (where.id === undefined) {
+        const closure = await this.closure.closureOfUser(userId);
+        const coveredIds = await this.findCoveredRequestIds(closure, {
+          overtime: departmentScopedOvertime,
+          position: departmentScopedPosition,
+        });
+        where.id = { in: coveredIds };
+      }
     }
     return where;
   }
@@ -625,6 +712,10 @@ export class HrApprovalService {
     closure: ReadonlySet<number>,
     scoped: { overtime: boolean; position: boolean },
   ): Promise<number[]> {
+    // 空闭包（无部门审批人）守卫：与 overtime-summary 的 statsForUsers 对齐，避免 $queryRaw 空数组参数
+    if (closure.size === 0) {
+      return [];
+    }
     const closureIds = [...closure];
     const ids = new Set<number>();
     if (scoped.overtime) {

@@ -1,6 +1,5 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { InternalRestModule } from '@wbme/server';
-import { APPROVAL_SIDE_EFFECT } from '../approval/approval-side-effect';
 import { ApprovalModule } from '../approval/approval.module';
 import { DepartmentController } from './department.controller';
 import { DepartmentService } from './department.service';
@@ -17,7 +16,7 @@ import { PositionService } from './position.service';
  */
 @Module({
   imports: [
-    ApprovalModule,
+    forwardRef(() => ApprovalModule),
     InternalRestModule.forRoot({
       token: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     }),
@@ -28,9 +27,7 @@ import { PositionService } from './position.service';
     DepartmentService,
     PositionService,
     PositionApplicationService,
-    // 岗位申请批准副作用：process 事务内生效（组织变更 + 版本递增）
-    { provide: APPROVAL_SIDE_EFFECT, useExisting: PositionApplicationService },
   ],
-  exports: [OrgStructureService, DepartmentService, PositionService],
+  exports: [OrgStructureService, DepartmentService, PositionService, PositionApplicationService],
 })
 export class OrgModule {}

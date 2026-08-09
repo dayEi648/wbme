@@ -1,4 +1,4 @@
-import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { IdempotentDto, SYSTEM_SETTINGS_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -11,6 +11,11 @@ import { FunctionPermissionGuard, RequireFunction } from '../permission/function
 
 class UpdatePlatformSettingsDto extends IdempotentDto {
   /** 键值补丁（仅允许 PLATFORM 组键） */
+  @ApiProperty({
+    description: '键值补丁（仅允许 PLATFORM 组键）',
+    type: 'object',
+    additionalProperties: { type: 'number' },
+  })
   @IsObject()
   patches!: Partial<Record<PlatformSettingKey, number>>;
 }

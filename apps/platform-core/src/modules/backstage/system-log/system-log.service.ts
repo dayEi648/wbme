@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors, PaginationQueryDto } from '@wbme/contracts';
+import { desensitizeErrorSample } from '@wbme/logging';
 import { RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { SETTING_KEYS, SettingsService } from '../../base/settings/settings.service';
@@ -126,6 +127,21 @@ export interface SystemLogQuery {
   to?: Date;
   page: number;
   pageSize: number;
+}
+
+/**
+ * 导出安全摘要（backstage PRD §8 导出白名单）：
+ * 仅取原始样本首行（剥离堆栈），再脱敏密码/令牌与内部文件路径、requestId；
+ * 详情页可展示的完整 sample 不受影响（仅导出端重构）。
+ */
+function buildExportSummary(raw: string | null): string {
+  if (!raw) {
+    return '';
+  }
+  const firstLine = (raw.split('\n')[0] ?? '').trim();
+  return desensitizeErrorSample(firstLine)
+    .replace(/(?:[\w@./-]+\/)+[\w@.-]+\.(?:[cm]?[jt]s[x]?):\d+:\d+/g, '[REDACTED_PATH]')
+    .replace(/\brequestId[=:\s]+[^\s,;]+/gi, 'requestId [REDACTED]');
 }
 
 @Injectable()
@@ -274,7 +290,7 @@ export class SystemLogService {
         { header: '首次发生', value: (row) => row.first_seen_at?.toISOString?.() ?? String(row.first_seen_at) },
         { header: '最后发生', value: (row) => row.last_seen_at?.toISOString?.() ?? String(row.last_seen_at) },
         { header: '发生次数', value: (row) => row.occurrence_count },
-        { header: '安全摘要', value: (row) => row.sample ?? '' },
+        { header: '安全摘要', value: (row) => buildExportSummary(row.sample) },
         { header: '状态', value: (row) => row.status },
         { header: '处理人', value: (row) => row.handled_by ?? '' },
         { header: '处理时间', value: (row) => row.handled_at?.toISOString?.() ?? '' },

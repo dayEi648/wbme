@@ -48,7 +48,8 @@ export class OrgStructureService {
     }
     if (query.positionId !== undefined) {
       params.push(query.positionId);
-      where.push(`EXISTS (SELECT 1 FROM hr.user_org uo WHERE uo.user_id = ua.user_id AND uo.position_id = $${params.length})`);
+      // 岗位独立走 user_positions（无部门员工的岗位在 user_org 视图中无行，B4 修复）
+      where.push(`EXISTS (SELECT 1 FROM hr.user_positions up WHERE up.user_id = ua.user_id AND up.position_id = $${params.length})`);
     }
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
     const [totalRows, rows] = await Promise.all([
@@ -63,12 +64,14 @@ export class OrgStructureService {
                ut.title_name,
                ARRAY_AGG(DISTINCT uo.department_id) FILTER (WHERE uo.department_id IS NOT NULL) AS department_ids,
                ARRAY_AGG(DISTINCT uo.department_name) FILTER (WHERE uo.department_name IS NOT NULL) AS department_names,
-               MAX(uo.position_id) AS position_id,
-               MAX(uo.position_name) AS position_name,
-               MAX(uo.position_status) AS position_status
+               MAX(p.position_id) AS position_id,
+               MAX(p.position_name) AS position_name,
+               MAX(p.position_status) AS position_status
         FROM backstage.user_accounts ua
         LEFT JOIN hr.user_titles ut ON ut.user_id = ua.user_id
         LEFT JOIN hr.user_org uo ON uo.user_id = ua.user_id
+        LEFT JOIN hr.user_positions up ON up.user_id = ua.user_id
+        LEFT JOIN hr.positions p ON p.id = up.position_id
         WHERE ua.deleted_at IS NULL ${whereSql ? `AND ${whereSql.replace(/^WHERE /, '')}` : ''}
         GROUP BY ua.user_id, ua.name, ut.title_name
         ORDER BY ua.user_id

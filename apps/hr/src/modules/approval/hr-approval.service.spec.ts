@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { RedisService } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { ensurePermissionCatalog } from '../../test-support/ensure-permission-catalog';
@@ -34,7 +35,7 @@ describeDb('hr 审批头（T5-3）', () => {
 
   beforeAll(async () => {
     prisma = new PrismaService();
-    service = new HrApprovalService(prisma, new DepartmentClosureService(prisma), null);
+    service = new HrApprovalService(prisma, new DepartmentClosureService(prisma), null, { redis: {} } as unknown as RedisService);
 
     // CI 全新库只跑迁移不跑 seed：先注册权限目录（幂等），保证目录依赖的测试在任意环境一致
     await ensurePermissionCatalog(prisma);

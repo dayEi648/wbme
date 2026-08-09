@@ -3,6 +3,7 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hrErrors } from '@wbme/contracts';
+import type { RedisService } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { ensurePermissionCatalog } from '../../test-support/ensure-permission-catalog';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -86,7 +87,7 @@ describeDb('加班提交（T6-5）', () => {
     const holidayAdapter = new HolidayAdapter(prisma, gateway);
     settings = new SettingsService(prisma);
     await settings.ensureDefaults();
-    approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), null);
+    approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), null, { redis: {} } as unknown as RedisService);
     submission = new OvertimeSubmissionService(prisma, approval, holidayAdapter, settings, new DepartmentClosureService(prisma));
 
     // 操作人（普通员工，无加班功能授权 → 用超管豁免测试提交）
@@ -170,6 +171,34 @@ describeDb('加班提交（T6-5）', () => {
     ).rejects.toMatchObject({ entry: { code: hrErrors.OVERTIME_OVERLAP.code } });
     const after = await prisma.client.hrApprovalRequest.count();
     expect(after).toBe(before); // 零写入
+  });
+
+  it('并发双提同日同时段：咨询锁串行化，仅一个成功、另一个 OVERTIME_OVERLAP（B3 修复）', async () => {
+    const today = new Date();
+    const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const before = await prisma.client.hrApprovalRequest.count();
+    const [r1, r2] = await Promise.allSettled([
+      submission.submit(operator, {
+        overtimeDate: date,
+        startMinute: 20 * 60,
+        endMinute: 22 * 60,
+        reason: '并发测试',
+        userIds: [operatorUserId],
+      }),
+      submission.submit(operator, {
+        overtimeDate: date,
+        startMinute: 20 * 60,
+        endMinute: 22 * 60,
+        reason: '并发测试',
+        userIds: [operatorUserId],
+      }),
+    ]);
+    const results = [r1, r2];
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const failed = results.find((r) => r.status === 'rejected');
+    expect((failed as PromiseRejectedResult).reason).toMatchObject({ entry: { code: hrErrors.OVERTIME_OVERLAP.code } });
+    const after = await prisma.client.hrApprovalRequest.count();
+    expect(after).toBe(before + 1); // 只写入一个批次
   });
 
   it('日期窗口外拒绝（OVERTIME_DATE_OUT_OF_WINDOW）', async () => {

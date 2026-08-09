@@ -146,6 +146,9 @@ export class GrantService {
     // 当前页员工的授权摘要（仅目录中仍注册的功能生效；超管视为拥有全部，不展开）
     const catalog = await loadCatalogMap(this.prisma.client);
     const grantsByUser = await this.loadGrantsByUser(users.map((user) => user.id));
+    // 当前页员工的部门快照（T6-6：经 hr.user_org 只读视图，主 PRD §9.4 跨 schema 边界；
+    // hr 停机/视图不可用时降级为空数组，不阻断检索）
+    const departmentsByUser = await this.loadDepartments(users.map((user) => user.id));
     const data = users.map((user) => {
       const grants = (grantsByUser.get(user.id) ?? []).filter((row) => catalog.has(row.functionCode));
       return {
@@ -154,7 +157,7 @@ export class GrantService {
         phoneMasked: maskPhone(user.phone),
         status: user.status,
         isSuperAdmin: user.isSuperAdmin,
-        departments: [] as string[],
+        departments: departmentsByUser.get(user.id) ?? [],
         grantsSummary: sortGrantRows(grants, catalog).map((row) => grantLabel(catalog, row.functionCode, row.dataScope)),
       };
     });
@@ -167,6 +170,30 @@ export class GrantService {
         totalPages: Math.ceil(totalItems / query.pageSize),
       },
     };
+  }
+
+  /** 批量加载用户的部门名称快照（hr.user_org 视图；不可用时返回空 Map，与 operation-log.util 同语义） */
+  private async loadDepartments(userIds: number[]): Promise<Map<number, string[]>> {
+    if (userIds.length === 0) {
+      return new Map();
+    }
+    try {
+      const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number; department_name: string }>>`
+        SELECT user_id, department_name
+        FROM hr.user_org
+        WHERE user_id IN (${Prisma.join(userIds)})
+        ORDER BY department_id
+      `;
+      const byUser = new Map<number, string[]>();
+      for (const row of rows) {
+        const list = byUser.get(row.user_id) ?? [];
+        list.push(row.department_name);
+        byUser.set(row.user_id, list);
+      }
+      return byUser;
+    } catch {
+      return new Map();
+    }
   }
 
   /**

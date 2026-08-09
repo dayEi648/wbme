@@ -32,18 +32,22 @@ export class SettingsController {
     @Body() dto: HrSettingUpdateDto,
   ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, HR_CONFIG_FUNCTION_CODE);
-    const result = await this.settings.update(key, dto.value, userId);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
-    await this.prisma.client.hrOperationLog.create({
-      data: {
-        operatorId: operator.id,
-        operatorName: operator.name,
-        operatorDepartments: operator.departments as object,
-        system: 'HR',
-        feature: HR_CONFIG_FUNCTION_CODE,
-        actionType: 'UPDATE',
-        summary: `更新了人事设置：${key} = ${dto.value}`,
-      },
+    // 设置更新与操作日志同事务（主 PRD §9.3：日志随业务事务写入，日志失败整体回滚）
+    const result = await this.prisma.client.$transaction<{ ok: true }>(async (tx) => {
+      await this.settings.update(key, dto.value, userId, tx);
+      await tx.hrOperationLog.create({
+        data: {
+          operatorId: operator.id,
+          operatorName: operator.name,
+          operatorDepartments: operator.departments as object,
+          system: 'HR',
+          feature: HR_CONFIG_FUNCTION_CODE,
+          actionType: 'UPDATE',
+          summary: `更新了人事设置：${key} = ${dto.value}`,
+        },
+      });
+      return { ok: true };
     });
     return result;
   }

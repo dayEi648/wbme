@@ -48,6 +48,8 @@ export interface RecoveryExecutorDeps {
 
 const DEFAULT_STATE_DIR = '.agents/restore-state';
 const RECOVERY_COOKIE_NAME = 'wbme_recovery_session';
+/** 恢复控制凭证有效窗口（毫秒，1 小时；与 Cookie maxAge 一致，服务端侧强制） */
+const RECOVERY_SESSION_TTL_MS = 60 * 60 * 1000;
 /** 停写等待窗口（毫秒）：等待已进入的写事务自然结束（生产由 Nginx/容器编排保证无新连接） */
 const WRITE_DRAIN_WAIT_MS = 5_000;
 
@@ -65,6 +67,8 @@ export class RecoveryExecutorService {
   private readonly dryRun: boolean;
   private readonly deps: RecoveryExecutorDeps | null;
   private manifest: RestoreControlManifest | null = null;
+  /** 管道单飞互斥：同一进程内只允许一条恢复管道执行 */
+  private pipelineInFlight = false;
 
   /**
    * @param deps 运行时依赖；缺省按环境变量构造（测试注入替身）
@@ -90,10 +94,24 @@ export class RecoveryExecutorService {
   /**
    * 接收 RESTORE_DELIVERY：持久化外部清单并进入维护状态。
    *
+   * 幂等语义（backstage PRD §10「清单写入后不再重放」）：
+   * - 既有清单 stage ≠ DONE 且 restoreUuid 相同 → 忽略重复投递（恢复进行中）；
+   * - 既有清单 restoreUuid 不同 → 拒绝（避免覆盖进行中的恢复，清单被覆盖会重跑破坏性管道）。
+   *
    * @param ref 任务 ref
    */
   async acceptDelivery(ref: RestoreDeliveryTaskRef): Promise<void> {
     await this.ensureStateDir();
+    const existing = await this.loadManifestIfExists();
+    if (existing) {
+      if (existing.restoreUuid === ref.restoreUuid && existing.stage !== 'DONE') {
+        this.logger.warn(`恢复投递重复（restoreUuid=${ref.restoreUuid} stage=${existing.stage}），忽略重投`);
+        return;
+      }
+      if (existing.restoreUuid !== ref.restoreUuid) {
+        throw new Error(`已有进行中的恢复 ${existing.restoreUuid}，拒绝接收新的投递 ${ref.restoreUuid}`);
+      }
+    }
     this.manifest = {
       restoreUuid: ref.restoreUuid,
       backupId: ref.backupId,
@@ -145,16 +163,41 @@ export class RecoveryExecutorService {
     const payload = parts.join(':');
     const expected = createHmac('sha256', secret).update(payload).digest('hex');
     try {
-      return timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
+      if (!timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) {
+        return false;
+      }
     } catch {
       return false;
     }
+    // 签发时间窗（backstage PRD §10：控制凭证有有效期限，不无限有效）
+    const issuedAt = Number(parts[1]);
+    if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > RECOVERY_SESSION_TTL_MS) {
+      return false;
+    }
+    // 恢复完成（DONE）后控制凭证立即失效（PRD §10「清单完成或明确终止后立即失效」）
+    if (this.manifest?.stage === 'DONE') {
+      return false;
+    }
+    return true;
   }
 
   /**
    * 恢复管道主循环：按阶段推进，任一步失败保持维护状态。
+   * 单飞互斥：同一进程内只允许一条管道执行（重复投递/重试并发进入时后到者直接返回）。
    */
   private async runPipeline(): Promise<void> {
+    if (!this.manifest || this.pipelineInFlight) {
+      return;
+    }
+    this.pipelineInFlight = true;
+    try {
+      await this.runPipelineInner();
+    } finally {
+      this.pipelineInFlight = false;
+    }
+  }
+
+  private async runPipelineInner(): Promise<void> {
     if (!this.manifest) {
       return;
     }
@@ -170,10 +213,12 @@ export class RecoveryExecutorService {
       'DONE',
     ];
     try {
-      for (const stage of stages) {
-        if (this.manifest.stage === 'DONE') {
-          break;
-        }
+      // 从清单记录的阶段续跑（失败时 stage 已指向失败阶段 → 重试当前阶段；
+      // backstage PRD §10「明确选择重试当前阶段」，不重放已完成阶段）
+      const manifest = this.manifest;
+      const startIndex = Math.max(0, stages.findIndex((s) => s === manifest.stage));
+      for (let i = startIndex; i < stages.length; i += 1) {
+        const stage = stages[i]!;
         this.manifest.stage = stage;
         this.manifest.updatedAt = new Date().toISOString();
         delete this.manifest.error;
@@ -314,10 +359,14 @@ export class RecoveryExecutorService {
 
   /** 正向迁移：复用 Migration Runner 执行备份后未包含、当前部署需要的迁移 */
   private async stageMigrateForward(): Promise<void> {
-    const migrateCmd = this.dryRun ? undefined : process.env.RECOVERY_MIGRATE_CMD ?? this.getDeps().migrateCmd;
-    if (!migrateCmd) {
-      this.logger.warn('RECOVERY_MIGRATE_CMD 未配置，跳过正向迁移（需人工确认结构版本）');
+    if (this.dryRun) {
+      this.logger.log('dry-run 跳过正向迁移');
       return;
+    }
+    const migrateCmd = process.env.RECOVERY_MIGRATE_CMD ?? this.getDeps().migrateCmd;
+    if (!migrateCmd) {
+      // backstage PRD §10：正向迁移必须执行，缺失按失败处理并保持维护状态（不得带错结构退出）
+      throw new Error('RECOVERY_MIGRATE_CMD 未配置：正向迁移必须执行（backstage PRD §10）');
     }
     const { exec } = await import('node:child_process');
     const { promisify: p } = await import('node:util');
@@ -437,12 +486,19 @@ export class RecoveryExecutorService {
   private async stageReadiness(): Promise<void> {
     const db = await this.openDb();
     try {
+      // 迁移完整性：元数据表存在且有已应用记录（backstage PRD §10「迁移完整性、结构版本」）
       const migrations = await db.queryRows<{ n: string }>(
-        `SELECT count(*)::text AS n FROM information_schema.tables
-         WHERE table_schema = 'base' AND table_name = '_prisma_migrations'`,
+        `SELECT count(*)::text AS n FROM base._prisma_migrations WHERE finished_at IS NOT NULL`,
       );
       if (Number(migrations[0]?.n ?? 0) === 0) {
-        throw new Error('迁移元数据表缺失，结构版本校验失败');
+        throw new Error('迁移元数据缺失或无可应用记录，结构版本校验失败');
+      }
+      // 核心数据：权限目录已注册（各服务启动对账的前提）
+      const functions = await db.queryRows<{ n: string }>(
+        `SELECT count(*)::text AS n FROM backstage.function_registry`,
+      );
+      if (Number(functions[0]?.n ?? 0) === 0) {
+        throw new Error('权限目录为空，核心数据校验失败');
       }
       const admins = await db.queryRows<{ n: string }>(
         `SELECT count(*)::text AS n FROM base.users
@@ -451,7 +507,8 @@ export class RecoveryExecutorService {
       if (Number(admins[0]?.n ?? 0) === 0) {
         throw new Error('恢复后不存在可用超级管理员，保持维护状态');
       }
-      this.logger.log('恢复后校验通过（迁移元数据 + 超管存在）');
+      // 应运行服务就绪由部署编排（Nginx/容器健康检查）保证；执行器侧仅校验数据库侧事实
+      this.logger.log('恢复后校验通过（迁移完整性 + 权限目录 + 超管存在）');
     } finally {
       await db.end();
     }
@@ -572,11 +629,16 @@ export class RecoveryExecutorService {
   }
 
   private async loadManifest(): Promise<void> {
+    this.manifest = await this.loadManifestIfExists();
+  }
+
+  /** 读取既有清单（不存在/损坏 → null；不写入实例状态） */
+  private async loadManifestIfExists(): Promise<RestoreControlManifest | null> {
     try {
       const raw = await readFile(this.manifestPath(), 'utf8');
-      this.manifest = JSON.parse(raw) as RestoreControlManifest;
+      return JSON.parse(raw) as RestoreControlManifest;
     } catch {
-      this.manifest = null;
+      return null;
     }
   }
 

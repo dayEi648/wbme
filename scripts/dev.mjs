@@ -172,11 +172,7 @@ function startServices() {
       env: process.env,
     });
     child.on('exit', (code) => {
-      if (service.name === 'worker' && code === 0) {
-        // Worker 当前为空实现（T4-2 接入 BullMQ 消费者后常驻），启动即退出属正常
-        console.log('[dev] worker 空实现已启动即退出（正常，T4-2 接入任务消费者后常驻）');
-        return;
-      }
+      // Worker 为常驻进程（T4-2 后常驻消费任务）；code 0 退出属异常（调度器/消费者不应主动退出）
       console.error(`[dev] ${service.name} 退出（code=${code}）`);
     });
     children.push({ name: service.name, child });

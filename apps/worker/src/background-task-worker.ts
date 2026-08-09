@@ -44,7 +44,9 @@ export class BackgroundTaskWorker {
       {
         connection: { url: this.redisUrl },
         prefix: REDIS_NAMESPACE.QUEUE,
-        concurrency: 2,
+        // 串行消费（主 PRD §9.1「单实例 Worker 逐条消费，天然串行」）：
+        // 备份/恢复类任务必须同一时刻只有一个 pg_dump/pg_restore（backstage PRD §10）
+        concurrency: 1,
       },
     );
     this.worker.on('failed', (job, error) => {

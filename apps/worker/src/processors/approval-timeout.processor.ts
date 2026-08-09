@@ -13,7 +13,8 @@ const DEFAULT_APPROVAL_TIMEOUT_DAYS = 30;
  *
  * 读取系统设置 `approval.timeout.cancel.days`，扫描 backstage/hr/asset 三 schema
  * 中已超时的 PENDING 审批头，条件更新为 CANCELLED（cancel_source=OVERDUE）并写入
- * AUTO_CANCEL 动作流水。业务占用释放 hook 由各模块后续接入（本阶段仅状态迁移）。
+ * AUTO_CANCEL 动作流水。业务占用释放 hook：asset 借还占用释放随 T7-8 接入
+ * （占用转换原子、超时取消释放占用；本阶段仅状态迁移）。
  *
  * @param task 任务行
  * @param ctx 处理器上下文

@@ -17,10 +17,17 @@ import { SessionService } from './session.service';
 
 const REDIS_URL = process.env.REDIS_URL;
 
+/**
+ * 本测试独用的 Redis db（独立于其它包/文件的 db 0）。
+ * 原因：会话测试的 afterEach 清理 `session:*` 键，若与其它集成测试
+ * （platform-core 等同样写入 `session:*` 键）并行跑会互相清键导致偶发失败。
+ */
+const TEST_REDIS_DB = 1;
+
 /** 测试专用 Redis 客户端提供者（真实 Redis，本地开发机与 CI 均可用） */
 @Injectable()
 class TestRedisProvider {
-  static client = new Redis(REDIS_URL ?? 'redis://localhost:6379');
+  static client = new Redis(REDIS_URL ?? 'redis://localhost:6379', { db: TEST_REDIS_DB });
 }
 
 describe.skipIf(!REDIS_URL)('SessionService（主 PRD §9.8、base PRD §3）', () => {

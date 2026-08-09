@@ -155,8 +155,21 @@ export class FileStorageService {
    */
   async listPrefixWithMeta(prefix: string): Promise<Array<{ key: string; lastModified: Date | null }>> {
     if (this.oss) {
-      const result = await this.oss.list({ prefix, 'max-keys': 1000 }, {});
-      return (result.objects ?? []).map((item) => ({ key: item.name, lastModified: new Date(item.lastModified) }));
+      // 分页列举（主 PRD §9.2 / backstage PRD §10：对象数 > 1000 时必须续列，
+      // 否则清理/孤儿扫描漏扫超出部分）
+      const items: Array<{ key: string; lastModified: Date | null }> = [];
+      let marker: string | undefined;
+      for (;;) {
+        const result = await this.oss.list({ prefix, 'max-keys': 1000, marker }, {});
+        for (const item of result.objects ?? []) {
+          items.push({ key: item.name, lastModified: new Date(item.lastModified) });
+        }
+        if (!result.nextMarker) {
+          break;
+        }
+        marker = result.nextMarker;
+      }
+      return items;
     }
     return this.local.listPrefixWithMeta(prefix);
   }

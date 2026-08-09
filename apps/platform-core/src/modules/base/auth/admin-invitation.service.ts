@@ -3,6 +3,7 @@ import { BusinessException, accountErrors, frameworkErrors, maskPhone } from '@w
 import QRCode from 'qrcode';
 import { PrismaService } from '../../../prisma.service';
 import { Prisma } from '../../../generated/prisma/client';
+import { loadOperationLogOperator, writeBackstageOperationLog } from '../../backstage/permission/operation-log.util';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import { SecurityLogService } from '../security-log/security-log.service';
 import { TokenService } from './token.service';
@@ -40,6 +41,7 @@ export class AdminInvitationService {
 
     const rawToken = this.token.generate();
     const validSeconds = await this.settings.getNumber(SETTING_KEYS.INVITATION_VALID_SECONDS);
+    const operator = await loadOperationLogOperator(this.prisma.client, adminId);
     await this.withRetryOnDuplicate(async () => {
       await this.prisma.client.$transaction(async (tx) => {
         // 重新生成：旧有效邀请立即失效（条件更新，部分唯一索引 (user_id) WHERE status='VALID' 并发安全）
@@ -55,15 +57,12 @@ export class AdminInvitationService {
             createdBy: adminId,
           },
         });
-        // 操作日志（CREATE；管理员生成邀请）
-        await tx.operationLog.create({
-          data: {
-            operatorId: adminId,
-            system: 'BACKSTAGE',
-            feature: 'user_manage',
-            actionType: 'CREATE',
-            summary: `为待激活账号 ${maskPhone(user.phone)} 生成激活邀请`,
-          },
+        // 操作日志（CREATE；管理员生成邀请）——backstage 域写 backstage.operation_logs（主 PRD §3.3）
+        await writeBackstageOperationLog(tx, {
+          operator,
+          feature: 'user_manage',
+          actionType: 'CREATE',
+          summary: `为待激活账号 ${maskPhone(user.phone)} 生成激活邀请`,
         });
       });
     });
@@ -110,6 +109,10 @@ export class AdminInvitationService {
   private async issueCredential(adminId: number, targetUserId: number, fragmentPath: string): Promise<string> {
     const rawToken = this.token.generate();
     const validSeconds = await this.settings.getNumber(SETTING_KEYS.INVITATION_VALID_SECONDS);
+    const operator = await loadOperationLogOperator(this.prisma.client, adminId);
+    const targetPhone = (
+      await this.prisma.client.user.findUnique({ where: { id: targetUserId }, select: { phone: true } })
+    )?.phone;
     await this.withRetryOnDuplicate(async () => {
       await this.prisma.client.$transaction(async (tx) => {
         // 重新生成：旧有效凭证立即失效（条件更新 + 部分唯一索引并发安全）
@@ -124,6 +127,16 @@ export class AdminInvitationService {
             expiresAt: new Date(Date.now() + validSeconds * 1000),
             createdBy: adminId,
           },
+        });
+        // 操作日志（CREATE；backstage PRD §8：管理员发起密码重置属管理功能，按主 PRD §3.3 记录）
+        await writeBackstageOperationLog(tx, {
+          operator,
+          feature: 'user_manage',
+          actionType: 'CREATE',
+          summary:
+            fragmentPath === 'reset-password'
+              ? `为账号 ${maskPhone(targetPhone ?? String(targetUserId))} 生成密码重置邀请`
+              : `为账号 ${targetUserId} 生成邀请`,
         });
       });
     });

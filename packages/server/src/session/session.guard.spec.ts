@@ -21,6 +21,13 @@ import { SessionService } from './session.service';
 
 const REDIS_URL = process.env.REDIS_URL;
 
+/**
+ * 本测试独用的 Redis db（独立于其它包/文件的 db 0 与 session.service.spec 的 db 1）。
+ * 原因：会话测试的 afterEach 清理 `session:*` 键，若与其它集成测试
+ * （platform-core 等同样写入 `session:*` 键）并行跑会互相清键导致偶发失败。
+ */
+const TEST_REDIS_DB = 2;
+
 /** 测试用户（仅内存态，不落库） */
 const TEST_USER_ID = 424242;
 
@@ -29,7 +36,7 @@ const TEST_USER_ID = 424242;
  * 会话校验主流程 + 提权旋转接线（目标用户旧会话标识在下次请求透明轮换）。
  */
 describe.skipIf(!REDIS_URL)('SessionGuard（会话校验 + 提权旋转，T3-4）', () => {
-  const redis = new Redis(REDIS_URL ?? 'redis://localhost:6379');
+  const redis = new Redis(REDIS_URL ?? 'redis://localhost:6379', { db: TEST_REDIS_DB });
   const session = new SessionService(redis);
   const loader: SessionUserLoader = {
     load: async (userId) =>

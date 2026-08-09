@@ -104,8 +104,10 @@ async function scanOrphanBackupObjects(
   if (backupIds.size === 0) {
     return;
   }
+  // 仅 SUCCEEDED 视为合法配对（backstage PRD §10：清单/对象成对且记录成功才保留；
+  // FAILED 行（清单上传失败等）留下的对象按孤儿清理）
   const rows = await sql.queryRows<{ id: number }>(
-    `SELECT id FROM backstage.backups WHERE id = ANY($1::int[])`,
+    `SELECT id FROM backstage.backups WHERE id = ANY($1::int[]) AND status = 'SUCCEEDED'`,
     [[...backupIds]],
   );
   const known = new Set(rows.map((r) => r.id));

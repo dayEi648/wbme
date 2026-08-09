@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query, Res } from '@nestjs/common';
 import {
+  DateTypeQueryDto,
   OvertimeManageQueryDto,
   OvertimeManageSummaryDto,
   OvertimeMineQueryDto,
@@ -14,6 +15,7 @@ import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess, getFunctionAccess } from '../../shared/cross-schema-auth';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
+import { HolidayAdapter } from '../holiday/holiday.adapter';
 import { HrApprovalService } from '../approval/hr-approval.service';
 import { OvertimeExportService } from './overtime-export.service';
 import { OvertimeSubmissionService } from './overtime-submission.service';
@@ -34,7 +36,15 @@ export class OvertimeController {
     private readonly summary: OvertimeSummaryService,
     private readonly exportService: OvertimeExportService,
     private readonly closure: DepartmentClosureService,
+    private readonly holiday: HolidayAdapter,
   ) {}
+
+  /** 日期类型查询（hr PRD §3：提交前展示日期类型、时长与补交提示；统一经后端节假日适配器，不让前端直连第三方） */
+  @Get('date-type')
+  async dateType(@Query() query: DateTypeQueryDto): Promise<{ date: string; dateType: string; weekday: number; source: string; digest: string; fetchedAt: string }> {
+    const normalized = await this.holiday.resolve(query.date);
+    return { date: query.date, ...normalized };
+  }
 
   /** 提交加班批次（全有或全无；提交前展示日期类型/时长由前端先查节假日） */
   @Post('applications')
@@ -68,6 +78,8 @@ export class OvertimeController {
         orderBy: [{ overtimeDate: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
+        // 申请编号取审批头（与提交/导出/审批中心口径一致；row.requestId 为数字批次 id）
+        include: { request: { select: { applicationNo: true } } },
       }),
     ]);
     return {
@@ -80,7 +92,7 @@ export class OvertimeController {
         hours: Math.round(((row.endMinute - row.startMinute) / 60) * 100) / 100,
         reason: row.reason,
         dateType: (row.holidaySnapshot as { dateType?: string })?.dateType ?? null,
-        applicationNo: row.requestId,
+        applicationNo: row.request?.applicationNo ?? String(row.requestId),
       })),
       pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) },
     };

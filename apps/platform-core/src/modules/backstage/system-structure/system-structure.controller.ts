@@ -1,4 +1,4 @@
-import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { IdempotentDto, SYSTEM_STRUCTURE_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -9,6 +9,10 @@ import { SystemStructureService } from './system-structure.service';
 /** 系统状态调整入参 */
 class UpdateSystemStatusDto extends IdempotentDto {
   /** 目标开放状态（asset/hr/fin 可调；backstage 恒开放） */
+  @ApiProperty({
+    description: '目标开放状态（asset/hr/fin 可调；backstage 恒开放）',
+    enum: ['OPEN', 'COMING_SOON'],
+  })
   @IsIn(['OPEN', 'COMING_SOON'])
   productStatus!: 'OPEN' | 'COMING_SOON';
 }
@@ -16,6 +20,10 @@ class UpdateSystemStatusDto extends IdempotentDto {
 /** 业务说明维护入参（板块/功能共用；空白 = 清除） */
 class UpdateDescriptionDto extends IdempotentDto {
   /** 业务说明（≤500；空白字符串清除为 NULL） */
+  @ApiProperty({
+    description: '业务说明（≤500；空白字符串清除为 NULL）',
+    maxLength: 500,
+  })
   @IsString()
   @MaxLength(500)
   description!: string;

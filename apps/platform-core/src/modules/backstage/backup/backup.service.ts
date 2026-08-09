@@ -145,6 +145,12 @@ export class BackupService {
       throw new BusinessException(backupErrors.BACKUP_UNVERIFIED);
     }
     await this.assertNoActiveRestore();
+    // 运行中的普通备份必须先行结束（backstage PRD §10：普通备份仍在运行时，
+    // 整库恢复停留在预检等待，不得并发 pg_dump）
+    const runningBackup = await this.prisma.client.backup.findFirst({ where: { status: 'RUNNING' } });
+    if (runningBackup) {
+      throw new BusinessException(backupErrors.BACKUP_LOCK_BUSY, { backupId: runningBackup.id });
+    }
     // 恢复前紧急备份：创建（或复用窗口内进行中的）并等待终态
     const emergencyBackupId = await this.ensureEmergencyBackup(operatorId);
     const emergencySucceeded = await this.waitForEmergencyBackup(emergencyBackupId);
@@ -224,31 +230,35 @@ export class BackupService {
     if (existing) {
       return existing.id;
     }
-    const emergency = await this.prisma.client.backup.create({
-      data: {
-        taskType: 'EMERGENCY',
-        status: 'RUNNING',
-        backupTime: new Date(),
-        startedAt: new Date(),
-        createdBy: operatorId,
-      },
+    // 单事务创建备份行 + 任务行：任务创建失败整体回滚，
+    // 不留永挂 RUNNING 的紧急备份行阻塞后续备份/恢复（与 triggerImmediateBackup 同语义）
+    return this.prisma.client.$transaction(async (tx) => {
+      const emergency = await tx.backup.create({
+        data: {
+          taskType: 'EMERGENCY',
+          status: 'RUNNING',
+          backupTime: new Date(),
+          startedAt: new Date(),
+          createdBy: operatorId,
+        },
+      });
+      const businessKey = `EMERGENCY_BACKUP:${emergency.id}`;
+      const taskUuid = stableTaskUuid(businessKey);
+      const ref: ImmediateBackupTaskRef = { backupId: emergency.id };
+      await tx.backup.update({
+        where: { id: emergency.id },
+        data: { taskUuid },
+      });
+      await createPendingTask(prismaTaskWriter(tx), {
+        taskUuid,
+        taskType: TASK_TYPE_EMERGENCY_BACKUP,
+        module: 'backstage',
+        initiatorId: operatorId,
+        initiatorType: 'USER',
+        ref,
+      });
+      return emergency.id;
     });
-    const businessKey = `EMERGENCY_BACKUP:${emergency.id}`;
-    const taskUuid = stableTaskUuid(businessKey);
-    const ref: ImmediateBackupTaskRef = { backupId: emergency.id };
-    await this.prisma.client.backup.update({
-      where: { id: emergency.id },
-      data: { taskUuid },
-    });
-    await createPendingTask(prismaTaskWriter(this.prisma.client), {
-      taskUuid,
-      taskType: TASK_TYPE_EMERGENCY_BACKUP,
-      module: 'backstage',
-      initiatorId: operatorId,
-      initiatorType: 'USER',
-      ref,
-    });
-    return emergency.id;
   }
 
   /**
@@ -287,7 +297,8 @@ export class BackupService {
     }
   }
 
-  private async assertSuperAdmin(operatorId: number): Promise<void> {
+  /** 超管校验（恢复操作与恢复控制会话签发共用；RESTORE_SUPER_ADMIN_ONLY） */
+  async assertSuperAdmin(operatorId: number): Promise<void> {
     const user = await this.prisma.client.user.findUnique({
       where: { id: operatorId },
       select: { isSuperAdmin: true, deletedAt: true },

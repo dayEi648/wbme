@@ -51,7 +51,7 @@ describe.skipIf(!REDIS_URL)('改密/重置集成（session_version 全会话失�
     const securityLog = new SecurityLogService(prisma);
     const token = new TokenService();
     const csrf = new CsrfService('test-signing-key-at-least-32-chars-long!!');
-    const protection = new LoginProtectionService(redis, settings, securityLog);
+    const protection = new LoginProtectionService(redis, settings, securityLog, prisma);
     const phoneSync = new PhoneSyncService(prisma, securityLog);
     auth = new AuthService(prisma, password, protection, securityLog, settings, session, csrf, phoneSync);
     reset = new ResetFlow(prisma, flows, password, phoneSync, securityLog);

@@ -209,6 +209,15 @@ export class OvertimeSubmissionService {
 
   /** 事务内重叠重验（FOR UPDATE 锁该员工当日明细，防并发双提） */
   private async assertNoOverlapInTransaction(tx: Prisma.TransactionClient, dto: OvertimeSubmitDto): Promise<void> {
+    // 同人同日提交串行化（pg_advisory_xact_lock）：行锁锁不住"尚未插入的未来行"，
+    // 两个并发提交（当日均无既有明细）会同时通过校验造成重叠双写；咨询锁按 (用户,日期)
+    // 固定键互斥整个提交校验+插入，与事务同生命周期（提交/回滚自动释放）
+    const dateKey = toDbDate(dto.overtimeDate);
+    for (const targetUserId of [...new Set(dto.userIds)].sort((a, b) => a - b)) {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtext(${`overtime:${targetUserId}:${dateKey.toISOString()}`}))
+      `;
+    }
     const rows = await tx.$queryRaw<Array<{ user_id: number; start_minute: number; end_minute: number }>>`
       SELECT oi.user_id, oi.start_minute, oi.end_minute
       FROM hr.overtime_items oi

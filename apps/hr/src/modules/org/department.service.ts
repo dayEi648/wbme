@@ -3,7 +3,7 @@ import { BusinessException, DEPARTMENT_MANAGE_FUNCTION_CODE, frameworkErrors, hr
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, type HrOperationLogOperator } from '../../shared/hr-operation-log.util';
-import { bumpOrgTreeVersion } from '../../shared/org-version.service';
+import { bumpOrgTreeVersion, bumpUserOrgVersion } from '../../shared/org-version.service';
 
 /**
  * 部门管理服务（hr PRD §6）：
@@ -237,7 +237,9 @@ export class DepartmentService {
           throw new BusinessException(hrErrors.DEPARTMENT_HAS_CHILDREN, { departmentIds: children.map((c) => c.id) });
         }
         await tx.department.deleteMany({ where: { id: { in: ids } } });
+        // 部门删除级联清空员工部门关系（用户组织事实变更）+ 部门范围闭包变更
         await bumpOrgTreeVersion(tx);
+        await bumpUserOrgVersion(tx);
         return {
           result: { deleted: ids.length },
           actionType: 'DELETE' as const,

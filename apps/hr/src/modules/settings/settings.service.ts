@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { PrismaService } from '../../prisma.service';
+import type { Prisma } from '../../generated/prisma/client';
 
 /** 人事设置键名清单（hr PRD §9；默认值受版本控制，24h 缓存等固定工程参数不入设置） */
 export const HR_SETTING_KEYS = {
@@ -91,7 +92,7 @@ export class SettingsService {
    * @param updatedBy 操作人
    * @throws VALIDATION_FAILED 键未注册或值非法
    */
-  async update(key: string, value: string, updatedBy: number): Promise<{ ok: true }> {
+  async update(key: string, value: string, updatedBy: number, tx?: Prisma.TransactionClient): Promise<{ ok: true }> {
     const definition = HR_SETTING_DEFINITIONS[key as keyof typeof HR_SETTING_DEFINITIONS];
     if (!definition) {
       throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '未知的人事设置键' });
@@ -100,7 +101,9 @@ export class SettingsService {
     if (!Number.isFinite(numeric) || numeric < 0) {
       throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '人事设置值必须为非负数值' });
     }
-    await this.prisma.client.hrSetting.upsert({
+    // 传入事务客户端时与调用方（操作日志）同事务（主 PRD §9.3：日志随业务事务写入）
+    const client = tx ?? this.prisma.client;
+    await client.hrSetting.upsert({
       where: { key },
       create: { key, value, valueType: 'NUMBER', label: definition.label, updatedBy },
       update: { value, updatedBy },

@@ -11,13 +11,14 @@ import {
   SAFELY_REPLAYABLE_TASK_TYPES,
   stableTaskUuid,
   TASK_TYPE_APPROVAL_TIMEOUT_SCAN,
+  TASK_TYPE_RESTORE_DELIVERY,
   TASK_TYPE_SCHEDULED_BACKUP,
   TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP,
   TASK_QUEUE_NAME,
   type SqlClient,
 } from '@wbme/tasks';
 import { REDIS_NAMESPACE } from '@wbme/server';
-import { DEFAULT_JOB_OPTIONS } from './job-options';
+import { DEFAULT_JOB_OPTIONS, RESTORE_DELIVERY_JOB_OPTIONS } from './job-options';
 
 /** 每日备份调度内存状态（进程内，重启后靠 stable uuid 去重） */
 let lastScheduledBackupCycleDate: string | null = null;
@@ -179,7 +180,10 @@ export class OutboxScheduler {
             { taskUuid: row.taskUuid },
             {
               jobId: row.taskUuid,
-              ...DEFAULT_JOB_OPTIONS,
+              // 恢复投递不自动重试（backstage PRD §10）；其余任务按默认重试
+              ...(row.taskType === TASK_TYPE_RESTORE_DELIVERY
+                ? RESTORE_DELIVERY_JOB_OPTIONS
+                : DEFAULT_JOB_OPTIONS),
             },
           );
           const queued = await markQueued(this.sql, row.taskUuid, this.schedulerId);

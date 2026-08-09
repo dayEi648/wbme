@@ -1,10 +1,11 @@
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { Test } from '@nestjs/testing';
-import { BusinessException } from '@wbme/contracts';
+import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { redisKey, REDIS_NAMESPACE, REDIS_CLIENT } from '@wbme/server';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { PrismaService } from '../../../prisma.service';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import { SecurityLogService } from '../security-log/security-log.service';
 import { LoginProtectionService } from './login-protection.service';
@@ -40,6 +41,22 @@ function fakeSettings(values: Record<string, number>): SettingsService {
   return { getNumber: async (key: string) => values[key] ?? 0 } as SettingsService;
 }
 
+/**
+ * 用户表 mock：仅 800/801 为超管（用于超管目标解锁保护测试），其余普通用户。
+ */
+function fakePrisma(): PrismaService {
+  const superAdminIds = new Set([800, 801]);
+  return {
+    client: {
+      user: {
+        findUnique: async ({ where }: { where: { id: number } }) => ({
+          isSuperAdmin: superAdminIds.has(where.id),
+        }),
+      },
+    },
+  } as unknown as PrismaService;
+}
+
 describe.skipIf(!REDIS_URL)('LoginProtectionService（base PRD §4）', () => {
   let redis: Redis;
   let service: LoginProtectionService;
@@ -54,10 +71,11 @@ describe.skipIf(!REDIS_URL)('LoginProtectionService（base PRD §4）', () => {
         { provide: REDIS_CLIENT, useValue: redis },
         { provide: SettingsService, useValue: fakeSettings(ACCOUNT_FOCUS_SETTINGS) },
         { provide: SecurityLogService, useValue: securityLog },
+        { provide: PrismaService, useValue: fakePrisma() },
       ],
     }).compile();
     service = moduleRef.get(LoginProtectionService);
-    ipFocusService = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), securityLog);
+    ipFocusService = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), securityLog, fakePrisma());
   });
 
   afterAll(async () => {
@@ -108,6 +126,12 @@ describe.skipIf(!REDIS_URL)('LoginProtectionService（base PRD §4）', () => {
       await service.unlockByAdmin(40, 99);
       await expect(service.assertNotLocked(40, '10.0.0.11')).resolves.toBeUndefined();
     });
+
+    it('超管账号仅限超管解锁：普通 user_manage 持有者解锁超管目标抛 FORBIDDEN（backstage PRD §3）', async () => {
+      await expect(service.unlockByAdmin(800, 802)).rejects.toMatchObject({ entry: { code: frameworkErrors.FORBIDDEN.code } });
+      await expect(service.unlockByAdmin(800, 99)).rejects.toMatchObject({ entry: { code: frameworkErrors.FORBIDDEN.code } });
+      await expect(service.unlockByAdmin(800, 801)).resolves.toBeUndefined();
+    });
   });
 
   describe('IP 锁', () => {
@@ -138,7 +162,7 @@ describe.skipIf(!REDIS_URL)('LoginProtectionService（base PRD §4）', () => {
           events.push(event);
         },
       } as unknown as SecurityLogService;
-      const svc = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), spied);
+      const svc = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), spied, fakePrisma());
       const userId = 60;
       const ip = '10.0.0.13';
       await redis.del(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'acct_locked_ips', userId));
@@ -167,7 +191,7 @@ describe.skipIf(!REDIS_URL)('LoginProtectionService（base PRD §4）', () => {
           events.push(event);
         },
       } as unknown as SecurityLogService;
-      const svc = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), spied);
+      const svc = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), spied, fakePrisma());
       const userId = 61;
       const ip = '10.0.0.14';
       await redis.del(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'acct_locked_ips', userId));

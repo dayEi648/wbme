@@ -3,6 +3,7 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hrErrors } from '@wbme/contracts';
+import type { RedisService } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { ensurePermissionCatalog } from '../../test-support/ensure-permission-catalog';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -50,7 +51,7 @@ describeDb('账号生命周期（T6-8）', () => {
     departments = new DepartmentService(prisma);
     positions = new PositionService(prisma);
     applications = new PositionApplicationService(prisma);
-    approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), applications);
+    approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), applications, { redis: {} } as unknown as RedisService);
     applications.bindApprovalService(approval);
     await ensurePermissionCatalog(prisma);
 

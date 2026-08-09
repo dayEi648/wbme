@@ -3,6 +3,7 @@ import { BusinessException, POSITION_MANAGE_FUNCTION_CODE, frameworkErrors, hrEr
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, type HrOperationLogOperator } from '../../shared/hr-operation-log.util';
+import { bumpUserOrgVersion } from '../../shared/org-version.service';
 
 /**
  * 岗位管理服务（hr PRD §7）：
@@ -254,6 +255,8 @@ export class PositionService {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
         await tx.position.deleteMany({ where: { id: { in: ids } } });
+        // 岗位删除经 FK SetNull 置空在岗员工岗位：用户组织事实变更，递增用户组织版本（base PRD §3）
+        await bumpUserOrgVersion(tx);
         return {
           result: { deleted: ids.length },
           actionType: 'DELETE' as const,

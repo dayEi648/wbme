@@ -14,6 +14,14 @@ export interface OutboxClaimRow {
 }
 
 /**
+ * 已入队（QUEUED）但从未领取的超时兜底阈值（分钟）。
+ * markQueued 清空租约；若 BullMQ 作业因 Redis 数据丢失/Worker 崩溃消失，
+ * 任务会永久卡 QUEUED——超过该阈值后调度器按可重放类型重新投递
+ * （主 PRD §9.1：Redis 数据丢失时调度器按 PostgreSQL 状态恢复）。
+ */
+export const STALLED_QUEUED_REQUEUE_MINUTES = 10;
+
+/**
  * 领取待投递 Outbox 批次（SELECT FOR UPDATE SKIP LOCKED + 投递租约）。
  *
  * @param client SQL 客户端
@@ -47,6 +55,12 @@ export async function claimOutboxBatch(
         )
         AND lease_expires_at IS NOT NULL
         AND lease_expires_at <= $1::timestamptz
+        AND task_type = ANY($2::text[])
+      )
+      OR (
+        status = 'QUEUED'::backstage."TaskStatus"
+        AND lease_expires_at IS NULL
+        AND created_at <= $1::timestamptz - (${STALLED_QUEUED_REQUEUE_MINUTES} * interval '1 minute')
         AND task_type = ANY($2::text[])
       )
       ORDER BY created_at

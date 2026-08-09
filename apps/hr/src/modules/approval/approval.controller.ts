@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query, Res } from '@nestjs/common';
 import {
   ApprovalListQueryDto,
   CancelApprovalDto,
   ProcessApprovalDto,
 } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
+import type { Response } from 'express';
+import { PrismaService } from '../../prisma.service';
+import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { HrApprovalService } from './hr-approval.service';
 
 /**
@@ -13,7 +16,10 @@ import { HrApprovalService } from './hr-approval.service';
  */
 @Controller('approval-requests')
 export class ApprovalController {
-  constructor(private readonly approval: HrApprovalService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly approval: HrApprovalService,
+  ) {}
 
   /**
    * 待审批数量。
@@ -36,6 +42,34 @@ export class ApprovalController {
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: ApprovalListQueryDto): Promise<unknown> {
     return this.approval.list(userId, query);
+  }
+
+  /**
+   * 审批列表导出（hr PRD §4「支持导出」；可见性与数据范围与列表一致）。
+   *
+   * @param userId 当前用户
+   * @param query 筛选
+   * @param res 流式响应
+   */
+  @Get('export')
+  async exportList(
+    @CurrentUser() userId: number,
+    @Query() query: ApprovalListQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.approval.exportList(userId, query, res);
+    const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
+    await this.prisma.client.hrOperationLog.create({
+      data: {
+        operatorId: operator.id,
+        operatorName: operator.name,
+        operatorDepartments: operator.departments as object,
+        system: 'HR',
+        feature: 'approval_center',
+        actionType: 'EXPORT',
+        summary: '导出了审批中心列表',
+      },
+    });
   }
 
   /**

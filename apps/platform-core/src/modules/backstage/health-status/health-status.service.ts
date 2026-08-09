@@ -67,7 +67,8 @@ export class HealthStatusService {
         where: { status: 'FAILED', finishedAt: { gte: dayAgo } },
       }),
       this.prisma.client.backgroundTask.findFirst({
-        where: { status: 'FAILED' },
+        // 与 failed24h 同口径：仅最近 24 小时滚动窗口内（backstage PRD §11 / 主 PRD §13）
+        where: { status: 'FAILED', finishedAt: { gte: dayAgo } },
         orderBy: { finishedAt: 'desc' },
         select: { finishedAt: true },
       }),

@@ -1,4 +1,4 @@
-import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { SYSTEM_LOG_VIEW_FUNCTION_CODE, PaginationQueryDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
@@ -9,29 +9,38 @@ import { FunctionPermissionGuard, RequireFunction } from '../permission/function
 import { SystemLogService } from './system-log.service';
 
 class ErrorLogQueryDto extends PaginationQueryDto {
-  @IsOptional() @IsString() level?: string;
-  @IsOptional() @IsString() @MaxLength(100) service?: string;
-  @IsOptional() @IsString() @MaxLength(200) source?: string;
-  @IsOptional() @IsString() @MaxLength(100) errorCategory?: string;
-  @IsOptional() @IsString() @MaxLength(64) fingerprint?: string;
-  @IsOptional() @IsIn(['PENDING', 'HANDLED', 'IGNORED']) status?: string;
-  @IsOptional() @Type(() => Date) from?: Date;
-  @IsOptional() @Type(() => Date) to?: Date;
+  @ApiProperty({ description: '日志级别', required: false }) @IsOptional() @IsString() level?: string;
+  @ApiProperty({ description: '服务名', required: false, maxLength: 100 }) @IsOptional() @IsString() @MaxLength(100) service?: string;
+  @ApiProperty({ description: '来源模块', required: false, maxLength: 200 }) @IsOptional() @IsString() @MaxLength(200) source?: string;
+  @ApiProperty({ description: '错误分类', required: false, maxLength: 100 }) @IsOptional() @IsString() @MaxLength(100) errorCategory?: string;
+  @ApiProperty({ description: '指纹（聚合键）', required: false, maxLength: 64 }) @IsOptional() @IsString() @MaxLength(64) fingerprint?: string;
+  @ApiProperty({ description: '处理状态', required: false, enum: ['PENDING', 'HANDLED', 'IGNORED'] }) @IsOptional() @IsIn(['PENDING', 'HANDLED', 'IGNORED']) status?: string;
+  @ApiProperty({ description: '开始时间（含）', required: false, type: 'string', format: 'date-time' }) @IsOptional() @Type(() => Date) from?: Date;
+  @ApiProperty({ description: '结束时间（含）', required: false, type: 'string', format: 'date-time' }) @IsOptional() @Type(() => Date) to?: Date;
 }
 
 class SecurityLogQueryDto extends PaginationQueryDto {
-  @IsOptional() @IsString() eventType?: string;
-  @IsOptional() @Type(() => Number) @IsInt() actorId?: number;
-  @IsOptional() @Type(() => Number) @IsInt() targetUserId?: number;
-  @IsOptional() @IsIn(['SUCCESS', 'FAILURE']) result?: string;
-  @IsOptional() @Type(() => Date) from?: Date;
-  @IsOptional() @Type(() => Date) to?: Date;
+  @ApiProperty({ description: '事件类型', required: false }) @IsOptional() @IsString() eventType?: string;
+  @ApiProperty({ description: '操作者用户 id', required: false, minimum: 1 }) @IsOptional() @Type(() => Number) @IsInt() actorId?: number;
+  @ApiProperty({ description: '目标用户 id', required: false, minimum: 1 }) @IsOptional() @Type(() => Number) @IsInt() targetUserId?: number;
+  @ApiProperty({ description: '结果', required: false, enum: ['SUCCESS', 'FAILURE'] }) @IsOptional() @IsIn(['SUCCESS', 'FAILURE']) result?: string;
+  @ApiProperty({ description: '开始时间（含）', required: false, type: 'string', format: 'date-time' }) @IsOptional() @Type(() => Date) from?: Date;
+  @ApiProperty({ description: '结束时间（含）', required: false, type: 'string', format: 'date-time' }) @IsOptional() @Type(() => Date) to?: Date;
 }
 
 class DisposeErrorLogDto {
+  @ApiProperty({
+    description: '处置动作：HANDLED=已处理 / IGNORED=已忽略',
+    enum: ['HANDLED', 'IGNORED'],
+  })
   @IsIn(['HANDLED', 'IGNORED'])
   status!: 'HANDLED' | 'IGNORED';
 
+  @ApiProperty({
+    description: '处置备注',
+    required: false,
+    maxLength: 500,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)

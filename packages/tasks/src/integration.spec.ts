@@ -1,3 +1,5 @@
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   claimOutboxBatch,
@@ -9,6 +11,12 @@ import {
 } from './index';
 import type { SqlClient } from './sql-client';
 
+// 加载仓库根 .env（与 worker/platform-core 规格一致：本地集成测试默认可跑；CI 由环境变量注入）
+try {
+  loadEnvFile(resolve(process.cwd(), '../../.env'));
+} catch {
+  // 环境变量由外部注入时跳过
+}
 const hasIntegrationEnv = Boolean(process.env.DATABASE_URL);
 
 describe.runIf(hasIntegrationEnv)('tasks integration', () => {
