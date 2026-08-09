@@ -565,11 +565,11 @@ export class RecoveryExecutorService {
       storage: {
         getObject: async (key) => {
           const { createFileStorage } = await import('@wbme/files');
-          return createFileStorage().getObject(key);
+          return (await createFileStorage()).getObject(key);
         },
         listPrefix: async (prefix) => {
           const { createFileStorage } = await import('@wbme/files');
-          return createFileStorage().listPrefix(prefix);
+          return (await createFileStorage()).listPrefix(prefix);
         },
       },
       migrateCmd: process.env.RECOVERY_MIGRATE_CMD,

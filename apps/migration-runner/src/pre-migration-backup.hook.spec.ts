@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runPreMigrationBackup, type HookExec } from './pre-migration-backup.hook';
+import { runPreMigrationBackup, type HookExec, type PlatformBackupClient } from './pre-migration-backup.hook';
 
 /**
  * 迁移前备份钩子单测（主 PRD §9.9、实现规划 T0-6）：
@@ -43,5 +43,31 @@ describe('runPreMigrationBackup（迁移前备份钩子）', () => {
     await expect(
       runPreMigrationBackup(exec, { PRE_MIGRATION_BACKUP_CMD: '/opt/wbme/backup-now.sh' }),
     ).rejects.toThrow('迁移前备份失败');
+  });
+
+  it('PRE_MIGRATION_BACKUP_WAIT=1：调用平台内部备份客户端并等待成功', async () => {
+    const exec: HookExec = async () => ({ ok: false, code: 1 });
+    const client: PlatformBackupClient = {
+      async triggerImmediateBackup() {
+        return { backupId: 7 };
+      },
+      async waitBackupSucceeded() {
+        return true;
+      },
+    };
+    await expect(runPreMigrationBackup(exec, { PRE_MIGRATION_BACKUP_WAIT: '1' }, client)).resolves.toBeUndefined();
+  });
+
+  it('PRE_MIGRATION_BACKUP_WAIT=1 但等待失败：抛出阻断迁移', async () => {
+    const exec: HookExec = async () => ({ ok: false, code: 1 });
+    const client: PlatformBackupClient = {
+      async triggerImmediateBackup() {
+        return { backupId: 7 };
+      },
+      async waitBackupSucceeded() {
+        return false;
+      },
+    };
+    await expect(runPreMigrationBackup(exec, { PRE_MIGRATION_BACKUP_WAIT: '1' }, client)).rejects.toThrow('超时或失败');
   });
 });

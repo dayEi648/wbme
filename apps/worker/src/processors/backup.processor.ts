@@ -31,6 +31,42 @@ export interface BackupProcessorDeps {
 /** 备份任务类型（清单记录与 backups.task_type 一致） */
 export type BackupTaskType = 'SCHEDULED' | 'IMMEDIATE' | 'EMERGENCY';
 
+/** 解析 pg_dump --version 输出中的主版本号 */
+async function getPgDumpMajorVersion(): Promise<number> {
+  const { stdout } = await execFileAsync(PG_DUMP_PATH, ['--version']);
+  const match = stdout.match(/\(PostgreSQL\)\s+(\d+)/);
+  if (!match?.[1]) {
+    throw new Error(`无法识别 pg_dump 版本输出：${stdout.trim()}`);
+  }
+  return parseInt(match[1], 10);
+}
+
+/** 查询 PostgreSQL 服务器主版本号 */
+async function getPgServerMajorVersion(databaseUrl: string): Promise<number> {
+  const { stdout } = await execFileAsync(PSQL_PATH, [databaseUrl, '-tAc', 'SHOW server_version_num;']);
+  const num = parseInt(stdout.trim(), 10);
+  if (Number.isNaN(num)) {
+    throw new Error(`无法识别 PostgreSQL 服务器版本号：${stdout.trim()}`);
+  }
+  // server_version_num 格式为 MMmmpp（主版本 * 10000 + 小版本 * 100 + 补丁）
+  return Math.floor(num / 10000);
+}
+
+/**
+ * 校验 pg_dump 客户端版本不低于服务器版本，防止大版本漂移导致备份硬失败。
+ */
+async function assertPgClientCompatible(databaseUrl: string): Promise<void> {
+  const [clientMajor, serverMajor] = await Promise.all([
+    getPgDumpMajorVersion(),
+    getPgServerMajorVersion(databaseUrl),
+  ]);
+  if (clientMajor < serverMajor) {
+    throw new Error(
+      `pg_dump 主版本(${clientMajor}.x)低于 PostgreSQL 服务器主版本(${serverMajor}.x)，备份不可用；请升级 postgresql-client 至 ${serverMajor} 及以上`,
+    );
+  }
+}
+
 /**
  * 执行备份（定时/立即/恢复前紧急共用）：pg_dump → 校验 → 上传 OSS backups/ 前缀。
  *
@@ -46,7 +82,7 @@ export async function runImmediateBackup(
   const dryRun = process.env.BACKUP_DRY_RUN === '1';
   // 动态导入避免单元测试加载 ali-oss（其模块初始化会探测网卡）
   const { createFileStorage } = await import('@wbme/files');
-  const storage = createFileStorage();
+  const storage = await createFileStorage();
   const workDir = await mkdtemp(join(tmpdir(), 'wbme-backup-'));
   const dumpPath = join(workDir, 'dump.fc');
   try {
@@ -61,6 +97,7 @@ export async function runImmediateBackup(
       pgVersion = null;
     }
     if (!dryRun) {
+      await assertPgClientCompatible(deps.databaseUrl);
       await execFileAsync(PG_DUMP_PATH, ['-Fc', '-f', dumpPath, deps.databaseUrl], { env: process.env });
       await execFileAsync(PG_RESTORE_PATH, ['--list', dumpPath]);
     } else {

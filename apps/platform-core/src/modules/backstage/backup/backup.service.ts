@@ -9,13 +9,16 @@ import {
   TASK_TYPE_RESTORE_DELIVERY,
   type ImmediateBackupTaskRef,
   type RestoreDeliveryTaskRef,
+  type TaskInitiatorType,
 } from '@wbme/tasks';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../prisma.service';
+import type { Prisma } from '../../../generated/prisma/client';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
   loadOperationLogOperator,
+  type OperationLogOperator,
 } from '../permission/operation-log.util';
 import type { ImmediateBackupDto, RestoreConfirmDto } from './backup.dto';
 
@@ -43,6 +46,12 @@ const EMERGENCY_BACKUP_RECENT_WINDOW_MS = 2 * 60 * 60 * 1000;
 export class BackupService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** 按 id 查询备份（内部接口用） */
+  async findBackupById(backupId: number): Promise<{ status: string } | null> {
+    const backup = await this.prisma.client.backup.findUnique({ where: { id: backupId } });
+    return backup ? { status: backup.status } : null;
+  }
+
   /** 备份列表 */
   async listBackups(dto: { page: number; pageSize: number }): Promise<unknown> {
     const skip = (dto.page - 1) * dto.pageSize;
@@ -64,6 +73,48 @@ export class BackupService {
   }
 
   /**
+   * 创建立即备份任务（内部共用逻辑）。
+   *
+   * @param tx 事务客户端
+   * @param initiatorId 发起人标识（用户 id 或系统调用方标识）
+   * @param initiatorType 发起人类型
+   * @returns 备份 id 与任务 uuid
+   */
+  private async createImmediateBackupTask(
+    tx: Prisma.TransactionClient,
+    initiatorId: number,
+    initiatorType: TaskInitiatorType,
+  ): Promise<{ backupId: number; taskUuid: string }> {
+    // 任意运行中的备份（定时/立即）都互斥：备份按创建时间串行（backstage PRD §10）
+    const running = await tx.backup.findFirst({ where: { status: 'RUNNING' } });
+    if (running) {
+      throw new BusinessException(backupErrors.BACKUP_LOCK_BUSY);
+    }
+    const backup = await tx.backup.create({
+      data: {
+        taskType: 'IMMEDIATE',
+        status: 'RUNNING',
+        backupTime: new Date(),
+        startedAt: new Date(),
+        createdBy: initiatorId,
+      },
+    });
+    const businessKey = `IMMEDIATE_BACKUP:${backup.id}`;
+    const taskUuid = stableTaskUuid(businessKey);
+    const ref: ImmediateBackupTaskRef = { backupId: backup.id };
+    await tx.backup.update({ where: { id: backup.id }, data: { taskUuid } });
+    await createPendingTask(prismaTaskWriter(tx), {
+      taskUuid,
+      taskType: TASK_TYPE_IMMEDIATE_BACKUP,
+      module: 'backstage',
+      initiatorId,
+      initiatorType,
+      ref,
+    });
+    return { backupId: backup.id, taskUuid };
+  }
+
+  /**
    * 发起立即备份（幂等：同用户同分钟窗口稳定 taskUuid）。
    */
   async triggerImmediateBackup(operatorId: number, dto: ImmediateBackupDto): Promise<unknown> {
@@ -78,39 +129,46 @@ export class BackupService {
       idempotencyKey: dto.idempotencyKey ?? `immediate:${operatorId}:${windowKey}`,
       fingerprint,
       run: async (tx) => {
-        // 任意运行中的备份（定时/立即）都互斥：备份按创建时间串行（backstage PRD §10）
-        const running = await tx.backup.findFirst({ where: { status: 'RUNNING' } });
-        if (running) {
-          throw new BusinessException(backupErrors.BACKUP_LOCK_BUSY);
-        }
-        const backup = await tx.backup.create({
-          data: {
-            taskType: 'IMMEDIATE',
-            status: 'RUNNING',
-            backupTime: new Date(),
-            startedAt: new Date(),
-            createdBy: operatorId,
-          },
-        });
-        const businessKey = `IMMEDIATE_BACKUP:${backup.id}`;
-        const taskUuid = stableTaskUuid(businessKey);
-        const ref: ImmediateBackupTaskRef = { backupId: backup.id };
-        await tx.backup.update({ where: { id: backup.id }, data: { taskUuid } });
-        await createPendingTask(prismaTaskWriter(tx), {
-          taskUuid,
-          taskType: TASK_TYPE_IMMEDIATE_BACKUP,
-          module: 'backstage',
-          initiatorId: operatorId,
-          initiatorType: 'USER',
-          ref,
-        });
+        const { backupId, taskUuid } = await this.createImmediateBackupTask(tx, operatorId, 'USER');
         return {
-          result: { backupId: backup.id, taskUuid },
+          result: { backupId, taskUuid },
           actionType: 'CREATE',
           summary: '发起立即备份',
         };
       },
     });
+  }
+
+  /**
+   * 内部调用发起立即备份（迁移前钩子；不走用户会话，主 PRD §9.4）。
+   *
+   * @param caller 调用方服务名（如 migration-runner）
+   * @param dto 幂等键等请求参数
+   * @returns 备份 id 与任务 uuid
+   */
+  async triggerImmediateBackupInternal(caller: string, dto: ImmediateBackupDto): Promise<{ backupId: number; taskUuid: string }> {
+    await this.assertNoActiveRestore();
+    // 系统调用方使用固定 operatorId = 0（operation_logs_idempotency_unique 中 COALESCE(operator_id, 0) 与显式 0 同桶；auto-increment 从 1 开始，0 保留给系统）
+    const systemOperatorId = 0;
+    const operator: OperationLogOperator = { id: systemOperatorId, name: `system:${caller}`, isSuperAdmin: true };
+    const windowKey = new Date().toISOString().slice(0, 16);
+    const fingerprint = fingerprintPayload({ caller, windowKey });
+    const result = await executeIdempotentOperation(this.prisma.client, {
+      operator,
+      feature: DATA_BACKUP_FUNCTION_CODE,
+      scope: IDEMPOTENCY_SCOPE.IMMEDIATE_BACKUP,
+      idempotencyKey: dto.idempotencyKey ?? `internal:${caller}:${windowKey}`,
+      fingerprint,
+      run: async (tx) => {
+        const { backupId, taskUuid } = await this.createImmediateBackupTask(tx, systemOperatorId, 'SCHEDULER');
+        return {
+          result: { backupId, taskUuid },
+          actionType: 'CREATE',
+          summary: `系统调用方 ${caller} 发起立即备份`,
+        };
+      },
+    });
+    return result as { backupId: number; taskUuid: string };
   }
 
   /** 恢复预检（超管） */

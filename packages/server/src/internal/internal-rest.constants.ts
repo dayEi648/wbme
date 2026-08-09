@@ -18,6 +18,8 @@ export const INTERNAL_SERVICES = [
   'recovery-executor',
   // 生产发布脚本（宿主经 docker compose exec 在容器内调用；backstage PRD §9 更新日志追加）
   'release-script',
+  // 迁移执行器（部署迁移前触发立即备份；主 PRD §9.9）
+  'migration-runner',
 ] as const;
 
 export type InternalService = (typeof INTERNAL_SERVICES)[number];

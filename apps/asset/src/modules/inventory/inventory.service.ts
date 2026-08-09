@@ -253,7 +253,9 @@ export class InventoryService {
       idempotencyKey: undefined,
       fingerprint: fingerprintPayload(input),
       run: async (tx) => {
-        // 锁定批次及其所属条目（批次行 FOR UPDATE）
+        // 锁定批次及其所属条目（批次行 FOR UPDATE）。
+        // 注意：asset.batches 表不存 warehouse_id（仅快照 warehouse_name/path），
+        // 库位 ID 来自 inventory_items.warehouse_id。
         const batch = await tx.$queryRaw<
           Array<{
             id: number;
@@ -261,7 +263,6 @@ export class InventoryService {
             consumable_id: number;
             consumable_name: string;
             spec: string;
-            warehouse_id: number | null;
             warehouse_name: string;
             warehouse_path: string;
             supplier_id: number | null;
@@ -279,7 +280,6 @@ export class InventoryService {
             b.consumable_id,
             b.consumable_name,
             b.spec,
-            b.warehouse_id,
             b.warehouse_name,
             b.warehouse_path,
             b.supplier_id,
@@ -310,7 +310,7 @@ export class InventoryService {
           unitPrice: batchRow.unit_price?.toString() ?? null,
           remark: batchRow.remark,
           spec: batchRow.spec,
-          warehouseId: batchRow.warehouse_id,
+          warehouseId: sourceItem.warehouseId,
           warehouseName: batchRow.warehouse_name,
         };
 
@@ -326,11 +326,11 @@ export class InventoryService {
 
         // 规格/库位纠正：会改变批次所属条目，仅当无后续流水且来源条目无待审批占用时允许
         const finalSpec = input.spec ?? batchRow.spec;
-        const finalWarehouseId = input.warehouseId ?? batchRow.warehouse_id;
+        const finalWarehouseId = input.warehouseId ?? sourceItem.warehouseId;
         let finalWarehouseName = batchRow.warehouse_name;
         let finalWarehousePath = batchRow.warehouse_path;
         const specChanged = finalSpec !== batchRow.spec;
-        const warehouseChanged = finalWarehouseId !== batchRow.warehouse_id;
+        const warehouseChanged = finalWarehouseId !== sourceItem.warehouseId;
         let targetItem: { id: number; bookQty: number } | null = null;
         if (specChanged || warehouseChanged) {
           const flowCount = await tx.$queryRaw<Array<{ total: bigint }>>`
@@ -459,12 +459,15 @@ export class InventoryService {
     });
   }
 
-  /** 加载条目行（含账面/占用；无则 null） */
+  /** 加载条目行（含账面/占用/库位；无则 null） */
   private async loadItemRow(
     tx: Prisma.TransactionClient,
     itemId: number,
-  ): Promise<{ id: number; bookQty: number; reservedQty: number } | null> {
-    return tx.inventoryItem.findUnique({ where: { id: itemId }, select: { id: true, bookQty: true, reservedQty: true } });
+  ): Promise<{ id: number; bookQty: number; reservedQty: number; warehouseId: number | null } | null> {
+    return tx.inventoryItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, bookQty: true, reservedQty: true, warehouseId: true },
+    });
   }
 
   /** 加载字典项名称（未填返回 null） */

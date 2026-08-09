@@ -5,7 +5,7 @@ import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createFileStorage, LocalFileStorage, OSS_PREFIX_IMAGES } from '@wbme/files';
+import { createFileStorage, FileStorageService, LocalFileStorage, OSS_PREFIX_IMAGES } from '@wbme/files';
 import type { ProcessorContext } from './types';
 import { processImageCleanup } from './image-cleanup.processor';
 import type { BackgroundTaskRow, SqlClient } from '@wbme/tasks';
@@ -24,14 +24,14 @@ const DATABASE_URL = process.env.DATABASE_URL;
  */
 describe.skipIf(!DATABASE_URL)('processImageCleanup（T4-10 未关联图片清理）', () => {
   let root: string;
-  let storage: ReturnType<typeof createFileStorage>;
+  let storage: FileStorageService;
   let sql: SqlClient;
 
-  const ctx = { sql: null as unknown as SqlClient, leaseOwner: 'test', deployCommit: 'test', storage: null as never } as ProcessorContext & { storage: ReturnType<typeof createFileStorage> };
+  const ctx = { sql: null as unknown as SqlClient, leaseOwner: 'test', deployCommit: 'test', storage: null as never } as ProcessorContext & { storage: FileStorageService };
 
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'wbme-img-test-'));
-    storage = createFileStorage({}, new LocalFileStorage(root));
+    storage = await createFileStorage({}, new LocalFileStorage(root));
     ctx.storage = storage;
     // 用文件系统 SQL 客户端不可行——测试直接通过 pg 客户端（复用 worker 的 SqlClient 契约，用最小实现）
     // 这里使用真实的 pg 客户端替换：worker 的 SqlClient 接口为 query/queryRows。

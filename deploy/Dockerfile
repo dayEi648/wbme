@@ -38,10 +38,16 @@ FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /wbme
 
-# 备份/恢复处理器需要 PostgreSQL 客户端（pg_dump/pg_restore/psql，主 PRD §9.3）
+# 备份/恢复处理器需要 PostgreSQL 18 客户端（pg_dump/pg_restore/psql，主 PRD §9.3）。
+# bookworm 默认源只到 15，使用清华大学 PostgreSQL 镜像源安装 18（与国内网络环境对齐）。
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends postgresql-client-15 \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/postgresql/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://mirrors.tuna.tsinghua.edu.cn/postgresql/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-18 \
+  && rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/pgdg.list /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
 
 # 运行时仅保留依赖、共享包产物与应用产物（含 Prisma 生成代码与迁移文件）
 COPY --from=builder /wbme/node_modules ./node_modules

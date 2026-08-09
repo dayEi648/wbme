@@ -9,6 +9,6 @@ import { ImagesService } from './images.service';
  */
 @Module({
   controllers: [ImagesController],
-  providers: [ImagesService, { provide: FileStorageService, useFactory: () => createFileStorage() }],
+  providers: [ImagesService, { provide: FileStorageService, useFactory: async () => createFileStorage() }],
 })
 export class FilesModule {}

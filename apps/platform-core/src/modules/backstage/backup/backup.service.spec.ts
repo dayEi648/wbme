@@ -116,6 +116,34 @@ describe('BackupService', () => {
     });
   });
 
+  describe('triggerImmediateBackupInternal', () => {
+    it('系统调用方创建 SCHEDULER 类型任务并绕过用户会话加载', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.backup.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.client.backup.create).mockResolvedValue({ id: 8, taskType: 'IMMEDIATE', status: 'RUNNING' });
+      vi.mocked(prisma.client.backup.update).mockResolvedValue({ id: 8 });
+      const result = (await makeService(prisma).triggerImmediateBackupInternal('migration-runner', {
+        idempotencyKey: 'pre-migration:2026-08-09',
+      })) as unknown as { result: { backupId: number; taskUuid: string } };
+      expect(result.result.backupId).toBe(8);
+      expect(mockedStableUuid).toHaveBeenCalledWith('IMMEDIATE_BACKUP:8');
+      expect(mockedCreateTask).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskType: 'IMMEDIATE_BACKUP',
+          module: 'backstage',
+          initiatorId: 0,
+          initiatorType: 'SCHEDULER',
+          ref: { backupId: 8 },
+        }),
+      );
+      expect(mockedExec.mock.calls[0]![1]).toMatchObject({
+        scope: 'backups.immediate',
+        idempotencyKey: 'pre-migration:2026-08-09',
+      });
+    });
+  });
+
   describe('precheckRestore', () => {
     it('非超管抛 RESTORE_SUPER_ADMIN_ONLY', async () => {
       const prisma = prismaMock();

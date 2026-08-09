@@ -91,4 +91,13 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 ## 迁移前备份
 
-`PRE_MIGRATION_BACKUP_WAIT=1` → 调用 platform-core 立即备份并等待；否则回退 `PRE_MIGRATION_BACKUP_CMD`。
+`PRE_MIGRATION_BACKUP_WAIT=1` → 调用 platform-core 内部端点并等待成功；否则回退 `PRE_MIGRATION_BACKUP_CMD` 命令行逃生通道。
+
+### 内部备份端点（主 PRD §9.4）
+
+仅供 `migration-runner` 使用（`Authorization: Bearer <INTERNAL_SERVICE_TOKEN>` + `X-WBME-Caller: migration-runner`），不暴露公网：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/internal/v1/backups/immediate` | 触发立即备份（与公开端点共享互斥锁与恢复清单拒绝逻辑） |
+| GET | `/internal/v1/backups/immediate/status/:backupId` | 查询备份状态（轮询用） |

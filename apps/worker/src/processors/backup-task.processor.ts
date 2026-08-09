@@ -184,7 +184,7 @@ function createBackupDeps(sql: SqlClient): BackupProcessorDeps {
     async deleteOldBackups(before) {
       // 先删 OSS 对象与清单、全部成功后删记录（backstage PRD §10：任一对象清理失败必须保留失败记录）
       const { createFileStorage } = await import('@wbme/files');
-      const storage = createFileStorage();
+      const storage = await createFileStorage();
       const rows = await sql.queryRows<{ id: number; objectKey: string | null; manifestKey: string | null }>(
         `SELECT id, oss_object_key, oss_manifest_key FROM backstage.backups
          WHERE status = 'SUCCEEDED' AND backup_time < $1 AND task_type IN ('SCHEDULED', 'IMMEDIATE')`,

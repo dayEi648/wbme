@@ -560,6 +560,10 @@
         ],
         "type": "object"
       },
+      "Function": {
+        "properties": {},
+        "type": "object"
+      },
       "GrantItemDto": {
         "properties": {
           "dataScope": {
@@ -5008,6 +5012,55 @@
         "security": [],
         "tags": [
           "健康探针"
+        ]
+      }
+    },
+    "/internal/v1/backups/immediate": {
+      "post": {
+        "operationId": "InternalBackupController_immediateBackup",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Function"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "migration-runner 调用：迁移前立即备份",
+        "tags": [
+          "InternalBackup"
+        ]
+      }
+    },
+    "/internal/v1/backups/immediate/status/{backupId}": {
+      "get": {
+        "operationId": "InternalBackupController_getBackupStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "backupId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "migration-runner 轮询：查询指定备份状态",
+        "tags": [
+          "InternalBackup"
         ]
       }
     },

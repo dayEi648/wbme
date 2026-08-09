@@ -12,28 +12,37 @@ import { createFileStorage, FileStorageService } from './file-storage';
 
 /** 默认存储单例（按进程环境） */
 let defaultStorage: FileStorageService | undefined;
+let defaultStoragePromise: Promise<FileStorageService> | undefined;
 
-function storage(): FileStorageService {
-  if (!defaultStorage) {
-    defaultStorage = createFileStorage();
+async function getDefaultStorage(): Promise<FileStorageService> {
+  if (defaultStorage) {
+    return defaultStorage;
   }
-  return defaultStorage;
+  if (!defaultStoragePromise) {
+    defaultStoragePromise = createFileStorage().then((storage) => {
+      defaultStorage = storage;
+      return storage;
+    });
+  }
+  return defaultStoragePromise;
 }
 
 /** @see FileStorageService.presignImageUpload */
-export const presignImageUpload = (...args: Parameters<FileStorageService['presignImageUpload']>) =>
-  storage().presignImageUpload(...args);
+export const presignImageUpload = async (...args: Parameters<FileStorageService['presignImageUpload']>) =>
+  (await getDefaultStorage()).presignImageUpload(...args);
 
 /** @see FileStorageService.finalizeImage */
-export const finalizeImage = (...args: Parameters<FileStorageService['finalizeImage']>) =>
-  storage().finalizeImage(...args);
+export const finalizeImage = async (...args: Parameters<FileStorageService['finalizeImage']>) =>
+  (await getDefaultStorage()).finalizeImage(...args);
 
 /** @see FileStorageService.presignBackupUpload */
-export const presignBackupUpload = (...args: Parameters<FileStorageService['presignBackupUpload']>) =>
-  storage().presignBackupUpload(...args);
+export const presignBackupUpload = async (...args: Parameters<FileStorageService['presignBackupUpload']>) =>
+  (await getDefaultStorage()).presignBackupUpload(...args);
 
 /** @see FileStorageService.deleteObject */
-export const deleteObject = (...args: Parameters<FileStorageService['deleteObject']>) => storage().deleteObject(...args);
+export const deleteObject = async (...args: Parameters<FileStorageService['deleteObject']>) =>
+  (await getDefaultStorage()).deleteObject(...args);
 
 /** @see FileStorageService.listPrefix */
-export const listPrefix = (...args: Parameters<FileStorageService['listPrefix']>) => storage().listPrefix(...args);
+export const listPrefix = async (...args: Parameters<FileStorageService['listPrefix']>) =>
+  (await getDefaultStorage()).listPrefix(...args);

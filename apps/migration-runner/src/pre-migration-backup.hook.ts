@@ -33,20 +33,21 @@ function defaultExec(command: string): Promise<HookExecResult> {
   });
 }
 
-/** 默认平台备份客户端：HTTP 调用 platform-core（需 PRE_MIGRATION_BACKUP_TOKEN） */
+/** 默认平台备份客户端：HTTP 调用 platform-core 内部端点（需 INTERNAL_SERVICE_TOKEN） */
 function defaultPlatformBackupClient(env: NodeJS.ProcessEnv): PlatformBackupClient {
-  const baseUrl = (env.PLATFORM_CORE_URL ?? 'http://localhost:3001').replace(/\/$/, '');
-  const token = env.PRE_MIGRATION_BACKUP_TOKEN?.trim();
+  const baseUrl = (env.PLATFORM_CORE_INTERNAL_BASE_URL ?? env.PLATFORM_CORE_URL ?? 'http://localhost:3001').replace(/\/$/, '');
+  const token = env.INTERNAL_SERVICE_TOKEN?.trim();
   return {
     async triggerImmediateBackup(): Promise<{ backupId: number }> {
       if (!token) {
-        throw new Error('PRE_MIGRATION_BACKUP_TOKEN 未配置');
+        throw new Error('INTERNAL_SERVICE_TOKEN 未配置');
       }
-      const res = await fetch(`${baseUrl}/api/v1/backups/immediate`, {
+      const res = await fetch(`${baseUrl}/internal/v1/backups/immediate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'X-WBME-Caller': 'migration-runner',
           'X-Idempotency-Key': `pre-migration:${Date.now()}`,
         },
         body: JSON.stringify({ idempotencyKey: `pre-migration:${new Date().toISOString().slice(0, 10)}` }),
@@ -54,7 +55,7 @@ function defaultPlatformBackupClient(env: NodeJS.ProcessEnv): PlatformBackupClie
       if (!res.ok) {
         throw new Error(`立即备份请求失败: HTTP ${res.status}`);
       }
-      const body = (await res.json()) as { backupId?: number; data?: { backupId?: number } };
+      const body = (await res.json()) as { backupId?: number; taskUuid?: string; data?: { backupId?: number; taskUuid?: string } };
       const backupId = body.backupId ?? body.data?.backupId;
       if (!backupId) {
         throw new Error('立即备份响应缺少 backupId');
@@ -64,16 +65,18 @@ function defaultPlatformBackupClient(env: NodeJS.ProcessEnv): PlatformBackupClie
     async waitBackupSucceeded(backupId: number, timeoutMs: number): Promise<boolean> {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
-        const res = await fetch(`${baseUrl}/api/v1/backups?page=1&pageSize=5`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        const res = await fetch(`${baseUrl}/internal/v1/backups/immediate/status/${backupId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-WBME-Caller': 'migration-runner',
+          },
         });
         if (res.ok) {
-          const payload = (await res.json()) as { items?: Array<{ id: number; status: string }> };
-          const row = payload.items?.find((item) => item.id === backupId);
-          if (row?.status === 'SUCCEEDED') {
+          const payload = (await res.json()) as { status?: string };
+          if (payload.status === 'SUCCEEDED') {
             return true;
           }
-          if (row?.status === 'FAILED') {
+          if (payload.status === 'FAILED') {
             return false;
           }
         }

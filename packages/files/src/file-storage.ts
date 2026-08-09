@@ -53,8 +53,8 @@ export class FileStorageService {
   private readonly oss: OSS | null;
   private readonly local: LocalFileStorage;
 
-  constructor(env: NodeJS.ProcessEnv = process.env, local?: LocalFileStorage) {
-    this.oss = createOssClient(env);
+  constructor(oss: OSS | null, local?: LocalFileStorage) {
+    this.oss = oss;
     this.local = local ?? new LocalFileStorage();
   }
 
@@ -263,8 +263,12 @@ function sanitizeExtension(filename?: string): string {
 }
 
 /** 工厂：根据环境创建 FileStorageService（local 可注入替身存储，测试隔离用） */
-export function createFileStorage(env: NodeJS.ProcessEnv = process.env, local?: LocalFileStorage): FileStorageService {
-  return new FileStorageService(env, local);
+export async function createFileStorage(
+  env: NodeJS.ProcessEnv = process.env,
+  local?: LocalFileStorage,
+): Promise<FileStorageService> {
+  const oss = await createOssClient(env);
+  return new FileStorageService(oss, local);
 }
 
 export { isOssPlaceholder, createOssClient };

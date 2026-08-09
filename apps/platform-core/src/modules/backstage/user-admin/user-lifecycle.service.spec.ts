@@ -275,6 +275,65 @@ describe.skipIf(!DATABASE_URL)('账号生命周期（T3-5 后半：批量注销/
     expect(stillActive).toBe(activeSupers.length);
   });
 
+  it('并发批量注销可清空全部超管的竞态已被阻断：FOR UPDATE 锁串行化', async () => {
+    // 临时降级所有既有超管，确保本用例 A/B/C 是仅存的可用超管
+    const originalSupers = await prisma.client.user.findMany({
+      where: { isSuperAdmin: true, status: 'ACTIVE', deletedAt: null },
+      select: { id: true },
+    });
+    await prisma.client.user.updateMany({
+      where: { id: { in: originalSupers.map((row) => row.id) } },
+      data: { isSuperAdmin: false },
+    });
+    try {
+      const superA = await createUser({ name: `${TEST_NAME_PREFIX}并发超管A`, isSuperAdmin: true });
+      const superB = await createUser({ name: `${TEST_NAME_PREFIX}并发超管B`, isSuperAdmin: true });
+      const superC = await createUser({ name: `${TEST_NAME_PREFIX}并发超管C`, isSuperAdmin: true });
+
+      // 使用独立 PrismaService 保证两条事务走不同连接，真实模拟并发。
+      // 批次 1 注销 B/C，批次 2 注销 A；若无 FOR UPDATE，双双通过会清空全部超管。
+      const prisma2 = new PrismaService();
+      try {
+        const service2 = new UserLifecycleService(prisma2, recordingGateway());
+        const first = makeService({}).batchDeactivate(superA.id, { userIds: [superB.id, superC.id] });
+        // 小延迟确保第一笔事务先进入临界区并持锁，第二笔随后等待
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+        const second = service2.batchDeactivate(superB.id, { userIds: [superA.id] });
+        const results = await Promise.allSettled([first, second]);
+
+        const succeeded = results.filter((r) => r.status === 'fulfilled');
+        const rejected = results.filter((r) => r.status === 'rejected');
+        expect(succeeded).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        // 并发下失败方可能先因操作人被注销得到 UNAUTHORIZED，也可能进入锁后校验得到
+        // USER_BATCH_BLOCKED/LAST_SUPER_ADMIN；两种路径共同保证不会清空全部超管。
+        const exception = rejected[0]?.reason as BusinessException | undefined;
+        expect(exception?.entry.code).toBeDefined();
+        if (!exception) {
+          throw new Error('预期存在一笔被拒绝的并发批次');
+        }
+        expect(['USER_BATCH_BLOCKED', 'UNAUTHORIZED']).toContain(exception.entry.code);
+        if (exception.entry.code === 'USER_BATCH_BLOCKED') {
+          const failures = exception.details?.failures as Array<{ code: string }> | undefined;
+          expect(failures?.[0]?.code).toBe('LAST_SUPER_ADMIN');
+        }
+
+        const remaining = await prisma.client.user.count({
+          where: { isSuperAdmin: true, status: 'ACTIVE', deletedAt: null },
+        });
+        // 仅批次 1 成功注销 B/C，A 保留为最后一名可用超管
+        expect(remaining).toBe(1);
+      } finally {
+        await prisma2.client.$disconnect();
+      }
+    } finally {
+      await prisma.client.user.updateMany({
+        where: { id: { in: originalSupers.map((row) => row.id) } },
+        data: { isSuperAdmin: true },
+      });
+    }
+  });
+
   it('恢复预览：hr 不可用 → HR_SERVICE_UNAVAILABLE 且零变更；可用时返回逐目标差异（手机号占用/失效授权）', async () => {
     const target = await createUser({ name: `${TEST_NAME_PREFIX}预览` });
     // 失效授权（目录外 + 档位失效）与有效授权

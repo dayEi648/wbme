@@ -15,16 +15,20 @@ import { COL, UNCLASSIFIED_GROUP } from './xlsx-template';
 export const IMPORT_TIMEOUT_MS = 120_000;
 
 /**
- * 导入固定总时限检查器（fin PRD §4：120s；超时抛 IMPORT_TIMEOUT 503）。
+ * 导入取消/超时检查器（fin PRD §4：120s；客户端断连/响应关闭也触发取消）。
  *
  * 预览与确认各关键步骤（解析/匹配/每行写入）间调用；确认写入在事务内，
- * 超时抛错使整批回滚（全有或全无，不留部分导入）。
+ * 取消或超时抛错使整批回滚（全有或全无，不留部分导入）。
  *
+ * @param signal 客户端/响应取消信号
  * @returns 检查函数（从创建时刻起计算 deadline）
  */
-function makeImportTimeoutCheck(): () => void {
+function makeImportTimeoutCheck(signal?: AbortSignal): () => void {
   const deadline = Date.now() + IMPORT_TIMEOUT_MS;
   return () => {
+    if (signal?.aborted) {
+      throw new BusinessException(frameworkErrors.REQUEST_TIMEOUT);
+    }
     if (Date.now() > deadline) {
       throw new BusinessException(exportErrors.IMPORT_TIMEOUT);
     }
@@ -204,7 +208,7 @@ export class ImportService {
   async preview(operator: FinOperationLogOperator, buffer: Buffer, signal?: AbortSignal): Promise<ImportPreviewResult> {
     const release = await this.acquireImportLock(operator.id);
     try {
-      const checkTimeout = makeImportTimeoutCheck();
+      const checkTimeout = makeImportTimeoutCheck(signal);
       const parsed = await this.parseWithWorker(buffer, signal);
       checkTimeout();
       const result = await this.matchRows(parsed.rows, parsed.errors);
@@ -235,7 +239,7 @@ export class ImportService {
     const release = await this.acquireImportLock(operator.id);
     try {
       // 重新解析同一文件，以重新解析的行号解释选择映射（文件被替换导致行号错位时由 dataRevision 兜底）
-      const checkTimeout = makeImportTimeoutCheck();
+      const checkTimeout = makeImportTimeoutCheck(signal);
       const parsed = await this.parseWithWorker(buffer, signal);
       checkTimeout();
       const preview = await this.matchRows(parsed.rows, parsed.errors);
@@ -624,6 +628,7 @@ export class ImportService {
           fields: [{ rowNumber: item.input.rowNumber, reason: '该业务键已在预览后被创建或恢复' }],
         });
       }
+      checkTimeout();
       const row = await createProjectFromInput(tx, item.input, operator, dicts);
       createdIds.push(row.id);
     }
@@ -645,6 +650,7 @@ export class ImportService {
       }
       const beforeDetails = await snapshotDetails(tx, item.targetId);
       const data = await buildProjectDataFromInput(tx, item.input, dicts, existing);
+      checkTimeout();
       // 条件更新只允许写 dataRevision 匹配的行；受影响数核对（缺数 = 预览过期整批回滚）
       const updated = await tx.project.updateMany({
         where: { id: item.targetId, dataRevision: item.dataRevision },
@@ -662,6 +668,7 @@ export class ImportService {
       overwriteDetail.push({ projectId: item.targetId, beforeDetails, afterDetails });
     }
 
+    checkTimeout();
     // 3. 审计（与业务变更同一事务；新增/覆盖/跳过逐项目记录）
     const operations: Prisma.ProjectOperationUncheckedCreateInput[] = [];
     for (const id of createdIds) {
@@ -701,6 +708,7 @@ export class ImportService {
     if (operations.length > 0) {
       await tx.projectOperation.createMany({ data: operations });
     }
+    checkTimeout();
 
     return {
       summary: {

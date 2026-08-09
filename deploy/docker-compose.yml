@@ -112,8 +112,8 @@ services:
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
       # 迁移前「立即备份」（主 PRD §9.9）：经 platform-core 内部接口触发并等待成功
       PRE_MIGRATION_BACKUP_WAIT: "1"
-      PLATFORM_CORE_URL: http://platform-core:3001
-      PRE_MIGRATION_BACKUP_TOKEN: ${PRE_MIGRATION_BACKUP_TOKEN}
+      PLATFORM_CORE_INTERNAL_BASE_URL: http://platform-core:3001
+      # PRE_MIGRATION_BACKUP_CMD 仍为命令行逃生通道；内部接口使用全平台共享 INTERNAL_SERVICE_TOKEN
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     depends_on:
@@ -264,7 +264,7 @@ services:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state
     # 就绪检查：状态目录读写 + 控制通道可达；数据库/OSS 不可用时报告依赖失败但不阻断控制路由
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['RECOVERY_EXECUTOR_PORT']||'3090')+'/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['RECOVERY_EXECUTOR_PORT']||'3090')+'/recovery/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5

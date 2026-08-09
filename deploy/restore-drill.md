@@ -17,7 +17,7 @@
 ```bash
 # 1. 恢复执行器就绪（状态目录读写 + 控制配置；数据库不可连不阻断）
 docker compose --env-file .env.production exec -T recovery-executor node -e \
-  "fetch('http://127.0.0.1:3090/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  "fetch('http://127.0.0.1:3090/recovery/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # 2. 确认最近备份存在（管理后台「数据备份」页或 OSS backups/ 前缀）
 docker compose --env-file .env.production exec -T worker node -e \

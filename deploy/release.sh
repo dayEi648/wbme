@@ -72,16 +72,16 @@ else
 fi
 
 # ---- 5. 就绪等待（全部应运行服务）----
-wait_ready() { # $1 服务名 $2 端口
-  local svc="$1" port="$2" i
+wait_ready() { # $1 服务名 $2 端口 [$3 探针路径 默认 /readyz]
+  local svc="$1" port="$2" path="${3:-/readyz}" i
   for i in $(seq 1 60); do
     if docker compose "${COMPOSE_OPTS[@]}" exec -T "$svc" node -e \
-      "fetch('http://127.0.0.1:$port/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+      "fetch('http://127.0.0.1:$port$path').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
       return 0
     fi
     sleep 5
   done
-  fail "服务 $svc 未就绪（$port/readyz 超时）"
+  fail "服务 $svc 未就绪（$port$path 超时）"
 }
 # worker 无 HTTP 端口：以容器健康状态为准（kill -0 进程存活 + 启动强检已过）
 wait_worker_healthy() {
@@ -98,7 +98,7 @@ wait_ready asset 3002
 wait_ready hr 3003
 wait_ready fin 3004
 wait_worker_healthy
-wait_ready recovery-executor 3090
+wait_ready recovery-executor 3090 /recovery/readyz
 # web（nginx alpine 内置 wget；探针经 Nginx 回源 platform-core）
 for i in $(seq 1 60); do
   docker compose "${COMPOSE_OPTS[@]}" exec -T web wget -q -O /dev/null http://127.0.0.1/healthz && break

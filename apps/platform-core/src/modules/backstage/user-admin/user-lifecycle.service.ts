@@ -362,8 +362,15 @@ export class UserLifecycleService {
   ): Promise<DeactivationTarget[]> {
     const rows = await tx.user.findMany({ where: { id: { in: [...userIds] } } });
     const byId = new Map(rows.map((row) => [row.id, row]));
-    // 可用超管 = ACTIVE 且未注销（待激活超管尚不可登录，不计入"可用"）
-    const activeSuperCount = await tx.user.count({ where: { isSuperAdmin: true, status: 'ACTIVE', deletedAt: null } });
+    // 可用超管 = ACTIVE 且未注销（待激活超管尚不可登录，不计入"可用"）。
+    // 批量注销与单个卸任共享同一并发语义：先 FOR UPDATE 锁定全部可用超管行，
+    // 锁内重新计数，避免两个并发批次分别注销不同超管后平台失去根管理员（主 PRD §3.1）。
+    const activeSupers = await tx.$queryRaw<Array<{ id: number }>>`
+      SELECT id FROM base.users
+      WHERE is_super_admin AND status = 'ACTIVE' AND deleted_at IS NULL
+      ORDER BY id FOR UPDATE
+    `;
+    const activeSuperCount = activeSupers.length;
     const failures: Array<{ userId: number; code: string; message: string }> = [];
     const targets: DeactivationTarget[] = [];
     let activeSuperInBatch = 0;

@@ -16,7 +16,7 @@ import type { ProcessorContext } from './types';
  */
 export async function processImageCleanup(task: BackgroundTaskRow, ctx: ProcessorContext): Promise<void> {
   const { createFileStorage } = await import('@wbme/files');
-  const storage = ctx.storage ?? createFileStorage();
+  const storage = ctx.storage ?? (await createFileStorage());
 
   const retentionHours = await readRetentionHours(ctx);
   const cutoff = new Date(Date.now() - retentionHours * 60 * 60 * 1000);
