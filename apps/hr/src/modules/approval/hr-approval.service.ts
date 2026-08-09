@@ -234,6 +234,11 @@ export class HrApprovalService {
       // 批准与驳回统一断言（主 PRD §3.2：列表、详情与处理接口执行相同的权限与范围校验）
       await this.assertScopeCovers(tx, head, access, processorId);
 
+      // T6：批准前校验申请人账号未注销（backstage PRD §3）——注销与生命周期任务消费之间的
+      // 窗口内，岗位审批发现目标账号已注销必须拒绝批准（APPLICANT_DEACTIVATED），不得产生
+      // 组织变更；申请保持 PENDING，最终由任务写入统一的已取消终态。
+      await this.assertApplicantActive(tx, head, action);
+
       const processorName = await loadUserName(tx, processorId);
       const now = new Date();
       const updated = await tx.hrApprovalRequest.updateMany({
@@ -577,6 +582,37 @@ export class HrApprovalService {
   }
 
   /**
+   * 批准前校验申请人账号未注销（backstage PRD §3 契约缺口修复）：
+   * 账号注销任务尚未消费时，岗位审批接口发现目标账号已注销必须拒绝批准并返回
+   * 「账号注销，申请将自动取消」（APPLICANT_DEACTIVATED），不得产生组织变更；
+   * 申请保持 PENDING，最终仍由生命周期任务写入统一的已取消终态和取消来源。
+   * 仅 POSITION_CHANGE 适用（OVERTIME 为公司业务型，不受申请人账号状态影响）。
+   *
+   * @param tx 事务客户端
+   * @param head 审批头
+   * @param action APPROVE | REJECT
+   * @throws APPLICANT_DEACTIVATED 申请人已注销且请求批准岗位变更
+   */
+  private async assertApplicantActive(
+    tx: Prisma.TransactionClient,
+    head: { requestType: string; applicantId: number },
+    action: 'APPROVE' | 'REJECT',
+  ): Promise<void> {
+    if (action !== 'APPROVE' || head.requestType !== 'POSITION_CHANGE') {
+      return;
+    }
+    const rows = await tx.$queryRaw<Array<{ deleted_at: Date | null }>>`
+      SELECT deleted_at
+      FROM backstage.user_accounts
+      WHERE user_id = ${head.applicantId}
+      LIMIT 1
+    `;
+    if (rows.length > 0 && rows[0]!.deleted_at !== null) {
+      throw new BusinessException(approvalErrors.APPLICANT_DEACTIVATED);
+    }
+  }
+
+  /**
    * 断言当前审批人 DEPARTMENT 档范围覆盖批次全部申请对象（T6 部门闭包）。
    * 对象部门 = 加班明细部门快照（多部门员工全部部门）/ 岗位申请申请人部门快照；
    * 无部门（空快照）仅公司范围可覆盖。范围未覆盖抛 SCOPE_NOT_COVERED。
@@ -607,7 +643,12 @@ export class HrApprovalService {
    */
   private async assertHeadCovered(
     userId: number,
-    head: { id: number; requestType: string; overtimeItems: Array<{ departmentSnapshot: Prisma.JsonValue }> },
+    head: {
+      id: number;
+      requestType: string;
+      overtimeItems: Array<{ departmentSnapshot: Prisma.JsonValue }>;
+      positionChangeRequest: { departmentSnapshot: Prisma.JsonValue } | null;
+    },
     dataScope: DataScope | null,
   ): Promise<void> {
     if (dataScope === null || dataScope === 'COMPANY') {
@@ -615,10 +656,14 @@ export class HrApprovalService {
     }
     const closure = await this.closure.closureOfUser(userId);
     const scope = toApproverScope(dataScope, closure);
-    // 明细快照为数组（多部门员工全部部门），逐元素展开
-    const ids = head.overtimeItems.flatMap((item) =>
-      extractDepartmentIdsFromSnapshot(item.departmentSnapshot as unknown),
-    );
+    // 与 process 范围断言一致的快照来源：加班取明细快照、岗位变更取申请快照
+    // （快照为数组 = 多部门员工全部部门，逐元素展开）
+    const ids =
+      head.requestType === 'POSITION_CHANGE'
+        ? extractDepartmentIdsFromSnapshot(head.positionChangeRequest?.departmentSnapshot as unknown)
+        : head.overtimeItems.flatMap((item) =>
+            extractDepartmentIdsFromSnapshot(item.departmentSnapshot as unknown),
+          );
     assertScopeCoversAll(scope, ids, head.requestType);
   }
 
@@ -636,7 +681,8 @@ export class HrApprovalService {
     if (!detail) {
       return [];
     }
-    return (detail.departmentSnapshot as unknown as Array<{ id: number }> | null)?.map((item) => item.id) ?? [];
+    // 与加班明细一致的快照解析原语：兼容数组（多部门快照）与单元素（测试/占位数据）
+    return extractDepartmentIdsFromSnapshot(detail.departmentSnapshot as unknown);
   }
 
   /**

@@ -153,4 +153,60 @@ describeDb('hr 审批头（T5-3）', () => {
       reason: { entry: { code: 'STATUS_CONFLICT' } },
     });
   });
+
+  it('POSITION_CHANGE 批准时申请人已注销 → APPLICANT_DEACTIVATED 且申请保持 PENDING', async () => {
+    const applicantId = BASE_APPLICANT + 3;
+    await prisma.client.$executeRaw`DELETE FROM base.users WHERE id = ${applicantId}`;
+    await prisma.client.$executeRaw`
+      INSERT INTO base.users (id, name, gender, phone, status, is_super_admin, password_hash, created_at, updated_at)
+      VALUES (${applicantId}, '已注销岗位申请人', 'MALE', '+8613900000603', 'ACTIVE', false, 'test-hash', NOW(), NOW())
+    `;
+    const { requestId } = await service.submitTestHeader({
+      requestType: 'POSITION_CHANGE',
+      applicantId,
+      applicantName: '已注销岗位申请人',
+    });
+    // 注销账号（软删），模拟生命周期任务尚未消费的窗口
+    await prisma.client.$executeRaw`
+      UPDATE base.users SET deleted_at = NOW() WHERE id = ${applicantId}
+    `;
+    await expect(service.process(requestId, 'APPROVE', processorId)).rejects.toMatchObject({
+      entry: { code: 'APPLICANT_DEACTIVATED' },
+    });
+    const head = await prisma.client.hrApprovalRequest.findUnique({ where: { id: requestId } });
+    expect(head?.status).toBe('PENDING');
+    // 清理：恢复并删除测试用户（审批头由 afterAll 按 applicantId 清理）
+    await prisma.client.$executeRaw`
+      UPDATE base.users SET deleted_at = NULL WHERE id = ${applicantId}
+    `;
+    await prisma.client.$executeRaw`
+      DELETE FROM base.users WHERE id = ${applicantId}
+    `;
+  });
+
+  it('OVERTIME 批准不因申请人注销而阻断（公司业务型）', async () => {
+    const applicantId = BASE_APPLICANT + 4;
+    await prisma.client.$executeRaw`DELETE FROM base.users WHERE id = ${applicantId}`;
+    await prisma.client.$executeRaw`
+      INSERT INTO base.users (id, name, gender, phone, status, is_super_admin, password_hash, created_at, updated_at)
+      VALUES (${applicantId}, '已注销加班申请人', 'MALE', '+8613900000604', 'ACTIVE', false, 'test-hash', NOW(), NOW())
+    `;
+    const { requestId } = await service.submitTestHeader({
+      requestType: 'OVERTIME',
+      applicantId,
+      applicantName: '已注销加班申请人',
+    });
+    await prisma.client.$executeRaw`
+      UPDATE base.users SET deleted_at = NOW() WHERE id = ${applicantId}
+    `;
+    await service.process(requestId, 'APPROVE', processorId);
+    const head = await prisma.client.hrApprovalRequest.findUnique({ where: { id: requestId } });
+    expect(head?.status).toBe('APPROVED');
+    await prisma.client.$executeRaw`
+      UPDATE base.users SET deleted_at = NULL WHERE id = ${applicantId}
+    `;
+    await prisma.client.$executeRaw`
+      DELETE FROM base.users WHERE id = ${applicantId}
+    `;
+  });
 });

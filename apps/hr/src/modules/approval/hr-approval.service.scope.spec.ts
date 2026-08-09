@@ -274,6 +274,54 @@ describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
     });
   });
 
+  describe('detail：DEPARTMENT 档闭包裁剪（POSITION_CHANGE 快照来源为申请快照）', () => {
+    /** OVERTIME 与 POSITION_CHANGE 均授予 DEPARTMENT 档 */
+    function mockBothDepartmentAccess(): void {
+      mockedGetAccess.mockImplementation(async () => ({
+        registered: true,
+        systemCode: 'HR',
+        systemName: 'hr',
+        systemOpen: true,
+        allowed: true,
+        dataScope: 'DEPARTMENT',
+      }));
+    }
+
+    it('POSITION_CHANGE 详情申请部门不在闭包 → SCOPE_NOT_COVERED', async () => {
+      mockBothDepartmentAccess();
+      const prisma = makePrisma();
+      vi.mocked(prisma.client.hrApprovalRequest.findUnique).mockResolvedValue({
+        ...headRow,
+        requestType: 'POSITION_CHANGE',
+        overtimeItems: [],
+        positionChangeRequest: { departmentSnapshot: [{ id: 10, name: '部门十' }] },
+        actions: [],
+      } as never);
+      const service = makeService(prisma);
+      await expect(service.getDetail(5, 1)).rejects.toMatchObject({
+        entry: expect.objectContaining({ code: approvalErrors.SCOPE_NOT_COVERED.code }),
+      });
+    });
+
+    it('POSITION_CHANGE 详情申请部门在闭包 → 返回详情', async () => {
+      mockBothDepartmentAccess();
+      const prisma = makePrisma();
+      const positionChangeRequest = { departmentSnapshot: [{ id: 1, name: '部门一' }] };
+      vi.mocked(prisma.client.hrApprovalRequest.findUnique).mockResolvedValue({
+        ...headRow,
+        requestType: 'POSITION_CHANGE',
+        overtimeItems: [],
+        positionChangeRequest,
+        actions: [],
+      } as never);
+      const service = makeService(prisma);
+      await expect(service.getDetail(5, 1)).resolves.toMatchObject({
+        detail: positionChangeRequest,
+        request: expect.objectContaining({ requestType: 'POSITION_CHANGE' }),
+      });
+    });
+  });
+
   describe('pendingCount：超管全量、DEPARTMENT 档闭包裁剪', () => {
     it('超管提示位传 true 时不查会话且全量可见', async () => {
       mockedGetAccess.mockImplementation(async () => ({
