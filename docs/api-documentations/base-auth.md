@@ -104,10 +104,10 @@
 ### P1 门户 `GET /portal`
 登录态。`{ brand, user: { id, name, phoneMasked }, systems: [{ code, name, productStatus, hasPermission, entryUrl }], announcement: { title, content, publishedAt } | null, badgeCount: 0 }`。
 - 入口可见：拥有该系统至少一项功能授权（超管全可见）；"即将上线"展示状态但不可进入
-- 公告：仅当前唯一"正在展示"（PUBLISHING）的公告，无则 null；待办角标本期恒 0（T5/6/7 联调后接入）
+- 公告：仅当前唯一"正在展示"（PUBLISHING）的公告，无则 null；待办角标 = 本地资料修改待办 + hr/asset 内部 `pending-count` 聚合（T6-6 已接入；hr/asset 不可用时对应部分降级为 0）
 
 ### P2 个人中心 `GET /me`
-登录态。`{ user, departments: [], positions: [], canApplyPositionChange: false, pendingProfileChange }`（部门/岗位 T6 填充）。
+登录态。`{ user, departments, positions, canApplyPositionChange, pendingProfileChange }`（部门/岗位经 hr 内部接口真实填充，T6-6；hr 不可用时优雅降级为空列表）。
 
 ### P3 资料修改 `PUT /me/profile`
 登录态。入参 `{ name?, gender?, idempotencyKey? }`（至少一项）。
@@ -115,10 +115,10 @@
 - 失败：`PROFILE_CHANGE_PENDING_EXISTS`(409 单待审批限制，条件唯一索引兜底) / `VALIDATION_FAILED`
 
 ### P4 岗位变更申请 `POST /me/position-applications`
-契约先行：hr 侧校验（单部门限制/岗位启用+自助+适用部门）T6-6 落地；本期返回 `POSITION_APPLICATION_INELIGIBLE`(422)。
+经 hr 内部接口提交（T6-6 落地）：hr 侧校验（单部门限制/岗位启用+自助+适用部门），业务错误码透传（`MULTI_DEPARTMENT_APPLY_FORBIDDEN` / `POSITION_APPLY_TARGET_UNAVAILABLE` / `PENDING_LIMIT_REACHED` 等）；hr 不可用时返回 `DEPENDENCY`。
 
 ### P5 我的岗位申请记录 `GET /me/position-applications`
-分页契约就位，本期空分页（T6-6 接通）。
+经 hr 内部接口查询真实记录（T6-6 落地）；hr 不可用时降级为空分页。
 
 ### P6 我的操作日志 `GET /me/operation-logs`
 登录态。仅返回当前用户的操作日志（`operator_id = 当前用户`），分页；走操作日志联合视图查询（主 PRD §3.3）。

@@ -84,7 +84,7 @@
 **数据范围**：
 
 - `COMPANY`：全公司可见
-- `DEPARTMENT`：待 hr 组织数据就绪后按 `operator_departments` 交集过滤（本期与 COMPANY 行为相同）
+- `DEPARTMENT`：按 `operator_departments` 与 `hr.department_closure` 闭包交集过滤（T6-6 已接入）
 
 ### GET `/me/operation-logs`
 
@@ -129,7 +129,7 @@
 
 ### POST `/system-logs/errors/export` / `/system-logs/security/export`
 
-导出接口占位（后续 T4-11 实现），当前返回 `422 ROW_LIMIT_EXCEEDED`。
+导出为 xlsx（T4-11 通用导出：行数上限、单用户并发互斥、120s 超时、一致性快照）。错误日志导出按 backstage PRD §8 白名单构造「安全摘要」列（剥离堆栈/内部路径/requestId，仅含脱敏后的 message 首行）；安全日志导出含来源 IP，其余字段白名单。
 
 ---
 

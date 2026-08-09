@@ -22,7 +22,7 @@
 | `POSITION_APPLY_STALE` | 422 | 申请条件已变化，当前不可批准（保持待审批） |
 | `DEPARTMENT_HAS_CHILDREN` | 422 | 部门存在未删除下级，禁止删除 |
 | `ORGANIZATION_CYCLE` | 422 | 组织关系不能形成循环 |
-| `ORGANIZATION_VERSION_CONFLICT` | 409 | 组织架构已变化，请刷新后重试 |
+| `ORGANIZATION_VERSION_CONFLICT` | 409 | 组织架构已变化，请刷新后重试（预留：版本冲突守卫随授权缓存接入时启用，当前无返回路径） |
 | `RESTORE_TARGET_STALE` | 409 | 恢复目标已变化，请重新预览 |
 
 依赖错误：节假日判断失败且离线未覆盖 → `HOLIDAY_API_UNAVAILABLE`(503 DEPENDENCY)。
@@ -78,10 +78,14 @@
 
 ## 节假日（hr PRD §3）
 
-无业务路由（前端不直连第三方）。日期类型由加班表单经后端适配器判断：
+日期判断统一经后端节假日适配器（前端不直连第三方）：
 免费 API `https://holiday.ailcc.com`（白名单，受版本控制）+ 24h 集成缓存（hr.holiday_results UPSERT）
 + 并发合并 + 进程级有界限流 + 严格响应校验（SHA-256 摘要）+ 版本控制离线兜底数据
 （offline-holiday-2026.json，国办发明电〔2025〕7号）；已提交加班使用提交时快照，不追溯改写。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/overtime/date-type?date=YYYY-MM-DD` | 提交前日期类型/时长/补交提示的前置契约（hr PRD §3）；返回 `{ date, dateType, weekday, source, digest, fetchedAt }`；缓存与离线均未覆盖时 `HOLIDAY_API_UNAVAILABLE`(503 DEPENDENCY) |
 
 ## 加班（hr PRD §3）
 
@@ -100,6 +104,7 @@
 
 加班审批在统一审批中心处理（见 approval-center.md）：`overtime_approval` 功能（部门/公司档），
 DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批批次只有提交人（或代提人）可取消。
+审批中心列表支持导出（`GET /approval-requests/export`，可见性与数据范围与列表一致；导出完成写 EXPORT 操作日志，feature=`approval_center`）。
 
 ## 人事配置与字典（hr PRD §9）
 
