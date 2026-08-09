@@ -28,7 +28,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
-import { APPROVAL_SIDE_EFFECT, type ApprovalSideEffect } from './approval-side-effect';
+import type { ApprovalSideEffect } from './approval-side-effect';
 import { PositionApplicationService } from '../org/position-application.service';
 
 /** hr 审批申请类型 */
@@ -89,7 +89,7 @@ interface VisibleTypeEntry {
  *
  * - 加班/岗位变更审批头创建、处理、取消、列表、导出与待办统计；
  * - T6：DEPARTMENT 档按部门闭包过滤（hr.department_closure 视图）；
- *   批准业务副作用经 APPROVAL_SIDE_EFFECT 注入（POSITION_CHANGE 由岗位申请服务注册，
+ *   批准业务副作用经 PositionApplicationService 注入（POSITION_CHANGE 由岗位申请服务注册，
  *   OVERTIME 无副作用）；T5 的"按公司可视/副作用 no-op"简化已移除。
  */
 @Injectable()

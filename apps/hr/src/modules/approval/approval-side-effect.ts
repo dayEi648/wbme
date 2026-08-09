@@ -1,8 +1,5 @@
 import { Prisma } from '../../generated/prisma/client';
 
-/** 审批副作用注入 token（process 事务内按申请类型分发；未注册=无副作用，如 OVERTIME） */
-export const APPROVAL_SIDE_EFFECT = 'HR_APPROVAL_SIDE_EFFECT';
-
 /** 审批头最小视图（副作用实现只读字段） */
 export interface ApprovalHeadForSideEffect {
   id: number;

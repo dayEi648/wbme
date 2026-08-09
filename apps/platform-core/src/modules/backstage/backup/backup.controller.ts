@@ -12,7 +12,7 @@ import {
   RestorePrecheckDto,
 } from './backup.dto';
 import { BackupService } from './backup.service';
-import { RecoverySessionClient, RECOVERY_SESSION_COOKIE_NAME } from './recovery-session.client';
+import { RecoverySessionClient } from './recovery-session.client';
 
 /**
  * 数据备份与恢复管理 API（backstage PRD §10）。
