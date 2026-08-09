@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { DataScope, UserStatus } from '@wbme/contracts';
+import { BusinessException, frameworkErrors, type DataScope, type UserStatus } from '@wbme/contracts';
 import type { SessionUser, SessionUserLoader } from '@wbme/server';
 import { PrismaService } from '../prisma.service';
 
@@ -146,6 +146,26 @@ export async function getFunctionAccess(
     allowed: true,
     dataScope: widestScope(grantRows.map((row) => row.data_scope)),
   };
+}
+
+/**
+ * 功能授权统一断言（业务控制器权限入口）：
+ * 未注册/未授权 → 404（范围外资源不泄露存在性）；系统未开放 → SYSTEM_NOT_OPEN(503)。
+ *
+ * @param prisma Prisma 客户端
+ * @param userId 当前用户
+ * @param functionCode 稳定功能编码
+ * @returns 功能访问上下文（放行保证）
+ */
+export async function assertFunctionAccess(prisma: RawPrisma, userId: number, functionCode: string): Promise<FunctionAccess> {
+  const access = await getFunctionAccess(prisma, userId, functionCode);
+  if (!access.registered || !access.allowed) {
+    throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+  }
+  if (!access.systemOpen) {
+    throw new BusinessException(frameworkErrors.SYSTEM_NOT_OPEN, { system: access.systemName });
+  }
+  return access;
 }
 
 /**

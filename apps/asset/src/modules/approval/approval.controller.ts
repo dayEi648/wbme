@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApprovalListQueryDto,
   CancelApprovalDto,
@@ -48,6 +49,18 @@ export class ApprovalController {
   @Get(':id')
   async detail(@CurrentUser() userId: number, @Param('id', ParseIntPipe) id: number): Promise<unknown> {
     return this.approval.getDetail(userId, id);
+  }
+
+  /**
+   * 审批中心导出（T4-11 runExport；可见性与列表一致——DEPARTMENT 档按闭包裁剪）。
+   *
+   * @param userId 当前用户
+   * @param query 筛选
+   * @param res 流式响应
+   */
+  @Get('export/all')
+  async exportAll(@CurrentUser() userId: number, @Query() query: ApprovalListQueryDto, @Res() res: Response): Promise<void> {
+    await this.approval.exportList(userId, query, res);
   }
 
   /**

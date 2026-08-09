@@ -56,5 +56,6 @@ export {
   listOverduePending,
   autoCancelOverdueRow,
   scanAndAutoCancelOverdue,
+  type AutoCancelHook,
   type OverdueApprovalRow,
 } from './timeout';

@@ -75,4 +75,52 @@ export const inventoryErrors = {
     httpStatus: 422,
     message: '目标库位不存在、已停用或与来源库位相同',
   },
+  /** 品种已停用，不可用于新建入库/申领等（asset PRD §5） */
+  CONSUMABLE_DISABLED: {
+    code: 'CONSUMABLE_DISABLED',
+    type: 'BUSINESS',
+    domain: 'INVENTORY',
+    httpStatus: 422,
+    message: '品种已停用',
+  },
+  /** 库位仍被现存库存条目、未结清借还或待审批引用，不允许删除（asset PRD §5） */
+  LOCATION_REFERENCED: {
+    code: 'LOCATION_REFERENCED',
+    type: 'BUSINESS',
+    domain: 'INVENTORY',
+    httpStatus: 422,
+    message: '库位仍存在库存或业务引用，不允许删除',
+  },
+  /** 借还记录已结清，不可再发起归还/核销（asset PRD §8） */
+  BORROW_ALREADY_SETTLED: {
+    code: 'BORROW_ALREADY_SETTLED',
+    type: 'BUSINESS',
+    domain: 'INVENTORY',
+    httpStatus: 422,
+    message: '借还记录已结清',
+  },
+  /** 代领结清未覆盖全部未结清数量（asset PRD §7） */
+  SETTLEMENT_COVERAGE_INCOMPLETE: {
+    code: 'SETTLEMENT_COVERAGE_INCOMPLETE',
+    type: 'BUSINESS',
+    domain: 'INVENTORY',
+    httpStatus: 422,
+    message: '结清清单必须覆盖全部未结清数量',
+  },
+  /** 注销员工直接处置前置条件不成立（账号已恢复/状态变化/数量超限）（asset PRD §8） */
+  DISPOSAL_FORBIDDEN: {
+    code: 'DISPOSAL_FORBIDDEN',
+    type: 'CONFLICT',
+    domain: 'INVENTORY',
+    httpStatus: 409,
+    message: '处置条件已变化，请刷新后重试',
+  },
+  /** 代领受领人名单非法（选择自己/重复/非在职）（asset PRD §7） */
+  RECIPIENT_INVALID: {
+    code: 'RECIPIENT_INVALID',
+    type: 'VALIDATION',
+    domain: 'INVENTORY',
+    httpStatus: 400,
+    message: '受领人名单无效',
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

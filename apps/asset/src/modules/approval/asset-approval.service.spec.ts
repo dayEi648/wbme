@@ -3,6 +3,7 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../../prisma.service';
+import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { ensurePermissionCatalog } from '../../test-support/ensure-permission-catalog';
 import { AssetApprovalService } from './asset-approval.service';
 
@@ -31,9 +32,12 @@ describeDb('asset 审批头（T5-3）', () => {
   /** 固定测试申请人 id 段（int4 范围内） */
   const BASE_APPLICANT = 8_900_601;
 
+  /** 测试部门 id（闭包数据；申请人快照使用同部门） */
+  const TEST_DEPARTMENT_ID = 8_900_600;
+
   beforeAll(async () => {
     prisma = new PrismaService();
-    service = new AssetApprovalService(prisma);
+    service = new AssetApprovalService(prisma, new DepartmentClosureService(prisma), null, { redis: null } as never);
 
     // CI 全新库只跑迁移不跑 seed：先注册权限目录（幂等），保证目录依赖的测试在任意环境一致
     await ensurePermissionCatalog(prisma);
@@ -70,6 +74,20 @@ describeDb('asset 审批头（T5-3）', () => {
     `;
     deptUserId = deptRows[0]!.id;
 
+    // T7：部门闭包数据（hr.departments + hr.user_departments；department_closure 视图实时计算含自身）
+    await prisma.client.$executeRaw`
+      INSERT INTO hr.departments (id, name, status, created_at, updated_at)
+      VALUES (${TEST_DEPARTMENT_ID}, 'asset审批测试部门', 'ACTIVE', NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
+    `;
+    await prisma.client.$executeRaw`
+      DELETE FROM hr.user_departments WHERE user_id = ${deptUserId}
+    `;
+    await prisma.client.$executeRaw`
+      INSERT INTO hr.user_departments (user_id, department_id, created_by)
+      VALUES (${deptUserId}, ${TEST_DEPARTMENT_ID}, ${deptUserId})
+    `;
+
     // 部门范围消耗品审批授权（目录功能须已对账入库）
     await prisma.client.$executeRaw`
       DELETE FROM backstage.employee_grants
@@ -102,8 +120,12 @@ describeDb('asset 审批头（T5-3）', () => {
       await prisma.client.$executeRaw`
         DELETE FROM backstage.employee_grants WHERE user_id = ${deptUserId}
       `;
+      await prisma.client.$executeRaw`DELETE FROM hr.user_departments WHERE user_id = ${deptUserId}`;
       await prisma.client.$executeRaw`DELETE FROM base.users WHERE id = ${deptUserId}`;
     }
+    await prisma.client.$executeRaw`
+      DELETE FROM hr.departments WHERE id = ${TEST_DEPARTMENT_ID}
+    `;
     if (processorId > 0) {
       await prisma.client.$executeRaw`DELETE FROM base.users WHERE id = ${processorId}`;
     }
@@ -136,17 +158,20 @@ describeDb('asset 审批头（T5-3）', () => {
     ).rejects.toMatchObject({ entry: { code: 'PENDING_LIMIT_REACHED' } });
   });
 
-  it('DEPARTMENT 范围列表排除 STOCK_IN / STOCK_CHANGE', async () => {
+  it('DEPARTMENT 范围列表排除 STOCK_IN / STOCK_CHANGE（含闭包裁剪）', async () => {
     const applicantId = BASE_APPLICANT + 10;
+    const deptSnapshot = { id: TEST_DEPARTMENT_ID, name: 'asset审批测试部门' };
     await service.submitTestHeader({
       requestType: 'STOCK_IN',
       applicantId,
       applicantName: '入库申请人',
+      applicantDepartmentSnapshot: deptSnapshot,
     });
     await service.submitTestHeader({
       requestType: 'CONSUMABLE_REQUEST',
       applicantId,
       applicantName: '申领申请人',
+      applicantDepartmentSnapshot: deptSnapshot,
     });
 
     const deptList = await service.list(deptUserId, { page: 1, pageSize: 50, status: 'PENDING' });

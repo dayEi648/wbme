@@ -15,6 +15,20 @@ import {
   type Redis,
 } from '@wbme/server';
 import { ApprovalModule } from './modules/approval/approval.module';
+import { AssetModule } from './modules/asset/asset.module';
+import { TablePrefsModule } from './modules/base/table-prefs/table-prefs.module';
+import { BorrowModule } from './modules/borrow/borrow.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
+import { ClaimModule } from './modules/claim/claim.module';
+import { ConsumableModule } from './modules/consumable/consumable.module';
+import { DisposalModule } from './modules/disposal/disposal.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+import { QrModule } from './modules/qr/qr.module';
+import { RepairModule } from './modules/repair/repair.module';
+import { RequestModule } from './modules/request/request.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { TransferModule } from './modules/transfer/transfer.module';
+import { WarehouseModule } from './modules/warehouse/warehouse.module';
 import { CrossSchemaSessionLoader } from './shared/cross-schema-auth';
 import { SharedModule } from './shared.module';
 
@@ -36,6 +50,20 @@ export class AppModule {
         SessionModule.forRoot(),
         SharedModule,
         ApprovalModule,
+        SettingsModule,
+        CatalogModule,
+        ConsumableModule,
+        WarehouseModule,
+        InventoryModule,
+        RequestModule,
+        TransferModule,
+        ClaimModule,
+        BorrowModule,
+        DisposalModule,
+        QrModule,
+        AssetModule,
+        RepairModule,
+        TablePrefsModule,
       ],
       providers: [
         CrossSchemaSessionLoader,

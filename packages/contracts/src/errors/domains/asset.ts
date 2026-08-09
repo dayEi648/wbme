@@ -50,4 +50,36 @@ export const assetErrors = {
     httpStatus: 422,
     message: '二维码已作废，无法恢复',
   },
+  /** 调度时部门与责任人任一项均未变化，不允许提交（asset PRD §4） */
+  ASSET_TRANSFER_NO_CHANGE: {
+    code: 'ASSET_TRANSFER_NO_CHANGE',
+    type: 'BUSINESS',
+    domain: 'ASSET',
+    httpStatus: 422,
+    message: '部门与责任人均未变化，无需调度',
+  },
+  /** 分类仍被资产/品种引用或已停用，不允许删除（asset PRD §3） */
+  CATEGORY_REFERENCED: {
+    code: 'CATEGORY_REFERENCED',
+    type: 'BUSINESS',
+    domain: 'ASSET',
+    httpStatus: 422,
+    message: '分类仍被业务数据引用，不允许删除',
+  },
+  /** 字典项仍被业务数据或历史记录引用，不允许删除（asset PRD §12） */
+  DICT_REFERENCED: {
+    code: 'DICT_REFERENCED',
+    type: 'BUSINESS',
+    domain: 'ASSET',
+    httpStatus: 422,
+    message: '字典项仍被业务数据引用，不允许删除',
+  },
+  /** 资产主图对象标识非法或不属于当前业务（asset PRD §4 / T4-10） */
+  ASSET_IMAGE_INVALID: {
+    code: 'ASSET_IMAGE_INVALID',
+    type: 'VALIDATION',
+    domain: 'ASSET',
+    httpStatus: 400,
+    message: '主图对象标识无效',
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

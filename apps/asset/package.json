@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "build": "nest build",
+    "openapi:generate": "nest build && node dist/openapi/generate-openapi.js",
+    "openapi:verify": "nest build && node dist/openapi/generate-openapi.js --check",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch"
   },
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
+    "@nestjs/swagger": "^11.4.6",
     "@nestjs/testing": "^11.1.28",
     "@types/express": "^5.0.0",
     "prisma": "^7.9.1"

@@ -451,8 +451,50 @@ export const TITLE_MANAGE_FUNCTION_CODE = 'title_manage';
 /** hr「人事配置」功能编码（hr PRD §1 / §9） */
 export const HR_CONFIG_FUNCTION_CODE = 'hr_config';
 
-/** asset「消耗品审批」功能编码（asset PRD §1 / §9 六类审批） */
+/** asset「消耗品审批」功能编码（asset PRD §1 / §9 六类审批 + 注销员工借还处置） */
 export const CONSUMABLE_APPROVAL_FUNCTION_CODE = 'consumable_approval';
+
+/** asset「我的资产」功能编码（asset PRD §1 / §4：本人档，责任人或使用者为本人的固定资产） */
+export const MY_ASSETS_FUNCTION_CODE = 'my_assets';
+
+/** asset「固定资产查看」功能编码（asset PRD §1 / §4：部门/公司档只读） */
+export const FIXED_ASSET_VIEW_FUNCTION_CODE = 'fixed_asset_view';
+
+/** asset「固定资产维护」功能编码（asset PRD §1 / §4：建档/编辑/调度/维修/报废/二维码；隐含固定资产查看） */
+export const FIXED_ASSET_MAINTAIN_FUNCTION_CODE = 'fixed_asset_maintain';
+
+/** asset「消耗品申领」功能编码（asset PRD §1 / §7：本人档，隐含本人申领历史） */
+export const CONSUMABLE_APPLY_FUNCTION_CODE = 'consumable_apply';
+
+/** asset「消耗品申领历史记录」功能编码（asset PRD §1 / §7：部门/公司档） */
+export const CONSUMABLE_APPLY_HISTORY_FUNCTION_CODE = 'consumable_apply_history';
+
+/** asset「代交申领」功能编码（asset PRD §1 / §7：部门/公司档） */
+export const PROXY_APPLY_FUNCTION_CODE = 'proxy_apply';
+
+/** asset「我的借还」功能编码（asset PRD §1 / §8：本人档，隐含本人借还历史） */
+export const MY_BORROW_FUNCTION_CODE = 'my_borrow';
+
+/** asset「借还历史记录」功能编码（asset PRD §1 / §8：部门/公司档） */
+export const BORROW_HISTORY_FUNCTION_CODE = 'borrow_history';
+
+/** asset「消耗品库存管理」功能编码（asset PRD §1 / §5：公司档，品种/库位/库存/调拨/流水） */
+export const INVENTORY_MANAGE_FUNCTION_CODE = 'inventory_manage';
+
+/** asset「入库申请」功能编码（asset PRD §1 / §6：本人档，隐含本人入库申请历史） */
+export const STOCK_IN_APPLY_FUNCTION_CODE = 'stock_in_apply';
+
+/** asset「入库申请历史记录」功能编码（asset PRD §1 / §6：部门/公司档） */
+export const STOCK_IN_HISTORY_FUNCTION_CODE = 'stock_in_history';
+
+/** asset「库存变更申请」功能编码（asset PRD §1 / §6：本人档，隐含本人变更申请历史） */
+export const STOCK_CHANGE_APPLY_FUNCTION_CODE = 'stock_change_apply';
+
+/** asset「库存变更申请历史记录」功能编码（asset PRD §1 / §6：部门/公司档） */
+export const STOCK_CHANGE_HISTORY_FUNCTION_CODE = 'stock_change_history';
+
+/** asset「资产配置」功能编码（asset PRD §1 / §12：公司档，运行参数与业务字典） */
+export const ASSET_CONFIG_FUNCTION_CODE = 'asset_config';
 
 /** 扁平化的目录功能条目：对账与守卫读取用（排序 = 各层数组下标） */
 export interface CatalogFunctionEntry {

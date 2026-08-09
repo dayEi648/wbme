@@ -1,0 +1,5176 @@
+{
+  "components": {
+    "schemas": {
+      "AgentRequestCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "共享物品清单（同一库存条目整单只能一次）",
+            "items": {
+              "$ref": "#/components/schemas/AgentRequestItemDto"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "recipientIds": {
+            "description": "受领人 id 列表（不能选择自己、不能重复；1～100 人）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "recipientIds",
+          "items"
+        ],
+        "type": "object"
+      },
+      "AgentRequestItemDto": {
+        "properties": {
+          "inventoryItemId": {
+            "description": "库存条目 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "purpose": {
+            "description": "用途（代交共享清单可空）",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "qty": {
+            "description": "清单总数量（正整数；不按受领人分摊）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "inventoryItemId",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "AgentSettleDisposalItemDto": {
+        "properties": {
+          "borrowRecordId": {
+            "description": "清单级代领借还记录 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "method": {
+            "description": "处理方式",
+            "enum": [
+              "RETURN",
+              "WRITE_OFF"
+            ],
+            "type": "string"
+          },
+          "qty": {
+            "description": "该处理方式数量（正整数）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "description": "核销原因 / 归还备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "writeOffType": {
+            "description": "核销类型（method=WRITE_OFF 必填）",
+            "enum": [
+              "LOST",
+              "DAMAGED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "borrowRecordId",
+          "method",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "AgentSettlementCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "结清明细行",
+            "items": {
+              "$ref": "#/components/schemas/AgentSettlementItemDto"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "refRequestId": {
+            "description": "代领申领申请 id（AGENT_REQUEST）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "refRequestId",
+          "items"
+        ],
+        "type": "object"
+      },
+      "AgentSettlementItemDto": {
+        "properties": {
+          "borrowRecordId": {
+            "description": "清单级代领借还记录 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "method": {
+            "description": "处理方式",
+            "enum": [
+              "RETURN",
+              "WRITE_OFF"
+            ],
+            "type": "string"
+          },
+          "qty": {
+            "description": "该处理方式数量（正整数）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "description": "核销原因 / 归还备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "writeOffType": {
+            "description": "核销类型（遗失/损坏；method=WRITE_OFF 必填）",
+            "enum": [
+              "LOST",
+              "DAMAGED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "borrowRecordId",
+          "method",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "AssetBatchDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "资产 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "AssetCategoryBatchDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "分类 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "AssetCategoryCreateDto": {
+        "properties": {
+          "name": {
+            "description": "分类名称",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "parentId": {
+            "description": "父分类 id（顶级分类为 null；业务只维护一级子分类）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "sort": {
+            "default": 0,
+            "description": "排序（小的在前）",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "AssetCategoryUpdateDto": {
+        "properties": {
+          "name": {
+            "description": "分类名称",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "sort": {
+            "default": 0,
+            "description": "排序（小的在前）",
+            "type": "number"
+          },
+          "status": {
+            "description": "状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "AssetCreateDto": {
+        "properties": {
+          "amount": {
+            "description": "金额（元，最多两位小数；必填）",
+            "example": "1234.50",
+            "type": "string"
+          },
+          "categoryId": {
+            "description": "分类 id（固定资产分类下的一级子类）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "currentUserId": {
+            "description": "使用者 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "departmentId": {
+            "description": "所属部门 id（可空；部门删除时自动置空）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "imageOssKey": {
+            "description": "主图对象标识（T4-10 上传返回的 OSS key）",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "name": {
+            "description": "资产名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "ownerName": {
+            "description": "归属方名称（合作方所有时必填）",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "ownership": {
+            "description": "资产归属",
+            "enum": [
+              "COMPANY",
+              "PARTNER"
+            ],
+            "type": "string"
+          },
+          "purchaseAt": {
+            "description": "入库时间（YYYY-MM-DD）",
+            "type": "string"
+          },
+          "remark": {
+            "description": "备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "responsibleUserId": {
+            "description": "责任人 id（与所属部门必须匹配；变化须经调度接口）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "specModel": {
+            "description": "规格型号",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "amount",
+          "ownership"
+        ],
+        "type": "object"
+      },
+      "AssetDictItemBatchDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "字典项 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "AssetDictItemCreateDto": {
+        "properties": {
+          "dictType": {
+            "description": "字典类型",
+            "enum": [
+              "UNIT",
+              "CHANGE_TYPE",
+              "SUPPLIER",
+              "BRAND",
+              "SPEC",
+              "ASSET_SPEC",
+              "ASSET_MODEL"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "字典项名称",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "sort": {
+            "default": 0,
+            "description": "排序（小的在前）",
+            "type": "number"
+          }
+        },
+        "required": [
+          "dictType",
+          "name"
+        ],
+        "type": "object"
+      },
+      "AssetDictItemUpdateDto": {
+        "properties": {
+          "name": {
+            "description": "字典项名称",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "sort": {
+            "default": 0,
+            "description": "排序（小的在前）",
+            "type": "number"
+          },
+          "status": {
+            "description": "状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "AssetScheduleDto": {
+        "properties": {
+          "remark": {
+            "description": "调度备注",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "toDepartmentId": {
+            "description": "目标所属部门 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "toUserId": {
+            "description": "目标责任人 id",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "toDepartmentId",
+          "toUserId"
+        ],
+        "type": "object"
+      },
+      "AssetScrapDto": {
+        "properties": {
+          "confirm": {
+            "description": "二次确认标志（必须为 true）",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "AssetSettingUpdateDto": {
+        "properties": {
+          "quotaResetDay": {
+            "description": "申领上限重置日（1～28 号；保证每个自然月都存在该日；变更只影响之后开始的周期）",
+            "maximum": 28,
+            "minimum": 1,
+            "type": "number"
+          },
+          "scanEntryUrl": {
+            "description": "二维码扫码入口地址（前端 /scan 页面完整地址）",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AssetUpdateDto": {
+        "properties": {
+          "amount": {
+            "description": "金额（元，最多两位小数）",
+            "example": "1234.50",
+            "type": "string"
+          },
+          "categoryId": {
+            "description": "分类 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "currentUserId": {
+            "description": "使用者 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "imageOssKey": {
+            "description": "主图对象标识",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "name": {
+            "description": "资产名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "ownerName": {
+            "description": "归属方名称（合作方所有时必填）",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "ownership": {
+            "description": "资产归属",
+            "enum": [
+              "COMPANY",
+              "PARTNER"
+            ],
+            "type": "string"
+          },
+          "purchaseAt": {
+            "description": "入库时间（YYYY-MM-DD）",
+            "type": "string"
+          },
+          "remark": {
+            "description": "备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "specModel": {
+            "description": "规格型号",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "usageStatus": {
+            "description": "使用状态（仅允许 IDLE/IN_USE 互切，或把 SCRAPPED 恢复为 IDLE/IN_USE；待维修/维修中由维修管理驱动）",
+            "enum": [
+              "IDLE",
+              "IN_USE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "amount",
+          "ownership",
+          "usageStatus"
+        ],
+        "type": "object"
+      },
+      "BatchCorrectionDto": {
+        "properties": {
+          "brandId": {
+            "description": "品牌（字典项 id）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "description": "纠正原因（必填）",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "remark": {
+            "description": "批次备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "spec": {
+            "description": "规格（可空：不纠正规格；非空且无后续流水时可纠正）",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "supplierId": {
+            "description": "供应商（字典项 id）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "unitPrice": {
+            "description": "单价（元，最多两位小数）",
+            "example": "10.00",
+            "type": "string"
+          },
+          "warehouseId": {
+            "description": "目标库位 id（可空：不移动库位；非空且无后续流水时可纠正）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "BorrowReturnCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "归还明细行（同一借还记录整单只能一次）",
+            "items": {
+              "$ref": "#/components/schemas/BorrowReturnItemDto"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "BorrowReturnItemDto": {
+        "properties": {
+          "borrowRecordId": {
+            "description": "借还记录 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "qty": {
+            "description": "归还数量（正整数；不得超过可申请处理数量）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "description": "归还备注",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "borrowRecordId",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "BorrowWriteOffCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "核销明细行（同一借还记录整单只能一次）",
+            "items": {
+              "$ref": "#/components/schemas/BorrowWriteOffItemDto"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "BorrowWriteOffItemDto": {
+        "properties": {
+          "borrowRecordId": {
+            "description": "借还记录 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "qty": {
+            "description": "核销数量（正整数）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "description": "核销原因（必填）",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "writeOffType": {
+            "description": "核销类型",
+            "enum": [
+              "LOST",
+              "DAMAGED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "borrowRecordId",
+          "qty",
+          "writeOffType",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "CancelApprovalDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ColumnSettingDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "description": "列设置内容（列显隐/宽度/顺序等，结构由前端定义）",
+            "type": "object"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "ConsumableBatchDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "品种 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "ConsumableCreateDto": {
+        "properties": {
+          "categoryId": {
+            "description": "分类 id（消耗品分类下的一级子类）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "imageOssKey": {
+            "description": "图片对象标识（T4-10 上传返回的 OSS key）",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxHolding": {
+            "description": "同时持有上限（借还用品必填，≥1）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "name": {
+            "description": "品种名称（删除后同名可再建）",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "quotaCycle": {
+            "description": "申领上限周期（一次性用品必填）",
+            "enum": [
+              "MONTH",
+              "QUARTER",
+              "YEAR"
+            ],
+            "type": "string"
+          },
+          "quotaLimit": {
+            "description": "周期内数量上限（一次性用品必填，≥1）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "referencePrice": {
+            "description": "参考单价（元，最多两位小数）",
+            "example": "10.00",
+            "type": "string"
+          },
+          "remark": {
+            "description": "备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "returnDays": {
+            "description": "归还期限（天；借还用品必填，≥1）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "safetyStock": {
+            "default": 0,
+            "description": "安全库存",
+            "minimum": 0,
+            "type": "number"
+          },
+          "type": {
+            "description": "品种类型",
+            "enum": [
+              "DISPOSABLE",
+              "REUSABLE"
+            ],
+            "type": "string"
+          },
+          "unitId": {
+            "description": "单位（字典项 id）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object"
+      },
+      "ConsumableRequestCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "申领明细行（同一库存条目整单只能一次）",
+            "items": {
+              "$ref": "#/components/schemas/ConsumableRequestItemDto"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ConsumableRequestItemDto": {
+        "properties": {
+          "inventoryItemId": {
+            "description": "库存条目 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "purpose": {
+            "description": "用途（普通申领必填）",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "qty": {
+            "description": "数量（正整数）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "inventoryItemId",
+          "qty",
+          "purpose"
+        ],
+        "type": "object"
+      },
+      "ConsumableUpdateDto": {
+        "properties": {
+          "categoryId": {
+            "description": "分类 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "imageOssKey": {
+            "description": "图片对象标识",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxHolding": {
+            "description": "同时持有上限（借还用品必填）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "name": {
+            "description": "品种名称",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "quotaCycle": {
+            "description": "申领上限周期（一次性用品必填）",
+            "enum": [
+              "MONTH",
+              "QUARTER",
+              "YEAR"
+            ],
+            "type": "string"
+          },
+          "quotaLimit": {
+            "description": "周期内数量上限（一次性用品必填）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "referencePrice": {
+            "description": "参考单价（元，最多两位小数）",
+            "example": "10.00",
+            "type": "string"
+          },
+          "remark": {
+            "description": "备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "returnDays": {
+            "description": "归还期限（天；借还用品必填）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "safetyStock": {
+            "description": "安全库存",
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "description": "状态（停用后不可新建入库/申领，既有库存与待审批不受影响）",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "description": "品种类型（只读语义；服务端以既有类型为准）",
+            "enum": [
+              "DISPOSABLE",
+              "REUSABLE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "safetyStock",
+          "status",
+          "type"
+        ],
+        "type": "object"
+      },
+      "DirectDisposalDto": {
+        "properties": {
+          "agentItems": {
+            "description": "代领整单结清明细（disposalType=AGENT_SETTLE）",
+            "items": {
+              "$ref": "#/components/schemas/AgentSettleDisposalItemDto"
+            },
+            "type": "array"
+          },
+          "agentRequestId": {
+            "description": "代领清单申请 id（disposalType=AGENT_SETTLE）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "disposalType": {
+            "description": "处置类型",
+            "enum": [
+              "RETURN",
+              "WRITE_OFF",
+              "AGENT_SETTLE"
+            ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "个人借还处置明细（disposalType=RETURN/WRITE_OFF）",
+            "items": {
+              "$ref": "#/components/schemas/DirectDisposalItemDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "disposalType"
+        ],
+        "type": "object"
+      },
+      "DirectDisposalItemDto": {
+        "properties": {
+          "borrowRecordId": {
+            "description": "借还记录 id（PERSONAL 处置的每条记录）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "method": {
+            "description": "处理方式（个人处置：正常归还 / 遗失损坏核销）",
+            "enum": [
+              "RETURN",
+              "WRITE_OFF"
+            ],
+            "type": "string"
+          },
+          "qty": {
+            "description": "处理数量（正整数；不得超过可处理数量）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "description": "核销原因（必填）/归还备注（可选）",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "writeOffType": {
+            "description": "核销类型（method=WRITE_OFF 必填）",
+            "enum": [
+              "LOST",
+              "DAMAGED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "borrowRecordId",
+          "method",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "description": "机器可读稳定编码（(type, domain) 内唯一；目录见 @wbme/contracts）",
+                "enum": [
+                  "ACCOUNT_ACTIVATED",
+                  "ACCOUNT_DEACTIVATED",
+                  "ACCOUNT_LOCKED",
+                  "ACCOUNT_PENDING_ACTIVATION",
+                  "ALREADY_SUPER_ADMIN",
+                  "APPLICANT_DEACTIVATED",
+                  "ASSET_IMAGE_INVALID",
+                  "ASSET_REFERENCED",
+                  "ASSET_STATUS_INVALID",
+                  "ASSET_TRANSFER_NO_CHANGE",
+                  "ASSIGNEE_DEPARTMENT_MISMATCH",
+                  "BACKUP_LOCK_BUSY",
+                  "BACKUP_UNVERIFIED",
+                  "BATCH_CORRECTION_FORBIDDEN",
+                  "BORROW_ALREADY_SETTLED",
+                  "CATEGORY_REFERENCED",
+                  "CONFLICT",
+                  "CONSUMABLE_DISABLED",
+                  "CONSUMABLE_REFERENCED",
+                  "DATA_REVISION_STALE",
+                  "DEPARTMENT_HAS_CHILDREN",
+                  "DEPENDENCY_UNAVAILABLE",
+                  "DICT_REFERENCED",
+                  "DINGTALK_ALREADY_BOUND",
+                  "DINGTALK_CONFIG_MISSING",
+                  "DINGTALK_ORG_MISMATCH",
+                  "DINGTALK_STATE_INVALID",
+                  "DINGTALK_UNAVAILABLE",
+                  "DISPOSAL_FORBIDDEN",
+                  "EMERGENCY_BACKUP_FAILED",
+                  "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_TIMEOUT",
+                  "FLOW_SESSION_INVALID",
+                  "FORBIDDEN",
+                  "FUNCTION_NOT_REGISTERED",
+                  "GRANT_BATCH_BLOCKED",
+                  "GRANT_SELF_FORBIDDEN",
+                  "GRANT_VERSION_CONFLICT",
+                  "GROUP_BATCH_BLOCKED",
+                  "GROUP_NAME_CONFLICT",
+                  "HOLIDAY_API_UNAVAILABLE",
+                  "HR_SERVICE_UNAVAILABLE",
+                  "IDEMPOTENCY_KEY_REUSED",
+                  "IMPORT_ALREADY_RUNNING",
+                  "IMPORT_ARCHIVE_LIMIT_EXCEEDED",
+                  "IMPORT_FILE_TOO_LARGE",
+                  "IMPORT_FORMULA_NOT_ALLOWED",
+                  "IMPORT_PREVIEW_STALE",
+                  "IMPORT_PROJECT_DELETED",
+                  "IMPORT_ROW_LIMIT_EXCEEDED",
+                  "IMPORT_TIMEOUT",
+                  "IMPORT_YEAR_AMBIGUOUS",
+                  "IMPORT_YEAR_REQUIRED_FOR_NEW",
+                  "INSUFFICIENT_QUOTA",
+                  "INSUFFICIENT_STOCK",
+                  "INTERNAL_ERROR",
+                  "INVALID_CREDENTIALS",
+                  "INVITATION_INVALID",
+                  "ITEM_DUPLICATED",
+                  "LAST_SUPER_ADMIN",
+                  "LOCATION_HAS_CHILDREN",
+                  "LOCATION_INVALID_TARGET",
+                  "LOCATION_REFERENCED",
+                  "MAINTENANCE_ACTIVE_EXISTS",
+                  "MULTI_DEPARTMENT_APPLY_FORBIDDEN",
+                  "NOT_SUPER_ADMIN",
+                  "OLD_PASSWORD_INCORRECT",
+                  "ORGANIZATION_CYCLE",
+                  "ORGANIZATION_VERSION_CONFLICT",
+                  "OSS_UNAVAILABLE",
+                  "OVERTIME_BATCH_REJECTED",
+                  "OVERTIME_DATE_OUT_OF_WINDOW",
+                  "OVERTIME_EMPLOYEE_NOT_ACTIVE",
+                  "OVERTIME_OVERLAP",
+                  "PASSWORD_CONFIRM_MISMATCH",
+                  "PASSWORD_POLICY_FAILED",
+                  "PAYLOAD_TOO_LARGE",
+                  "PENDING_ACCOUNT_EXISTS",
+                  "PENDING_LIMIT_REACHED",
+                  "PERMISSION_MANAGEMENT_GRANT_FORBIDDEN",
+                  "PHONE_MISSING_FROM_DINGTALK",
+                  "PHONE_TAKEN",
+                  "POSITION_APPLICATION_INELIGIBLE",
+                  "POSITION_APPLY_STALE",
+                  "POSITION_APPLY_TARGET_UNAVAILABLE",
+                  "POSITION_DEPARTMENT_MISMATCH",
+                  "PROFILE_CHANGE_PENDING_EXISTS",
+                  "PROJECT_KEY_CONFLICT",
+                  "QR_INVALID",
+                  "QR_REVOKED",
+                  "RATE_LIMITED",
+                  "RECIPIENT_INVALID",
+                  "REDIS_UNAVAILABLE",
+                  "REJECT_REASON_REQUIRED",
+                  "REQUEST_TIMEOUT",
+                  "RESET_SELF_UNAVAILABLE",
+                  "RESOURCE_NOT_FOUND",
+                  "RESTORE_IN_PROGRESS",
+                  "RESTORE_SUPER_ADMIN_ONLY",
+                  "RESTORE_TARGET_STALE",
+                  "ROW_LIMIT_EXCEEDED",
+                  "SCOPE_NOT_COVERED",
+                  "SCOPE_NOT_SUPPORTED",
+                  "SERVICE_UNAVAILABLE",
+                  "SESSION_EXPIRED",
+                  "SETTLEMENT_COVERAGE_INCOMPLETE",
+                  "STATUS_CONFLICT",
+                  "STATUS_NOT_ALLOWED",
+                  "STOCK_CONFLICT",
+                  "SUPER_ADMIN_TARGET_ONLY",
+                  "SYSTEM_MAINTENANCE",
+                  "SYSTEM_NOT_OPEN",
+                  "SYSTEM_STATUS_NOT_ADJUSTABLE",
+                  "UNAUTHORIZED",
+                  "UNIT_LOCKED",
+                  "USER_BATCH_BLOCKED",
+                  "USER_NOT_ACTIVE",
+                  "USER_NOT_PENDING",
+                  "VALIDATION_FAILED"
+                ],
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": true,
+                "description": "白名单结构化详情",
+                "type": "object"
+              },
+              "domain": {
+                "description": "业务域（仅 BUSINESS 类型必须返回）",
+                "enum": [
+                  "ACCOUNT",
+                  "PERMISSION",
+                  "APPROVAL",
+                  "ASSET",
+                  "INVENTORY",
+                  "HR",
+                  "FINANCE",
+                  "EXPORT",
+                  "BACKUP",
+                  "INTEGRATION"
+                ],
+                "type": "string"
+              },
+              "message": {
+                "description": "服务端控制、可向当前用户展示的文案",
+                "type": "string"
+              },
+              "requestId": {
+                "description": "请求追踪标识",
+                "type": "string"
+              },
+              "type": {
+                "description": "稳定错误大类（主 PRD §9.5）",
+                "enum": [
+                  "BUSINESS",
+                  "VALIDATION",
+                  "AUTHENTICATION",
+                  "AUTHORIZATION",
+                  "CONFLICT",
+                  "RATE_LIMIT",
+                  "TIMEOUT",
+                  "DEPENDENCY",
+                  "SYSTEM"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "code",
+              "message",
+              "requestId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "FilterPresetDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "description": "筛选条件内容（结构由前端定义）",
+            "type": "object"
+          },
+          "name": {
+            "description": "预设名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ],
+        "type": "object"
+      },
+      "InventoryTransferCreateDto": {
+        "properties": {
+          "fromInventoryItemId": {
+            "description": "来源库存条目 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "qty": {
+            "description": "调拨数量（正整数）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "remark": {
+            "description": "备注",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "toWarehouseId": {
+            "description": "目标库位 id（必须启用且不同于来源库位）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "fromInventoryItemId",
+          "toWarehouseId",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "ProcessApprovalDto": {
+        "properties": {
+          "action": {
+            "description": "处理动作：APPROVE=批准 / REJECT=驳回",
+            "enum": [
+              "APPROVE",
+              "REJECT"
+            ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "opinion": {
+            "description": "处理意见",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "QrActionDto": {
+        "properties": {
+          "action": {
+            "description": "动作",
+            "enum": [
+              "DISABLE",
+              "ENABLE",
+              "REGENERATE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "QrCodeCreateDto": {
+        "properties": {
+          "targetId": {
+            "description": "目标标识（SCAN_CATALOG 为 null）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "targetType": {
+            "description": "目标类型",
+            "enum": [
+              "ASSET",
+              "INVENTORY_ITEM",
+              "SCAN_CATALOG"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetType"
+        ],
+        "type": "object"
+      },
+      "QrParseDto": {
+        "properties": {
+          "publicId": {
+            "description": "二维码公开标识（来自 /scan#<publicId> fragment；解析后立即从地址栏移除）",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "publicId"
+        ],
+        "type": "object"
+      },
+      "RenameFilterPresetDto": {
+        "properties": {
+          "name": {
+            "description": "预设新名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "RepairCompleteDto": {
+        "properties": {
+          "actualCost": {
+            "description": "实际费用（元，无费用为 0；最多两位小数）",
+            "example": "0",
+            "type": "string"
+          },
+          "completedAt": {
+            "description": "完成时间（RFC 3339；缺省为当前时间）",
+            "type": "string"
+          },
+          "postStatus": {
+            "description": "完成后资产恢复状态（使用中 / 闲置）",
+            "enum": [
+              "IN_USE",
+              "IDLE"
+            ],
+            "type": "string"
+          },
+          "result": {
+            "description": "维修结果",
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "result",
+          "actualCost",
+          "postStatus"
+        ],
+        "type": "object"
+      },
+      "RepairOrderCreateDto": {
+        "properties": {
+          "assetId": {
+            "description": "资产 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "faultDescription": {
+            "description": "故障/维修事项",
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "reportedAt": {
+            "description": "报修时间（RFC 3339；缺省为当前时间）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "faultDescription"
+        ],
+        "type": "object"
+      },
+      "RepairStartDto": {
+        "properties": {
+          "startedAt": {
+            "description": "开始维修时间（RFC 3339；缺省为当前时间）",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "StockChangeRequestCreateDto": {
+        "properties": {
+          "changedAt": {
+            "description": "整单变更时间（RFC 3339；缺省提交时）",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "变更明细行（同一库存条目整单只能一次）",
+            "items": {
+              "$ref": "#/components/schemas/StockChangeRequestItemDto"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "remark": {
+            "description": "整单备注",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "StockChangeRequestItemDto": {
+        "properties": {
+          "changeTypeId": {
+            "description": "变更类型（字典项 id；库存变更类型仅表示意外扣减原因）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "inventoryItemId": {
+            "description": "库存条目 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "qty": {
+            "description": "扣减数量（正整数）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "description": "具体原因（必填）",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "inventoryItemId",
+          "reason",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "StockInRequestCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "入库明细行（同一品种+规格+库位只能一行）",
+            "items": {
+              "$ref": "#/components/schemas/StockInRequestItemDto"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "receivedAt": {
+            "description": "整单申请时间（RFC 3339；缺省提交时；批准后作为批次入库时间）",
+            "type": "string"
+          },
+          "remark": {
+            "description": "整单备注",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "StockInRequestItemDto": {
+        "properties": {
+          "brandId": {
+            "description": "品牌（字典项 id）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "consumableId": {
+            "description": "品种 id（必须启用）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "qty": {
+            "description": "数量（正整数）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "spec": {
+            "description": "规格",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "supplierId": {
+            "description": "供应商（字典项 id）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "unitPrice": {
+            "description": "单价（元，最多两位小数；可空）",
+            "example": "10.00",
+            "type": "string"
+          },
+          "warehouseId": {
+            "description": "目标库位 id（必须启用）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "consumableId",
+          "spec",
+          "warehouseId",
+          "qty"
+        ],
+        "type": "object"
+      },
+      "WarehouseBatchDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "库位 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "WarehouseCreateDto": {
+        "properties": {
+          "name": {
+            "description": "库位名称",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "parentId": {
+            "description": "父库位 id（null=根）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "sort": {
+            "default": 0,
+            "description": "排序（小的在前）",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "WarehouseUpdateDto": {
+        "properties": {
+          "name": {
+            "description": "库位名称",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "parentId": {
+            "description": "父库位 id（null=移动到根）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "sort": {
+            "default": 0,
+            "description": "排序（小的在前）",
+            "type": "number"
+          },
+          "status": {
+            "description": "状态（停用后不能作为新入库或调拨目标）",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "csrfHeader": {
+        "description": "CSRF 双提交头（状态变更请求必须与 wbme_csrf Cookie 一致）",
+        "in": "header",
+        "name": "X-WBME-CSRF-Token",
+        "type": "apiKey"
+      },
+      "sessionCookie": {
+        "description": "服务端会话 Cookie（HttpOnly；登录/激活成功后下发）",
+        "in": "cookie",
+        "name": "wbme_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "asset 部署单元（资产系统）OpenAPI 契约。构建期生成（主 PRD §9.5）：统一错误结构见 components.schemas.ErrorResponse；默认会话 Cookie + CSRF 头认证，公开路由无 security。",
+    "title": "WBME asset API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/agent-requests": {
+      "get": {
+        "operationId": "AgentClaimController_listHistory",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "CONSUMABLE_REQUEST",
+                "AGENT_REQUEST"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名（范围历史筛选）",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AgentClaim"
+        ]
+      },
+      "post": {
+        "operationId": "AgentClaimController_submit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRequestCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AgentClaim"
+        ]
+      }
+    },
+    "/api/v1/agent-requests/mine": {
+      "get": {
+        "operationId": "AgentClaimController_listMine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "CONSUMABLE_REQUEST",
+                "AGENT_REQUEST"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名（范围历史筛选）",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AgentClaim"
+        ]
+      }
+    },
+    "/api/v1/agent-settlements": {
+      "post": {
+        "operationId": "AgentSettlementController_submit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSettlementCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AgentSettlement"
+        ]
+      }
+    },
+    "/api/v1/agent-settlements/mine": {
+      "get": {
+        "operationId": "AgentSettlementController_listMine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AgentSettlement"
+        ]
+      }
+    },
+    "/api/v1/approval-requests": {
+      "get": {
+        "operationId": "ApprovalController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型（取值由各模块声明）",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "PENDING=待处理；PROCESSED=已处理（批准/驳回/取消）；或具体状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "PROCESSED",
+                "DRAFT",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（单号/申请人等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "申请人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理人姓名",
+            "in": "query",
+            "name": "processorName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}": {
+      "get": {
+        "operationId": "ApprovalController_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}/cancel": {
+      "post": {
+        "operationId": "ApprovalController_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelApprovalDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}/process": {
+      "post": {
+        "operationId": "ApprovalController_process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessApprovalDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/export/all": {
+      "get": {
+        "operationId": "ApprovalController_exportAll",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型（取值由各模块声明）",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "PENDING=待处理；PROCESSED=已处理（批准/驳回/取消）；或具体状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "PROCESSED",
+                "DRAFT",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（单号/申请人等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "申请人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理人姓名",
+            "in": "query",
+            "name": "processorName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/pending-count": {
+      "get": {
+        "operationId": "ApprovalController_pendingCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/asset-settings": {
+      "get": {
+        "operationId": "SettingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_update",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetSettingUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/v1/asset/inventory-transfers": {
+      "get": {
+        "operationId": "TransferController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "规格（精确）",
+            "in": "query",
+            "name": "spec",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "来源库位 id",
+            "in": "query",
+            "name": "fromWarehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "目标库位 id",
+            "in": "query",
+            "name": "toWarehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "操作者 id",
+            "in": "query",
+            "name": "operatorId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transfer"
+        ]
+      },
+      "post": {
+        "operationId": "TransferController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryTransferCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transfer"
+        ]
+      }
+    },
+    "/api/v1/asset/inventory-transfers/{id}": {
+      "get": {
+        "operationId": "TransferController_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transfer"
+        ]
+      }
+    },
+    "/api/v1/assets": {
+      "get": {
+        "operationId": "AssetController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "分类 id",
+            "in": "query",
+            "name": "categoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "所属部门 id",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "使用状态",
+            "in": "query",
+            "name": "usageStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "IDLE",
+                "IN_USE",
+                "PENDING_REPAIR",
+                "REPAIRING",
+                "SCRAPPED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "资产归属",
+            "in": "query",
+            "name": "ownership",
+            "required": false,
+            "schema": {
+              "enum": [
+                "COMPANY",
+                "PARTNER"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "责任人 id",
+            "in": "query",
+            "name": "responsibleUserId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "使用者 id",
+            "in": "query",
+            "name": "currentUserId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "关键字（名称/规格型号模糊）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      },
+      "post": {
+        "operationId": "AssetController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      }
+    },
+    "/api/v1/assets/{id}": {
+      "get": {
+        "operationId": "AssetController_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      },
+      "put": {
+        "operationId": "AssetController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      }
+    },
+    "/api/v1/assets/{id}/schedule": {
+      "post": {
+        "operationId": "AssetController_schedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetScheduleDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      }
+    },
+    "/api/v1/assets/{id}/scrap": {
+      "post": {
+        "operationId": "AssetController_scrap",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetScrapDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      }
+    },
+    "/api/v1/assets/batch": {
+      "delete": {
+        "operationId": "AssetController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetBatchDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      }
+    },
+    "/api/v1/assets/export": {
+      "get": {
+        "operationId": "AssetController_export",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "分类 id",
+            "in": "query",
+            "name": "categoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "所属部门 id",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "使用状态",
+            "in": "query",
+            "name": "usageStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "IDLE",
+                "IN_USE",
+                "PENDING_REPAIR",
+                "REPAIRING",
+                "SCRAPPED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "资产归属",
+            "in": "query",
+            "name": "ownership",
+            "required": false,
+            "schema": {
+              "enum": [
+                "COMPANY",
+                "PARTNER"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "责任人 id",
+            "in": "query",
+            "name": "responsibleUserId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "使用者 id",
+            "in": "query",
+            "name": "currentUserId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "关键字（名称/规格型号模糊）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      }
+    },
+    "/api/v1/assets/mine": {
+      "get": {
+        "operationId": "AssetController_listMine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "筛选维度",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "default": "ALL",
+              "enum": [
+                "OWNED",
+                "USED",
+                "ALL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "使用状态",
+            "in": "query",
+            "name": "usageStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "IDLE",
+                "IN_USE",
+                "PENDING_REPAIR",
+                "REPAIRING",
+                "SCRAPPED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Asset"
+        ]
+      }
+    },
+    "/api/v1/borrow-records": {
+      "get": {
+        "operationId": "BorrowController_listHistory",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "记录类型",
+            "in": "query",
+            "name": "recordType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PERSONAL",
+                "AGENT"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "借用人 / 代交人 id（PERSONAL 借用人；AGENT 发起人）",
+            "in": "query",
+            "name": "userId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "受领人 id（仅 AGENT 记录筛选）",
+            "in": "query",
+            "name": "recipientId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "部门 id",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结清状态",
+            "in": "query",
+            "name": "settlementStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "OPEN",
+                "SETTLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "是否仅逾期",
+            "in": "query",
+            "name": "overdueOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Borrow"
+        ]
+      }
+    },
+    "/api/v1/borrow-returns": {
+      "post": {
+        "operationId": "BorrowController_submitReturn",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BorrowReturnCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Borrow"
+        ]
+      }
+    },
+    "/api/v1/borrow-write-offs": {
+      "post": {
+        "operationId": "BorrowController_submitWriteOff",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BorrowWriteOffCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Borrow"
+        ]
+      }
+    },
+    "/api/v1/categories": {
+      "get": {
+        "operationId": "CategoryController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "状态过滤",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Category"
+        ]
+      },
+      "post": {
+        "operationId": "CategoryController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetCategoryCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Category"
+        ]
+      }
+    },
+    "/api/v1/categories/{id}": {
+      "put": {
+        "operationId": "CategoryController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetCategoryUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Category"
+        ]
+      }
+    },
+    "/api/v1/categories/batch": {
+      "delete": {
+        "operationId": "CategoryController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetCategoryBatchDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Category"
+        ]
+      }
+    },
+    "/api/v1/consumable-requests": {
+      "get": {
+        "operationId": "ClaimController_listHistory",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "CONSUMABLE_REQUEST",
+                "AGENT_REQUEST"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名（范围历史筛选）",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Claim"
+        ]
+      },
+      "post": {
+        "operationId": "ClaimController_submit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsumableRequestCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Claim"
+        ]
+      }
+    },
+    "/api/v1/consumable-requests/mine": {
+      "get": {
+        "operationId": "ClaimController_listMine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "CONSUMABLE_REQUEST",
+                "AGENT_REQUEST"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名（范围历史筛选）",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Claim"
+        ]
+      }
+    },
+    "/api/v1/consumables": {
+      "get": {
+        "operationId": "ConsumableController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "分类 id",
+            "in": "query",
+            "name": "categoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种类型",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "DISPOSABLE",
+                "REUSABLE"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（名称模糊）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "仅显示有可用库存的品种（申领目录）",
+            "in": "query",
+            "name": "hasAvailableStock",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Consumable"
+        ]
+      },
+      "post": {
+        "operationId": "ConsumableController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsumableCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Consumable"
+        ]
+      }
+    },
+    "/api/v1/consumables/{id}": {
+      "put": {
+        "operationId": "ConsumableController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsumableUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Consumable"
+        ]
+      }
+    },
+    "/api/v1/consumables/batch": {
+      "delete": {
+        "operationId": "ConsumableController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsumableBatchDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Consumable"
+        ]
+      }
+    },
+    "/api/v1/dict-items": {
+      "get": {
+        "operationId": "DictController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "字典类型过滤",
+            "in": "query",
+            "name": "dictType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "UNIT",
+                "CHANGE_TYPE",
+                "SUPPLIER",
+                "BRAND",
+                "SPEC",
+                "ASSET_SPEC",
+                "ASSET_MODEL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态过滤",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      },
+      "post": {
+        "operationId": "DictController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetDictItemCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/dict-items/{id}": {
+      "put": {
+        "operationId": "DictController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetDictItemUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/dict-items/batch": {
+      "delete": {
+        "operationId": "DictController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetDictItemBatchDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/disposals": {
+      "get": {
+        "operationId": "DisposalController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "视图：PENDING=待处置 / RECORDS=处置记录",
+            "in": "query",
+            "name": "tab",
+            "required": true,
+            "schema": {
+              "default": "PENDING",
+              "enum": [
+                "PENDING",
+                "RECORDS"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "记录类型",
+            "in": "query",
+            "name": "recordType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PERSONAL",
+                "AGENT"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理方式",
+            "in": "query",
+            "name": "disposalType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "RETURN",
+                "WRITE_OFF",
+                "AGENT_SETTLE"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理人姓名",
+            "in": "query",
+            "name": "processorName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "借用人 / 代交人姓名",
+            "in": "query",
+            "name": "userName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Disposal"
+        ]
+      },
+      "post": {
+        "operationId": "DisposalController_dispose",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectDisposalDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Disposal"
+        ]
+      }
+    },
+    "/api/v1/inventory/batches": {
+      "get": {
+        "operationId": "InventoryController_listBatches",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库存条目 id",
+            "in": "query",
+            "name": "inventoryItemId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库位 id",
+            "in": "query",
+            "name": "warehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/batches/{id}/corrections": {
+      "post": {
+        "operationId": "InventoryController_correctBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCorrectionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/items": {
+      "get": {
+        "operationId": "InventoryController_listItems",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库位 id",
+            "in": "query",
+            "name": "warehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "规格（精确）",
+            "in": "query",
+            "name": "spec",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "仅显示低库存品种（可用 < 安全库存）",
+            "in": "query",
+            "name": "lowStockOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/stock-flows": {
+      "get": {
+        "operationId": "InventoryController_listStockFlows",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库存条目 id",
+            "in": "query",
+            "name": "inventoryItemId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库位 id",
+            "in": "query",
+            "name": "warehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "流水类型",
+            "in": "query",
+            "name": "flowType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "STOCK_IN",
+                "ISSUE",
+                "DEDUCTION",
+                "RETURN",
+                "TRANSFER_OUT",
+                "TRANSFER_IN",
+                "CORRECTION"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "业务来源类型（申请/调拨/处置等）",
+            "in": "query",
+            "name": "refType",
+            "required": false,
+            "schema": {
+              "maxLength": 40,
+              "type": "string"
+            }
+          },
+          {
+            "description": "业务来源标识",
+            "in": "query",
+            "name": "refId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/stock-flows/export": {
+      "get": {
+        "operationId": "InventoryController_exportStockFlows",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库存条目 id",
+            "in": "query",
+            "name": "inventoryItemId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库位 id",
+            "in": "query",
+            "name": "warehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "流水类型",
+            "in": "query",
+            "name": "flowType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "STOCK_IN",
+                "ISSUE",
+                "DEDUCTION",
+                "RETURN",
+                "TRANSFER_OUT",
+                "TRANSFER_IN",
+                "CORRECTION"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "业务来源类型（申请/调拨/处置等）",
+            "in": "query",
+            "name": "refType",
+            "required": false,
+            "schema": {
+              "maxLength": 40,
+              "type": "string"
+            }
+          },
+          {
+            "description": "业务来源标识",
+            "in": "query",
+            "name": "refId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/column-setting": {
+      "get": {
+        "operationId": "TablePrefsController_getColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_upsertColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnSettingDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/filter-presets": {
+      "get": {
+        "operationId": "TablePrefsController_listFilterPresets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "post": {
+        "operationId": "TablePrefsController_createFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}": {
+      "delete": {
+        "operationId": "TablePrefsController_deleteFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_updateFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}/name": {
+      "put": {
+        "operationId": "TablePrefsController_renameFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameFilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/my-borrow": {
+      "get": {
+        "operationId": "BorrowController_listMine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结清状态",
+            "in": "query",
+            "name": "settlementStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "OPEN",
+                "SETTLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "是否仅逾期",
+            "in": "query",
+            "name": "overdueOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Borrow"
+        ]
+      }
+    },
+    "/api/v1/qr-codes": {
+      "get": {
+        "operationId": "QrController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "目标类型",
+            "in": "query",
+            "name": "targetType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ASSET",
+                "INVENTORY_ITEM",
+                "SCAN_CATALOG"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED",
+                "REVOKED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Qr"
+        ]
+      },
+      "post": {
+        "operationId": "QrController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QrCodeCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Qr"
+        ]
+      }
+    },
+    "/api/v1/qr-codes/{id}/action": {
+      "post": {
+        "operationId": "QrController_action",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QrActionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Qr"
+        ]
+      }
+    },
+    "/api/v1/qr-codes/parse": {
+      "post": {
+        "operationId": "QrController_parse",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QrParseDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Qr"
+        ]
+      }
+    },
+    "/api/v1/repair-orders": {
+      "get": {
+        "operationId": "RepairController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "资产 id",
+            "in": "query",
+            "name": "assetId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "维修单状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "REPAIRING",
+                "CANCELLED",
+                "COMPLETED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Repair"
+        ]
+      },
+      "post": {
+        "operationId": "RepairController_register",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairOrderCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Repair"
+        ]
+      }
+    },
+    "/api/v1/repair-orders/{id}": {
+      "get": {
+        "operationId": "RepairController_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Repair"
+        ]
+      }
+    },
+    "/api/v1/repair-orders/{id}/cancel": {
+      "post": {
+        "operationId": "RepairController_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Repair"
+        ]
+      }
+    },
+    "/api/v1/repair-orders/{id}/complete": {
+      "post": {
+        "operationId": "RepairController_complete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairCompleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Repair"
+        ]
+      }
+    },
+    "/api/v1/repair-orders/{id}/start": {
+      "post": {
+        "operationId": "RepairController_start",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairStartDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Repair"
+        ]
+      }
+    },
+    "/api/v1/stock-change-requests": {
+      "get": {
+        "operationId": "StockChangeController_listHistory",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "StockChange"
+        ]
+      },
+      "post": {
+        "operationId": "StockChangeController_submit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockChangeRequestCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "StockChange"
+        ]
+      }
+    },
+    "/api/v1/stock-change-requests/mine": {
+      "get": {
+        "operationId": "StockChangeController_listMine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "StockChange"
+        ]
+      }
+    },
+    "/api/v1/stock-in-requests": {
+      "get": {
+        "operationId": "StockInController_listHistory",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "StockIn"
+        ]
+      },
+      "post": {
+        "operationId": "StockInController_submit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockInRequestCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "StockIn"
+        ]
+      }
+    },
+    "/api/v1/stock-in-requests/mine": {
+      "get": {
+        "operationId": "StockInController_listMine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "审批状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "发起人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "StockIn"
+        ]
+      }
+    },
+    "/api/v1/warehouses": {
+      "post": {
+        "operationId": "WarehouseController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Warehouse"
+        ]
+      }
+    },
+    "/api/v1/warehouses/{id}": {
+      "put": {
+        "operationId": "WarehouseController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Warehouse"
+        ]
+      }
+    },
+    "/api/v1/warehouses/batch": {
+      "delete": {
+        "operationId": "WarehouseController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseBatchDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Warehouse"
+        ]
+      }
+    },
+    "/api/v1/warehouses/tree": {
+      "get": {
+        "operationId": "WarehouseController_tree",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "状态过滤",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Warehouse"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "HealthController_liveness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    },
+    "/internal/v1/approval-requests/pending-count": {
+      "get": {
+        "operationId": "InternalApprovalController_pendingCount",
+        "parameters": [
+          {
+            "description": "用户 id",
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "InternalApproval"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "HealthController_readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "csrfHeader": [],
+      "sessionCookie": []
+    }
+  ],
+  "servers": [],
+  "tags": []
+}
