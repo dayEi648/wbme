@@ -8,6 +8,11 @@ import type { ImmediateBackupTaskRef } from '@wbme/tasks';
 
 const execFileAsync = promisify(execFile);
 
+/** pg 工具路径（默认依赖 PATH；macOS EDB 安装位于 /Library/PostgreSQL/18/bin，可经环境变量注入） */
+const PG_DUMP_PATH = process.env.PG_DUMP_PATH ?? 'pg_dump';
+const PG_RESTORE_PATH = process.env.PG_RESTORE_PATH ?? 'pg_restore';
+const PSQL_PATH = process.env.PSQL_PATH ?? 'psql';
+
 /** 备份处理器依赖（由 Worker 注入 Prisma 客户端） */
 export interface BackupProcessorDeps {
   databaseUrl: string;
@@ -38,8 +43,8 @@ export async function runImmediateBackup(ref: ImmediateBackupTaskRef, deps: Back
   const dumpPath = join(workDir, 'dump.fc');
   try {
     if (!dryRun) {
-      await execFileAsync('pg_dump', ['-Fc', '-f', dumpPath, deps.databaseUrl], { env: process.env });
-      await execFileAsync('pg_restore', ['--list', dumpPath]);
+      await execFileAsync(PG_DUMP_PATH, ['-Fc', '-f', dumpPath, deps.databaseUrl], { env: process.env });
+      await execFileAsync(PG_RESTORE_PATH, ['--list', dumpPath]);
     } else {
       await import('node:fs/promises').then((fs) => fs.writeFile(dumpPath, Buffer.from('WBME_DRY_RUN_BACKUP')));
     }
@@ -48,7 +53,7 @@ export async function runImmediateBackup(ref: ImmediateBackupTaskRef, deps: Back
     const { objectKey, manifestKey } = await storage.presignBackupUpload(ref.backupId!, body);
     let pgVersion: string | null = null;
     try {
-      const { stdout } = await execFileAsync('psql', [deps.databaseUrl, '-tAc', 'SHOW server_version;']);
+      const { stdout } = await execFileAsync(PSQL_PATH, [deps.databaseUrl, '-tAc', 'SHOW server_version;']);
       pgVersion = stdout.trim() || null;
     } catch {
       pgVersion = null;

@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { RestoreDeliveryTaskRef } from '@wbme/tasks';
+import { InternalTokenGuard } from './internal-token.guard';
 import { RECOVERY_COOKIE_NAME, RecoveryExecutorService } from './recovery-executor.service';
 
 /**
- * 恢复执行器内部控制路由（不走 /api/v1 会话；Cookie 鉴权）。
+ * 恢复执行器内部控制路由（不走 /api/v1 会话；内部投递走令牌、控制操作走 Cookie 会话）。
  */
 @Controller('recovery')
 export class RecoveryControlController {
@@ -28,14 +29,17 @@ export class RecoveryControlController {
     return { ok: true };
   }
 
-  /** Worker 内部投递 RESTORE_DELIVERY（MVP：无鉴权，仅限内网） */
+  /** Worker 内部投递 RESTORE_DELIVERY（内部令牌 + 调用方白名单） */
   @Post('delivery')
+  @UseGuards(new InternalTokenGuard(['worker']))
   async delivery(@Body() ref: RestoreDeliveryTaskRef): Promise<{ accepted: true }> {
     await this.recovery.acceptDelivery(ref);
     return { accepted: true };
   }
 
+  /** platform-core 内部签发恢复控制会话 Cookie（超管已登录验证后调用） */
   @Post('session')
+  @UseGuards(new InternalTokenGuard(['platform-core']))
   issueSession(@Body() body: { userId: number }, @Res({ passthrough: true }) res: Response): { ok: true } {
     const secret = process.env.RECOVERY_SESSION_SECRET?.trim();
     if (!secret) {

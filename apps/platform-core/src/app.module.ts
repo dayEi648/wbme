@@ -1,7 +1,8 @@
 import { DynamicModule, Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { resolve } from 'node:path';
+import { MaintenanceInterceptor } from './shared/maintenance/maintenance.interceptor';
 import {
   CsrfGuard,
   HealthModule,
@@ -90,6 +91,8 @@ export class AppModule {
         },
         { provide: APP_GUARD, useClass: SessionGuard },
         { provide: APP_GUARD, useClass: CsrfGuard },
+        // 恢复维护状态写拦截（backstage PRD §10）：维护标记存在时写请求 503
+        { provide: APP_INTERCEPTOR, useClass: MaintenanceInterceptor },
         // 迁移版本就绪检查（主 PRD §9.9）：base 元数据表代表 base+backstage 合并迁移序列
         {
           provide: MIGRATION_READINESS,

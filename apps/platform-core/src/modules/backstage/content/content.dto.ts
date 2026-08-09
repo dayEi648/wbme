@@ -1,5 +1,5 @@
-import { IsArray, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
-import { IdempotentDto, PaginationQueryDto } from '@wbme/contracts';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from '@wbme/contracts';
 
 /** 创建/编辑公告 */
 export class UpsertAnnouncementDto extends IdempotentDto {
@@ -16,6 +16,7 @@ export class UpsertAnnouncementDto extends IdempotentDto {
 /** 批量删除公告 */
 export class BatchDeleteAnnouncementsDto extends IdempotentDto {
   @IsArray()
+  @ArrayMaxSize(BATCH_LIMIT)
   @IsInt({ each: true })
   ids!: number[];
 }

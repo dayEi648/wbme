@@ -1,7 +1,8 @@
 import { ApiTags } from '@nestjs/swagger';
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { SYSTEM_LOG_VIEW_FUNCTION_CODE, PaginationQueryDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
+import type { Response } from 'express';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
@@ -69,10 +70,14 @@ export class SystemLogController {
     return this.systemLog.disposeError(id, operatorId, dto.status, dto.remark);
   }
 
-  /** 错误日志导出（stub） */
+  /** 错误日志导出（脱敏摘要白名单，受单次行数上限与单用户并发约束） */
   @Post('errors/export')
-  exportErrors(): never {
-    return this.systemLog.exportErrorsStub();
+  exportErrors(
+    @CurrentUser() userId: number,
+    @Query() query: ErrorLogQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    return this.systemLog.exportErrors(userId, query, res);
   }
 
   /** 安全日志列表 */
@@ -81,9 +86,13 @@ export class SystemLogController {
     return this.systemLog.listSecurity(query);
   }
 
-  /** 安全日志导出（stub） */
+  /** 安全日志导出（字段白名单，含来源 IP） */
   @Post('security/export')
-  exportSecurity(): never {
-    return this.systemLog.exportSecurityStub();
+  exportSecurity(
+    @CurrentUser() userId: number,
+    @Query() query: SecurityLogQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    return this.systemLog.exportSecurity(userId, query, res);
   }
 }

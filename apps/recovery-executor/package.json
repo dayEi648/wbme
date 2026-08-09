@@ -19,6 +19,8 @@
     "@wbme/files": "workspace:*",
     "@wbme/tasks": "workspace:*",
     "cookie-parser": "^1.4.7",
+    "ioredis": "^6.0.0",
+    "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -27,6 +29,7 @@
     "@nestjs/testing": "^11.1.28",
     "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.0",
-    "@types/node": "^24.0.0"
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.21.0"
   }
 }

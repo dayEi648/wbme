@@ -94,7 +94,7 @@ export async function writeBackstageOperationLog(
     operator: OperationLogOperator;
     /** 功能编码（目录稳定编码，如 user_manage / permission_manage） */
     feature: string;
-    actionType: 'CREATE' | 'UPDATE' | 'DELETE';
+    actionType: 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT';
     summary: string;
     idempotencyScope?: string;
     idempotencyKey?: string;

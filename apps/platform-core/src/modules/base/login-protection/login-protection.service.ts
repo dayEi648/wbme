@@ -55,6 +55,11 @@ export class LoginProtectionService {
     }
     if (ipCount >= ipMax && (await this.redis.exists(this.ipLockKey(ip))) === 0) {
       await this.redis.set(this.ipLockKey(ip), '1', 'EX', ipLockSeconds);
+      // 记录该账号触发过的被锁 IP：管理员解锁账号时顺带解除（base PRD §4「解锁后立即恢复可登录」）
+      if (userId !== null) {
+        await this.redis.sadd(this.accountLockedIpsKey(userId), ip);
+        await this.redis.expire(this.accountLockedIpsKey(userId), ipLockSeconds);
+      }
       await this.securityLog.record('IP_LOCK', 'SUCCESS', {
         actorId: userId ?? undefined,
         context: { lockSeconds: ipLockSeconds, windowSeconds: ipWindowSeconds, threshold: ipMax },
@@ -85,7 +90,10 @@ export class LoginProtectionService {
     await this.redis.del(this.accountFailKey(userId));
   }
 
-  /** 管理员解锁（M4，幂等）：清计数与锁，写 ACCOUNT_UNLOCK 安全日志 */
+  /**
+   * 管理员解锁（M4，幂等）：清计数与账号锁，并解除该账号触发过的 IP 锁（若存在），
+   * 分别写 ACCOUNT_UNLOCK 与 IP_UNLOCK 安全日志（backstage PRD §8 事件清单）。
+   */
   async unlockByAdmin(userId: number, operatorId: number): Promise<void> {
     await this.redis.del(this.accountFailKey(userId));
     await this.redis.del(this.accountLockKey(userId));
@@ -93,6 +101,27 @@ export class LoginProtectionService {
       actorId: operatorId,
       targetUserId: userId,
     });
+
+    // 解除该账号触发过的 IP 锁：只有实际存在锁的 IP 才写 IP_UNLOCK（幂等，未锁则无事件）
+    const lockedIps = await this.redis.smembers(this.accountLockedIpsKey(userId));
+    let released = 0;
+    for (const ip of lockedIps) {
+      if ((await this.redis.del(this.ipLockKey(ip))) === 1) {
+        released += 1;
+        await this.securityLog.record('IP_UNLOCK', 'SUCCESS', {
+          actorId: operatorId,
+          targetUserId: userId,
+          sourceIp: ip,
+        });
+      }
+    }
+    await this.redis.del(this.accountLockedIpsKey(userId));
+    if (released > 0) {
+      // 一并清该 IP 的失败计数：IP 锁解除后计数窗口内的历史失败不再累计到新锁
+      for (const ip of lockedIps) {
+        await this.redis.del(this.ipFailKey(ip));
+      }
+    }
   }
 
   private accountFailKey(userId: number): string {
@@ -105,6 +134,11 @@ export class LoginProtectionService {
 
   private ipFailKey(ip: string): string {
     return redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'ip_fail', ip);
+  }
+
+  /** 账号触发过的被锁 IP 集合（供 M4 解锁时顺带解除 IP 锁） */
+  private accountLockedIpsKey(userId: number): string {
+    return redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'acct_locked_ips', userId);
   }
 
   private ipLockKey(ip: string): string {

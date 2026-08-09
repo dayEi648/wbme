@@ -4,6 +4,7 @@ import { InternalAuthGuard, INTERNAL_AUTH_OPTIONS, type InternalAuthOptions } fr
 /**
  * 内部 REST 认证模块：提供 InternalAuthGuard 供内部路由挂载。
  * 各部署单元在需要内部路由的模块中 `InternalRestModule.forRoot({ token })`。
+ * `onReject` 供宿主注入安全日志写入通道（INTERNAL_TOKEN_FAILED，T4-4）。
  */
 @Module({})
 export class InternalRestModule {

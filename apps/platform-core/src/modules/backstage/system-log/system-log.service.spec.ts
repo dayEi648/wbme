@@ -3,6 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { BusinessException } from '@wbme/contracts';
 import { SystemLogService } from './system-log.service';
 
+function redisMock(): never {
+  return { redis: {} } as never;
+}
+
+function settingsMock(): never {
+  return { getNumber: async () => 100 } as never;
+}
+
 describe('SystemLogService', () => {
   it('disposeError 无匹配行时抛 CONFLICT', async () => {
     const prisma = {
@@ -10,7 +18,7 @@ describe('SystemLogService', () => {
         $executeRawUnsafe: vi.fn().mockResolvedValue(0),
       },
     };
-    const service = new SystemLogService(prisma as never);
+    const service = new SystemLogService(prisma as never, redisMock(), settingsMock());
     await expect(service.disposeError(1, 99, 'HANDLED')).rejects.toBeInstanceOf(BusinessException);
   });
 
@@ -20,7 +28,7 @@ describe('SystemLogService', () => {
         $queryRawUnsafe: vi.fn().mockResolvedValue([]),
       },
     };
-    const service = new SystemLogService(prisma as never);
+    const service = new SystemLogService(prisma as never, redisMock(), settingsMock());
     await expect(service.getErrorDetail(999)).rejects.toBeInstanceOf(BusinessException);
   });
 });

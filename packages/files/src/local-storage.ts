@@ -61,19 +61,34 @@ export class LocalFileStorage {
    * @returns 对象键列表（相对 OSS 键）
    */
   async listPrefix(prefix: string): Promise<string[]> {
+    return (await this.listPrefixWithMeta(prefix)).map((item) => item.key);
+  }
+
+  /** 列出前缀下对象键与最后修改时间（本地用文件 mtime） */
+  async listPrefixWithMeta(prefix: string): Promise<Array<{ key: string; lastModified: Date | null }>> {
     const dir = this.resolvePath(prefix);
     try {
       const entries = await readdir(dir, { withFileTypes: true, recursive: true });
-      const keys: string[] = [];
+      const keys: Array<{ key: string; lastModified: Date | null }> = [];
       for (const entry of entries) {
         if (!entry.isFile()) {
           continue;
         }
         const parent = entry.parentPath ?? dir;
         const rel = parent.slice(this.root.length + 1);
-        keys.push(`${rel}/${entry.name}`.replace(/\\/g, '/'));
+        const key = `${rel}/${entry.name}`.replace(/\\/g, '/');
+        if (!key.startsWith(prefix)) {
+          continue;
+        }
+        let lastModified: Date | null = null;
+        try {
+          lastModified = (await stat(join(parent, entry.name))).mtime;
+        } catch {
+          // 文件被并发删除等竞态：时间未知按可删处理（键仍返回，由清理方按保留期判定）
+        }
+        keys.push({ key, lastModified });
       }
-      return keys.filter((key) => key.startsWith(prefix));
+      return keys;
     } catch {
       return [];
     }

@@ -55,6 +55,53 @@ async function ensureBackupRow(
 }
 
 /**
+ * 扫描 backups/ 前缀下的孤儿对象（数据库无对应备份记录），删除并记录日志。
+ *
+ * 对象上传先于备份记录写回成功：若记录写回失败，对象残留且无记录 → 孤儿。
+ *
+ * @param sql SQL 客户端
+ * @param storage 文件存储实例
+ */
+async function scanOrphanBackupObjects(
+  sql: SqlClient,
+  storage: { listPrefix(prefix: string): Promise<string[]>; deleteObject(key: string): Promise<void> },
+): Promise<void> {
+  const { OSS_PREFIX_BACKUPS } = await import('@wbme/files');
+  const keys = await storage.listPrefix(OSS_PREFIX_BACKUPS);
+  if (keys.length === 0) {
+    return;
+  }
+  // 对象键形如 backups/{backupId}/dump.fc|manifest.json
+  const backupIds = new Set<number>();
+  for (const key of keys) {
+    const match = /^backups\/(\d+)\//.exec(key);
+    if (match?.[1]) {
+      backupIds.add(Number(match[1]));
+    }
+  }
+  if (backupIds.size === 0) {
+    return;
+  }
+  const rows = await sql.queryRows<{ id: number }>(
+    `SELECT id FROM backstage.backups WHERE id = ANY($1::int[])`,
+    [[...backupIds]],
+  );
+  const known = new Set(rows.map((r) => r.id));
+  const orphanKeys = keys.filter((key) => {
+    const match = /^backups\/(\d+)\//.exec(key);
+    return match?.[1] ? !known.has(Number(match[1])) : true;
+  });
+  for (const key of orphanKeys) {
+    await storage.deleteObject(key).catch((error: unknown) => {
+      console.warn(`[backup] 孤儿对象删除失败 key=${key}: ${error instanceof Error ? error.message : error}`);
+    });
+  }
+  if (orphanKeys.length > 0) {
+    console.log(`[backup] 孤儿对象清理完成：${orphanKeys.length} 个`);
+  }
+}
+
+/**
  * 构造备份处理器对 PostgreSQL backups 表的回调。
  *
  * @param sql Worker SQL 客户端
@@ -104,11 +151,35 @@ function createBackupDeps(sql: SqlClient): BackupProcessorDeps {
       return Number.isFinite(parsed) && parsed >= 7 && parsed <= 365 ? parsed : 30;
     },
     async deleteOldBackups(before) {
-      await sql.query(
-        `DELETE FROM backstage.backups
+      // 先删 OSS 对象与清单、全部成功后删记录（backstage PRD §10：任一对象清理失败必须保留失败记录）
+      const { createFileStorage } = await import('@wbme/files');
+      const storage = createFileStorage();
+      const rows = await sql.queryRows<{ id: number; objectKey: string | null; manifestKey: string | null }>(
+        `SELECT id, oss_object_key, oss_manifest_key FROM backstage.backups
          WHERE status = 'SUCCEEDED' AND backup_time < $1 AND task_type IN ('SCHEDULED', 'IMMEDIATE')`,
         [before.toISOString()],
       );
+      const deletableIds: number[] = [];
+      for (const row of rows) {
+        const keys = [row.objectKey, row.manifestKey].filter((k): k is string => k !== null);
+        try {
+          for (const key of keys) {
+            await storage.deleteObject(key);
+          }
+          deletableIds.push(row.id);
+        } catch (error) {
+          // 对象清理失败：保留记录（记录与对象均保留，等待人工介入；下次清理再试）
+          console.warn(`[backup] 备份对象清理失败 backupId=${row.id}: ${error instanceof Error ? error.message : error}`);
+        }
+      }
+      if (deletableIds.length > 0) {
+        await sql.query(
+          `DELETE FROM backstage.backups WHERE id = ANY($1::int[])`,
+          [deletableIds],
+        );
+      }
+      // 孤儿对象扫描：对象已存在但数据库无对应记录（记录更新失败残留），一并清除
+      await scanOrphanBackupObjects(sql, storage);
     },
   };
 }

@@ -14,10 +14,18 @@ export async function processRestoreDelivery(task: BackgroundTaskRow, _ctx: Proc
   if (!ref?.restoreUuid || !ref.backupId) {
     throw new Error('恢复投递任务 ref 无效');
   }
+  const token = process.env.INTERNAL_SERVICE_TOKEN?.trim();
+  if (!token) {
+    throw new Error('INTERNAL_SERVICE_TOKEN 未配置，无法投递恢复请求');
+  }
   const baseUrl = (process.env.RECOVERY_EXECUTOR_URL ?? 'http://127.0.0.1:3010').replace(/\/$/, '');
   const response = await fetch(`${baseUrl}/recovery/delivery`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+      'x-wbme-caller': 'worker',
+    },
     body: JSON.stringify(ref),
     signal: AbortSignal.timeout(15_000),
   });

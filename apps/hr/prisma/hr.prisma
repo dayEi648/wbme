@@ -295,6 +295,8 @@ model HrApprovalRequest {
   @@index([applicantId])
   @@index([processorId])
   @@index([requestType, status])
+  // 同一申请人最多一条待审批岗位变更申请（docs/database-design/hr.md；索引由迁移 SQL 建立，此处声明防 migrate diff 误删）
+  @@unique([applicantId], map: "approval_requests_position_change_pending_unique", where: raw("request_type = 'POSITION_CHANGE' AND status = 'PENDING'"))
   @@map("approval_requests")
   @@schema("hr")
 }
@@ -438,6 +440,10 @@ model HrUserTablePref {
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  // 同页面同名预设唯一（H-18；索引由迁移 SQL 建立，此处声明防 migrate diff 误删）
+  @@unique([userId, pageKey, name], map: "user_table_prefs_preset_unique", where: raw("pref_type = 'FILTER_PRESET'"))
+  // 每页一条列设置（H-18；索引由迁移 SQL 建立，此处声明防 migrate diff 误删）
+  @@unique([userId, pageKey], map: "user_table_prefs_column_unique", where: raw("pref_type = 'COLUMN_SETTING'"))
   @@map("user_table_prefs")
   @@schema("hr")
 }

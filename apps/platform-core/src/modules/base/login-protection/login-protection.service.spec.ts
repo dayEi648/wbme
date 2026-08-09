@@ -130,5 +130,51 @@ describe.skipIf(!REDIS_URL)('LoginProtectionService（base PRD §4）', () => {
       await ipFocusService.recordFailure(50, '10.0.0.12'); // ip=4 → IP 锁
       await expect(ipFocusService.assertNotLocked(50, '10.0.0.12')).rejects.toBeInstanceOf(BusinessException);
     });
+
+    it('管理员解锁顺带解除该账号触发过的 IP 锁并写 IP_UNLOCK（backstage PRD §8）', async () => {
+      const events: string[] = [];
+      const spied = {
+        record: async (event: string): Promise<void> => {
+          events.push(event);
+        },
+      } as unknown as SecurityLogService;
+      const svc = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), spied);
+      const userId = 60;
+      const ip = '10.0.0.13';
+      await redis.del(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'acct_locked_ips', userId));
+      await cleanKeys(userId, ip);
+
+      // 4 次失败达 IP 阈值 → IP 锁 + 账号→IP 关联记录
+      await svc.recordFailure(userId, ip);
+      await svc.recordFailure(userId, ip);
+      await svc.recordFailure(userId, ip);
+      await svc.recordFailure(userId, ip);
+      await expect(svc.assertNotLocked(userId, ip)).rejects.toBeInstanceOf(BusinessException);
+      expect(events).toContain('IP_LOCK');
+      events.length = 0;
+
+      await svc.unlockByAdmin(userId, 99);
+      // IP 锁已解除，该账号立即可登录
+      await expect(svc.assertNotLocked(userId, ip)).resolves.toBeUndefined();
+      expect(events).toContain('ACCOUNT_UNLOCK');
+      expect(events).toContain('IP_UNLOCK');
+    });
+
+    it('未触发过 IP 锁的账号解锁时不写 IP_UNLOCK（幂等）', async () => {
+      const events: string[] = [];
+      const spied = {
+        record: async (event: string): Promise<void> => {
+          events.push(event);
+        },
+      } as unknown as SecurityLogService;
+      const svc = new LoginProtectionService(redis, fakeSettings(IP_FOCUS_SETTINGS), spied);
+      const userId = 61;
+      const ip = '10.0.0.14';
+      await redis.del(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'acct_locked_ips', userId));
+      await cleanKeys(userId, ip);
+
+      await svc.unlockByAdmin(userId, 99);
+      expect(events).toEqual(['ACCOUNT_UNLOCK']);
+    });
   });
 });

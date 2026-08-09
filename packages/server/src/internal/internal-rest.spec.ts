@@ -75,6 +75,59 @@ describe('内部 REST 基础设施（主 PRD §9.4）', () => {
   });
 });
 
+describe('InternalAuthGuard 安全日志回调（INTERNAL_TOKEN_FAILED，T4-4）', () => {
+  let app: INestApplication;
+  const rejections: Array<{ reason: string; caller?: string }> = [];
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        InternalRestModule.forRoot({
+          token: TOKEN,
+          onReject: (rejection) => rejections.push(rejection),
+        }),
+      ],
+      controllers: [DemoInternalController],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('令牌无效触发 TOKEN_INVALID 回调（401）', async () => {
+    await request(app.getHttpServer())
+      .get('/internal/v1/demo/ping')
+      .set('Authorization', 'Bearer wrong-token-value')
+      .expect(401);
+    const rejection = rejections.find((r) => r.reason === 'TOKEN_INVALID');
+    expect(rejection).toBeDefined();
+  });
+
+  it('调用方不在白名单触发 CALLER_NOT_ALLOWED 回调（403）', async () => {
+    await request(app.getHttpServer())
+      .get('/internal/v1/demo/ping')
+      .set('Authorization', `Bearer ${TOKEN}`)
+      .set(INTERNAL_CALLER_HEADER, 'fin')
+      .expect(403);
+    const rejection = rejections.find((r) => r.reason === 'CALLER_NOT_ALLOWED');
+    expect(rejection).toBeDefined();
+    expect(rejection?.caller).toBe('fin');
+  });
+
+  it('校验成功不触发回调', async () => {
+    const before = rejections.length;
+    await request(app.getHttpServer())
+      .get('/internal/v1/demo/ping')
+      .set('Authorization', `Bearer ${TOKEN}`)
+      .set(INTERNAL_CALLER_HEADER, 'platform-core')
+      .expect(200);
+    expect(rejections.length).toBe(before);
+  });
+});
+
 describe('InternalHttpClient（主 PRD §9.4 超时与有界重试）', () => {
   let target: Server;
   let hits: number;

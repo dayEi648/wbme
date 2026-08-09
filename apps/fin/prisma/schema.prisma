@@ -4,13 +4,14 @@
 // 单 schema：fin，单一 Prisma Client、单一迁移序列；模型通过 @@schema 声明归属。
 // 独立服务不建跨 schema 外键：跨模块引用（用户 ID、字典 ID 等）只存 Int 字段。
 //
-// 表设计中 PostgreSQL 专属能力（部分唯一索引、CHECK 约束）不在 Prisma schema 表达，
-// 由初始迁移 SQL 手动补充（见 prisma/migrations/<init>/migration.sql）。
+// 表设计中的部分唯一索引已在模型 @@unique(where: ...) 声明（partialIndexes preview），
+// 防止未来 migrate diff 误删；CHECK 约束等其余 PostgreSQL 专属能力仍由迁移 SQL 手动补充。
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {

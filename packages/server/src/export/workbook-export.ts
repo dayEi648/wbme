@@ -1,4 +1,5 @@
 import { BusinessException, exportErrors } from '@wbme/contracts';
+import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import ExcelJS from 'exceljs';
 import type { Redis } from 'ioredis';
@@ -9,6 +10,15 @@ export { sanitizeExportCell } from './export-cell-sanitize';
 
 /** 导出总时限（毫秒）：120 秒 */
 export const EXPORT_TIMEOUT_MS = 120_000;
+
+/** 互斥锁释放 Lua：仅当锁值仍为本请求令牌时才删除（防旧请求误删新请求锁） */
+const RELEASE_LOCK_LUA = `
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  return redis.call('del', KEYS[1])
+else
+  return 0
+end
+`;
 
 /** 导出列定义 */
 export interface ExportColumn<T> {
@@ -42,7 +52,9 @@ export interface RunExportOptions<T> {
  */
 export async function runExport<T>(options: RunExportOptions<T>): Promise<void> {
   const lockKey = redisKey(REDIS_NAMESPACE.LOCK, 'export', options.userId);
-  const acquired = await options.redis.set(lockKey, '1', 'EX', Math.ceil(EXPORT_TIMEOUT_MS / 1000), 'NX');
+  // 锁值 = 本请求随机令牌：超时/异常的旧请求在 finally 释放时只删自己的锁（主 PRD §10.3 安全释放）
+  const lockToken = randomUUID();
+  const acquired = await options.redis.set(lockKey, lockToken, 'EX', Math.ceil(EXPORT_TIMEOUT_MS / 1000), 'NX');
   if (acquired !== 'OK') {
     throw new BusinessException(exportErrors.EXPORT_ALREADY_RUNNING);
   }
@@ -88,6 +100,7 @@ export async function runExport<T>(options: RunExportOptions<T>): Promise<void> 
       { isolationLevel: 'RepeatableRead', timeout: EXPORT_TIMEOUT_MS },
     );
   } finally {
-    await options.redis.del(lockKey);
+    // 仅当锁仍是本请求持有时才释放（原子比较删除）
+    await options.redis.eval(RELEASE_LOCK_LUA, 1, lockKey, lockToken);
   }
 }

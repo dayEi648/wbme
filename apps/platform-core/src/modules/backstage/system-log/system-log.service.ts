@@ -1,6 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, exportErrors, frameworkErrors, PaginationQueryDto } from '@wbme/contracts';
+import { BusinessException, frameworkErrors, PaginationQueryDto } from '@wbme/contracts';
+import { RedisService, runExport } from '@wbme/server';
+import type { Response } from 'express';
+import { SETTING_KEYS, SettingsService } from '../../base/settings/settings.service';
 import { PrismaService } from '../../../prisma.service';
+import {
+  loadOperationLogOperator,
+  writeBackstageOperationLog,
+} from '../permission/operation-log.util';
 
 /** 错误日志列表项（不含完整 sample） */
 export interface ErrorLogListItem {
@@ -103,9 +110,31 @@ export interface SecurityLogQuery extends PaginationQueryDto {
 /**
  * 系统日志查询与处置服务（backstage PRD §8；T4-3/T4-4）。
  */
+/** 系统日志查询（列表与导出共用） */
+export interface SystemLogQuery {
+  level?: string;
+  service?: string;
+  source?: string;
+  errorCategory?: string;
+  fingerprint?: string;
+  status?: string;
+  eventType?: string;
+  actorId?: number;
+  targetUserId?: number;
+  result?: string;
+  from?: Date;
+  to?: Date;
+  page: number;
+  pageSize: number;
+}
+
 @Injectable()
 export class SystemLogService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+    private readonly settings: SettingsService,
+  ) {}
 
   /** 分页查询错误日志 */
   async listErrors(query: ErrorLogQuery): Promise<{
@@ -218,14 +247,133 @@ export class SystemLogService {
     };
   }
 
-  /** 错误日志导出（stub：后续 T4-11 实现） */
-  exportErrorsStub(): never {
-    throw new BusinessException(exportErrors.ROW_LIMIT_EXCEEDED);
+  /**
+   * 错误日志导出为 xlsx（T4-11；PRD §8 脱敏摘要导出：只含白名单字段，
+   * 不含备注、堆栈、requestId、客户端 IP、数据库错误正文等排障详情）。
+   *
+   * @param userId 导出人（并发互斥维度）
+   * @param query 与列表相同的过滤条件
+   * @param res Express 响应
+   */
+  async exportErrors(userId: number, query: SystemLogQuery, res: Response): Promise<void> {
+    const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
+    const { whereSql, params } = this.buildErrorWhere({ ...query, page: 1, pageSize: 1 });
+    await runExport<ErrorLogRow>({
+      userId,
+      redis: this.redis.redis,
+      maxRows,
+      filename: 'error-logs.xlsx',
+      columns: [
+        { header: '日志编号', value: (row) => row.id },
+        { header: '级别', value: (row) => row.level },
+        { header: '服务', value: (row) => row.service },
+        { header: '来源', value: (row) => row.source },
+        { header: '错误分类', value: (row) => row.error_category },
+        { header: '部署 Commit', value: (row) => row.deploy_commit },
+        { header: '异常指纹', value: (row) => row.fingerprint },
+        { header: '首次发生', value: (row) => row.first_seen_at?.toISOString?.() ?? String(row.first_seen_at) },
+        { header: '最后发生', value: (row) => row.last_seen_at?.toISOString?.() ?? String(row.last_seen_at) },
+        { header: '发生次数', value: (row) => row.occurrence_count },
+        { header: '安全摘要', value: (row) => row.sample ?? '' },
+        { header: '状态', value: (row) => row.status },
+        { header: '处理人', value: (row) => row.handled_by ?? '' },
+        { header: '处理时间', value: (row) => row.handled_at?.toISOString?.() ?? '' },
+      ],
+      transaction: (fn, options) =>
+        this.prisma.client.$transaction(fn, {
+          isolationLevel: 'RepeatableRead',
+          timeout: options?.timeout,
+        }),
+      fetchCount: async (tx) => {
+        const client = tx as PrismaService['client'];
+        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.error_logs ${whereSql}`;
+        const result = await client.$queryRawUnsafe<Array<{ total: string }>>(countSql, ...params);
+        return Number(result[0]?.total ?? 0);
+      },
+      fetchRows: async (tx, offset, limit) => {
+        const client = tx as PrismaService['client'];
+        const listParams = [...params, limit, offset];
+        const sql = `
+          SELECT id, level, service, source, error_category, deploy_commit, fingerprint,
+                 bucket_start, first_seen_at, last_seen_at, occurrence_count,
+                 sample, status, handled_by, handled_at
+          FROM backstage.error_logs
+          ${whereSql}
+          ORDER BY id DESC
+          LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
+        `;
+        return client.$queryRawUnsafe<ErrorLogRow[]>(sql, ...listParams);
+      },
+      res,
+    });
+    // 系统日志导出本身按主 PRD §3.3 记录操作日志
+    await this.recordExportLog(userId, '导出错误日志');
   }
 
-  /** 安全日志导出（stub：后续 T4-11 实现） */
-  exportSecurityStub(): never {
-    throw new BusinessException(exportErrors.ROW_LIMIT_EXCEEDED);
+  /**
+   * 安全日志导出为 xlsx（T4-11；PRD §8：可展示来源 IP，其余字段白名单）。
+   *
+   * @param userId 导出人
+   * @param query 过滤条件
+   * @param res Express 响应
+   */
+  async exportSecurity(userId: number, query: SystemLogQuery, res: Response): Promise<void> {
+    const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
+    const { whereSql, params } = this.buildSecurityWhere({ ...query, page: 1, pageSize: 1 });
+    await runExport<SecurityLogRow>({
+      userId,
+      redis: this.redis.redis,
+      maxRows,
+      filename: 'security-logs.xlsx',
+      columns: [
+        { header: '日志编号', value: (row) => row.id },
+        { header: '事件类型', value: (row) => row.event_type },
+        { header: '主体账号', value: (row) => row.actor_id ?? '' },
+        { header: '目标账号', value: (row) => row.target_user_id ?? '' },
+        { header: '结果', value: (row) => row.result },
+        { header: '原因', value: (row) => row.reason ?? '' },
+        { header: '来源 IP', value: (row) => row.source_ip ?? '' },
+        { header: '时间', value: (row) => row.created_at?.toISOString?.() ?? String(row.created_at) },
+      ],
+      transaction: (fn, options) =>
+        this.prisma.client.$transaction(fn, {
+          isolationLevel: 'RepeatableRead',
+          timeout: options?.timeout,
+        }),
+      fetchCount: async (tx) => {
+        const client = tx as PrismaService['client'];
+        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.security_logs ${whereSql}`;
+        const result = await client.$queryRawUnsafe<Array<{ total: string }>>(countSql, ...params);
+        return Number(result[0]?.total ?? 0);
+      },
+      fetchRows: async (tx, offset, limit) => {
+        const client = tx as PrismaService['client'];
+        const listParams = [...params, limit, offset];
+        const sql = `
+          SELECT id, event_type, actor_id, target_user_id, result, reason, source_ip, request_id, created_at
+          FROM backstage.security_logs
+          ${whereSql}
+          ORDER BY id DESC
+          LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
+        `;
+        return client.$queryRawUnsafe<SecurityLogRow[]>(sql, ...listParams);
+      },
+      res,
+    });
+    await this.recordExportLog(userId, '导出安全日志');
+  }
+
+  /** 导出完成后写 EXPORT 操作日志（主 PRD §3.3） */
+  private async recordExportLog(operatorId: number, summary: string): Promise<void> {
+    const operator = await loadOperationLogOperator(this.prisma.client, operatorId);
+    await this.prisma.client.$transaction((tx) =>
+      writeBackstageOperationLog(tx, {
+        operator,
+        feature: 'system_log_view',
+        actionType: 'EXPORT',
+        summary,
+      }),
+    );
   }
 
   private buildErrorWhere(query: ErrorLogQuery): { whereSql: string; params: unknown[] } {

@@ -379,6 +379,8 @@ model RepairOrder {
 
   actions RepairOrderAction[]
 
+  // 同一资产最多一张进行中维修单（docs/database-design/asset.md §120；索引由迁移 SQL 建立，谓词与既有索引一致）
+  @@unique([assetId], map: "repair_orders_asset_active_unique", where: raw("status = ANY (ARRAY['PENDING'::asset.\"RepairStatus\", 'REPAIRING'::asset.\"RepairStatus\"])"))
   @@map("repair_orders")
   @@schema("asset")
 }
@@ -622,6 +624,8 @@ model ApprovalRequest {
   @@index([applicantId])
   @@index([processorId])
   @@index([requestType, status])
+  // 同一代领清单最多一条待审批结清申请（docs/database-design/asset.md §304；索引由迁移 SQL 建立）
+  @@unique([refRequestId], map: "approval_requests_agent_settlement_pending_unique", where: raw("request_type = 'AGENT_SETTLEMENT' AND status = 'PENDING'"))
   @@map("approval_requests")
   @@schema("asset")
 }
@@ -846,6 +850,9 @@ model QrCode {
   targetType QrTargetType @map("target_type")
   targetId   Int?         @map("target_id")
   status     QrStatus     @default(ACTIVE)
+
+  // 同一业务目标最多一张未作废二维码（docs/database-design/asset.md §332）。
+  // 索引列含 COALESCE(target_id, 0) 表达式，Prisma 无法在 schema 表达，由迁移 SQL 管理（migrate diff 会显示该差异，属已知噪音）。
   revokedAt  DateTime?    @map("revoked_at") @db.Timestamptz(3)
   createdBy  Int          @map("created_by")
   createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -909,6 +916,10 @@ model AssetUserTablePref {
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  // 同页面同名预设唯一（A-30；索引由迁移 SQL 建立，此处声明防 migrate diff 误删）
+  @@unique([userId, pageKey, name], map: "user_table_prefs_preset_unique", where: raw("pref_type = 'FILTER_PRESET'"))
+  // 每页一条列设置（A-30；索引由迁移 SQL 建立，此处声明防 migrate diff 误删）
+  @@unique([userId, pageKey], map: "user_table_prefs_column_unique", where: raw("pref_type = 'COLUMN_SETTING'"))
   @@map("user_table_prefs")
   @@schema("asset")
 }

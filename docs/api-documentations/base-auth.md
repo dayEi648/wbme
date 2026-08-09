@@ -96,8 +96,8 @@
 - 成功：`{ resetUrl }`；失败：`USER_NOT_ACTIVE` / `FORBIDDEN`
 
 ### M4 解锁账号 `POST /users/{id}/unlock`
-入参 `IdempotentDto`。幂等（未锁定也成功）。清除账号锁计数与锁。
-- 安全事件：ACCOUNT_UNLOCK
+入参 `IdempotentDto`。幂等（未锁定也成功）。清除账号锁计数与账号锁，并解除该账号触发过的 IP 锁（存在时），立即恢复可登录（base PRD §4）。
+- 安全事件：ACCOUNT_UNLOCK；顺带解除 IP 锁时另记 IP_UNLOCK（backstage PRD §8 事件清单）
 
 ## 门户与个人中心
 
@@ -121,7 +121,7 @@
 分页契约就位，本期空分页（T6-6 接通）。
 
 ### P6 我的操作日志 `GET /me/operation-logs`
-契约预留：依赖 T4-1 操作日志模块，本期空分页；前端入口"即将开放"。
+登录态。仅返回当前用户的操作日志（`operator_id = 当前用户`），分页；走操作日志联合视图查询（主 PRD §3.3）。
 
 ## 资料修改审批处理
 

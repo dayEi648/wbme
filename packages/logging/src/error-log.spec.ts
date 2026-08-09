@@ -85,6 +85,32 @@ describe('upsertErrorLog', () => {
     expect(client.$executeRawUnsafe).toHaveBeenCalledOnce();
   });
 
+  it('UPSERT SQL 为原子合并 + 部分唯一索引去重（并发聚合不重复的根基）', async () => {
+    // 并发去重依赖「原子 ON CONFLICT 合并 + (fingerprint, bucket_start) 部分唯一索引」，
+    // 数据库层保证同一桶同一指纹并发聚合只存在一行（T4-3 验收）
+    const client: RawSqlClient = {
+      $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+      $queryRawUnsafe: vi.fn(),
+    };
+    await upsertErrorLog(client, {
+      level: 'ERROR',
+      service: 'platform-core',
+      source: 'GET /api/v1/test',
+      errorCategory: 'SYSTEM',
+      deployCommit: 'abc',
+      fingerprint: 'fp',
+      bucketStart: new Date('2026-08-09T10:05:00.000Z'),
+      occurredAt: new Date('2026-08-09T10:06:00.000Z'),
+      requestId: null,
+      sample: 'boom',
+    });
+    const sql = (client.$executeRawUnsafe as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    expect(sql).toContain('ON CONFLICT');
+    expect(sql).toContain('fingerprint');
+    expect(sql).toContain('bucket_start');
+    expect(sql).toContain('PENDING');
+  });
+
   it('写入失败返回 false 不抛错', async () => {
     const client: RawSqlClient = {
       $executeRawUnsafe: vi.fn().mockRejectedValue(new Error('db down')),

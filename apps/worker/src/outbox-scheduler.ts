@@ -10,6 +10,7 @@ import {
   SAFELY_REPLAYABLE_TASK_TYPES,
   stableTaskUuid,
   TASK_TYPE_SCHEDULED_BACKUP,
+  TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP,
   TASK_QUEUE_NAME,
   type SqlClient,
 } from '@wbme/tasks';
@@ -18,6 +19,9 @@ import { DEFAULT_JOB_OPTIONS } from './job-options';
 
 /** 每日备份调度内存状态（进程内，重启后靠 stable uuid 去重） */
 let lastScheduledBackupCycleDate: string | null = null;
+
+/** 每日图片清理调度内存状态（进程内，重启后靠 stable uuid 去重） */
+let lastImageCleanupCycleDate: string | null = null;
 
 /**
  * 若已过北京时间 02:00 且当日尚无定时备份任务，则创建 PENDING_ENQUEUE。
@@ -33,6 +37,15 @@ export async function ensureDailyScheduledBackup(sql: SqlClient, now: Date = new
   if (lastScheduledBackupCycleDate === cycleDate) {
     return;
   }
+  // 已有运行中备份（立即/定时）时不创建定时任务：备份按创建时间串行（backstage PRD §10）
+  const running = await sql.queryRows<{ id: number }>(
+    `SELECT id FROM backstage.backups WHERE status = 'RUNNING' LIMIT 1`,
+  );
+  if (running.length > 0) {
+    console.log(`[scheduler] 存在运行中备份，跳过当日定时备份创建 cycleDate=${cycleDate}`);
+    lastScheduledBackupCycleDate = cycleDate;
+    return;
+  }
   const taskUuid = stableTaskUuid(`${TASK_TYPE_SCHEDULED_BACKUP}:${cycleDate}`);
   const result = await insertPendingTaskSql(sql, {
     taskUuid,
@@ -45,6 +58,36 @@ export async function ensureDailyScheduledBackup(sql: SqlClient, now: Date = new
     console.log(`[scheduler] 已创建当日定时备份任务 cycleDate=${cycleDate} uuid=${taskUuid}`);
   }
   lastScheduledBackupCycleDate = cycleDate;
+}
+
+/**
+ * 每日 03:00 后创建当日未关联图片清理任务（主 PRD §9.1 / T4-10）。
+ *
+ * @param sql SQL 客户端
+ * @param now 当前时间
+ */
+export async function ensureDailyImageCleanup(sql: SqlClient, now: Date = new Date()): Promise<void> {
+  // 与定时备份错峰：北京时间 03:00 之后（备份 02:00）
+  const beijingHour = (now.getUTCHours() + 8) % 24;
+  if (beijingHour < 3) {
+    return;
+  }
+  const cycleDate = beijingDateString(now);
+  if (lastImageCleanupCycleDate === cycleDate) {
+    return;
+  }
+  const taskUuid = stableTaskUuid(`${TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP}:${cycleDate}`);
+  const result = await insertPendingTaskSql(sql, {
+    taskUuid,
+    taskType: TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP,
+    module: 'backstage',
+    initiatorType: 'SCHEDULER',
+    ref: { cycleDate },
+  }, now);
+  if (result.created) {
+    console.log(`[scheduler] 已创建当日图片清理任务 cycleDate=${cycleDate} uuid=${taskUuid}`);
+  }
+  lastImageCleanupCycleDate = cycleDate;
 }
 
 /**
@@ -94,6 +137,7 @@ export class OutboxScheduler {
     try {
       const now = new Date();
       await ensureDailyScheduledBackup(this.sql, now);
+      await ensureDailyImageCleanup(this.sql, now);
       const batch = await claimOutboxBatch(
         this.sql,
         this.schedulerId,

@@ -68,7 +68,8 @@ export class BackupService {
       idempotencyKey: dto.idempotencyKey ?? `immediate:${operatorId}:${windowKey}`,
       fingerprint,
       run: async (tx) => {
-        const running = await tx.backup.findFirst({ where: { status: 'RUNNING', taskType: 'IMMEDIATE' } });
+        // 任意运行中的备份（定时/立即）都互斥：备份按创建时间串行（backstage PRD §10）
+        const running = await tx.backup.findFirst({ where: { status: 'RUNNING' } });
         if (running) {
           throw new BusinessException(backupErrors.BACKUP_LOCK_BUSY);
         }

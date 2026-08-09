@@ -19,9 +19,24 @@ import {
 /** 内部认证配置注入令牌 */
 export const INTERNAL_AUTH_OPTIONS = Symbol('WBME_INTERNAL_AUTH_OPTIONS');
 
+/** 内部令牌校验失败信息（安全日志 INTERNAL_TOKEN_FAILED 事件入参，T4-4） */
+export interface InternalAuthRejection {
+  /** 拒绝原因：令牌无效（401）或调用方不在白名单（403） */
+  reason: 'TOKEN_INVALID' | 'CALLER_NOT_ALLOWED';
+  /** 请求来源 IP（尽力而为） */
+  sourceIp?: string;
+  /** 声明的调用方服务名（X-WBME-Caller 头，可能缺失） */
+  caller?: string;
+}
+
 export interface InternalAuthOptions {
   /** 全平台共享内部令牌（部署环境注入，高熵） */
   token: string;
+  /**
+   * 令牌校验失败回调（写入安全日志 INTERNAL_TOKEN_FAILED）。
+   * 失败不阻塞守卫决策，由宿主持有库写入通道（如 platform-core SecurityLogService.record）。
+   */
+  onReject?: (rejection: InternalAuthRejection) => void;
 }
 
 /**
@@ -37,6 +52,7 @@ export interface InternalAuthOptions {
 @Injectable()
 export class InternalAuthGuard implements CanActivate {
   private readonly expectedToken: Buffer;
+  private readonly onReject?: (rejection: InternalAuthRejection) => void;
 
   constructor(
     @Inject(INTERNAL_AUTH_OPTIONS) options: InternalAuthOptions,
@@ -46,18 +62,36 @@ export class InternalAuthGuard implements CanActivate {
       throw new Error(`INTERNAL_SERVICE_TOKEN 未配置或长度不足 ${INTERNAL_TOKEN_MIN_LENGTH}（主 PRD §9.4）`);
     }
     this.expectedToken = Buffer.from(options.token);
+    this.onReject = options.onReject;
   }
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<IncomingMessage>();
 
     if (!this.isTokenValid(request)) {
+      // 安全事件回调不阻塞拒绝决策（fire-and-forget；内部事件为只追加审计，丢失不改变授权结果）
+      this.onReject?.({
+        reason: 'TOKEN_INVALID',
+        sourceIp: request.socket?.remoteAddress ?? undefined,
+        caller: this.callerOf(request),
+      });
       throw new UnauthorizedException();
     }
     if (!this.isCallerAllowed(context, request)) {
+      this.onReject?.({
+        reason: 'CALLER_NOT_ALLOWED',
+        sourceIp: request.socket?.remoteAddress ?? undefined,
+        caller: this.callerOf(request),
+      });
       throw new ForbiddenException();
     }
     return true;
+  }
+
+  /** 提取调用方服务名（X-WBME-Caller 头） */
+  private callerOf(request: IncomingMessage): string | undefined {
+    const caller = request.headers[INTERNAL_CALLER_HEADER];
+    return typeof caller === 'string' ? caller : undefined;
   }
 
   /** 恒定时间令牌比较：长度不同直接失败（长度非机密），等长用 timingSafeEqual */

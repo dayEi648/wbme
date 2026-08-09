@@ -95,6 +95,15 @@ export class FileStorageService {
   }
 
   /**
+   * 读取对象内容（服务端下载；恢复执行器取回备份文件用）。
+   *
+   * @param objectKey OSS 对象键
+   */
+  async getObject(objectKey: string): Promise<Buffer> {
+    return this.getObjectBytes(objectKey);
+  }
+
+  /**
    * 删除对象。
    *
    * @param objectKey OSS 对象键
@@ -113,11 +122,20 @@ export class FileStorageService {
    * @param prefix 键前缀
    */
   async listPrefix(prefix: string): Promise<string[]> {
+    return (await this.listPrefixWithMeta(prefix)).map((item) => item.key);
+  }
+
+  /**
+   * 列出前缀下对象键与最后修改时间（清理任务按保留期判定）。
+   *
+   * @param prefix 键前缀
+   */
+  async listPrefixWithMeta(prefix: string): Promise<Array<{ key: string; lastModified: Date | null }>> {
     if (this.oss) {
       const result = await this.oss.list({ prefix, 'max-keys': 1000 }, {});
-      return (result.objects ?? []).map((item) => item.name);
+      return (result.objects ?? []).map((item) => ({ key: item.name, lastModified: new Date(item.lastModified) }));
     }
-    return this.local.listPrefix(prefix);
+    return this.local.listPrefixWithMeta(prefix);
   }
 
   private async presignPut(objectKey: string, expiresSeconds: number): Promise<PresignUploadResult> {
@@ -168,9 +186,9 @@ function sanitizeExtension(filename?: string): string {
   return `.${match[1].toLowerCase()}`;
 }
 
-/** 工厂：根据环境创建 FileStorageService */
-export function createFileStorage(env: NodeJS.ProcessEnv = process.env): FileStorageService {
-  return new FileStorageService(env);
+/** 工厂：根据环境创建 FileStorageService（local 可注入替身存储，测试隔离用） */
+export function createFileStorage(env: NodeJS.ProcessEnv = process.env, local?: LocalFileStorage): FileStorageService {
+  return new FileStorageService(env, local);
 }
 
 export { isOssPlaceholder, createOssClient };
