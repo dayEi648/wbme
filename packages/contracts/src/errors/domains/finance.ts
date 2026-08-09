@@ -82,4 +82,53 @@ export const financeErrors = {
     httpStatus: 409,
     message: '项目已被删除，请进入已删除项目视图恢复或改名',
   },
+  /** 字典项被历史项目引用，批量删除整批拒绝（fin PRD §6） */
+  DICT_REFERENCED: {
+    code: 'DICT_REFERENCED',
+    type: 'CONFLICT',
+    domain: 'FINANCE',
+    httpStatus: 409,
+    message: '字典项已被项目引用，不能删除（可停用后新建替代项）',
+    detailsFields: ['referenced'],
+  },
+  /** 项目进度金额语义被引用后不可修改（fin PRD §6） */
+  DICT_SEMANTIC_LOCKED: {
+    code: 'DICT_SEMANTIC_LOCKED',
+    type: 'CONFLICT',
+    domain: 'FINANCE',
+    httpStatus: 409,
+    message: '该进度选项已被项目引用，金额语义不可修改（请停用并新建选项）',
+  },
+  /** 业务分类真实字典项不得与系统虚拟分组“未分类”重名（fin PRD §4） */
+  UNCLASSIFIED_NAME_CONFLICT: {
+    code: 'UNCLASSIFIED_NAME_CONFLICT',
+    type: 'VALIDATION',
+    domain: 'FINANCE',
+    httpStatus: 400,
+    message: '业务分类名称不能使用“未分类”（系统虚拟分组保留名）',
+  },
+  /** 单元格即时保存提交了多个业务字段或未注册字段（fin PRD §4） */
+  CELL_FIELD_NOT_ALLOWED: {
+    code: 'CELL_FIELD_NOT_ALLOWED',
+    type: 'VALIDATION',
+    domain: 'FINANCE',
+    httpStatus: 400,
+    message: '一次只允许提交一个白名单内的业务字段',
+  },
+  /** 导入工作表结构/列签名与 V2 模板不匹配（fin PRD §4） */
+  IMPORT_SHEET_INVALID: {
+    code: 'IMPORT_SHEET_INVALID',
+    type: 'VALIDATION',
+    domain: 'FINANCE',
+    httpStatus: 400,
+    message: '文件工作表结构与利润分析模板不匹配，请使用平台导出的 V2 模板',
+  },
+  /** 导入确认引用了预览中不存在或非待选择的行（fin PRD §4） */
+  IMPORT_CONFIRM_MISMATCH: {
+    code: 'IMPORT_CONFIRM_MISMATCH',
+    type: 'VALIDATION',
+    domain: 'FINANCE',
+    httpStatus: 400,
+    message: '确认选择与预览结果不一致，请重新预览',
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

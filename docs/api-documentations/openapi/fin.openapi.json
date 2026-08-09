@@ -1,0 +1,1893 @@
+{
+  "components": {
+    "schemas": {
+      "ColumnSettingDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "description": "列设置内容（列显隐/宽度/顺序等，结构由前端定义）",
+            "type": "object"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "DictRefItemDto": {
+        "properties": {
+          "id": {
+            "description": "字典项 id",
+            "type": "number"
+          },
+          "name": {
+            "description": "字典项名称快照",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "description": "机器可读稳定编码（(type, domain) 内唯一；目录见 @wbme/contracts）",
+                "enum": [
+                  "ACCOUNT_ACTIVATED",
+                  "ACCOUNT_DEACTIVATED",
+                  "ACCOUNT_LOCKED",
+                  "ACCOUNT_PENDING_ACTIVATION",
+                  "ALREADY_SUPER_ADMIN",
+                  "APPLICANT_DEACTIVATED",
+                  "ASSET_IMAGE_INVALID",
+                  "ASSET_REFERENCED",
+                  "ASSET_STATUS_INVALID",
+                  "ASSET_TRANSFER_NO_CHANGE",
+                  "ASSIGNEE_DEPARTMENT_MISMATCH",
+                  "BACKUP_LOCK_BUSY",
+                  "BACKUP_UNVERIFIED",
+                  "BATCH_CORRECTION_FORBIDDEN",
+                  "BORROW_ALREADY_SETTLED",
+                  "CATEGORY_REFERENCED",
+                  "CELL_FIELD_NOT_ALLOWED",
+                  "CONFLICT",
+                  "CONSUMABLE_DISABLED",
+                  "CONSUMABLE_REFERENCED",
+                  "DATA_REVISION_STALE",
+                  "DEPARTMENT_HAS_CHILDREN",
+                  "DEPENDENCY_UNAVAILABLE",
+                  "DICT_REFERENCED",
+                  "DICT_SEMANTIC_LOCKED",
+                  "DINGTALK_ALREADY_BOUND",
+                  "DINGTALK_CONFIG_MISSING",
+                  "DINGTALK_ORG_MISMATCH",
+                  "DINGTALK_STATE_INVALID",
+                  "DINGTALK_UNAVAILABLE",
+                  "DISPOSAL_FORBIDDEN",
+                  "EMERGENCY_BACKUP_FAILED",
+                  "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_TIMEOUT",
+                  "FLOW_SESSION_INVALID",
+                  "FORBIDDEN",
+                  "FUNCTION_NOT_REGISTERED",
+                  "GRANT_BATCH_BLOCKED",
+                  "GRANT_SELF_FORBIDDEN",
+                  "GRANT_VERSION_CONFLICT",
+                  "GROUP_BATCH_BLOCKED",
+                  "GROUP_NAME_CONFLICT",
+                  "HOLIDAY_API_UNAVAILABLE",
+                  "HR_SERVICE_UNAVAILABLE",
+                  "IDEMPOTENCY_KEY_REUSED",
+                  "IMPORT_ALREADY_RUNNING",
+                  "IMPORT_ARCHIVE_LIMIT_EXCEEDED",
+                  "IMPORT_CONFIRM_MISMATCH",
+                  "IMPORT_FILE_TOO_LARGE",
+                  "IMPORT_FORMULA_NOT_ALLOWED",
+                  "IMPORT_PREVIEW_STALE",
+                  "IMPORT_PROJECT_DELETED",
+                  "IMPORT_ROW_LIMIT_EXCEEDED",
+                  "IMPORT_SHEET_INVALID",
+                  "IMPORT_TIMEOUT",
+                  "IMPORT_YEAR_AMBIGUOUS",
+                  "IMPORT_YEAR_REQUIRED_FOR_NEW",
+                  "INSUFFICIENT_QUOTA",
+                  "INSUFFICIENT_STOCK",
+                  "INTERNAL_ERROR",
+                  "INVALID_CREDENTIALS",
+                  "INVITATION_INVALID",
+                  "ITEM_DUPLICATED",
+                  "LAST_SUPER_ADMIN",
+                  "LOCATION_HAS_CHILDREN",
+                  "LOCATION_INVALID_TARGET",
+                  "LOCATION_REFERENCED",
+                  "MAINTENANCE_ACTIVE_EXISTS",
+                  "MULTI_DEPARTMENT_APPLY_FORBIDDEN",
+                  "NOT_SUPER_ADMIN",
+                  "OLD_PASSWORD_INCORRECT",
+                  "ORGANIZATION_CYCLE",
+                  "ORGANIZATION_VERSION_CONFLICT",
+                  "OSS_UNAVAILABLE",
+                  "OVERTIME_BATCH_REJECTED",
+                  "OVERTIME_DATE_OUT_OF_WINDOW",
+                  "OVERTIME_EMPLOYEE_NOT_ACTIVE",
+                  "OVERTIME_OVERLAP",
+                  "PASSWORD_CONFIRM_MISMATCH",
+                  "PASSWORD_POLICY_FAILED",
+                  "PAYLOAD_TOO_LARGE",
+                  "PENDING_ACCOUNT_EXISTS",
+                  "PENDING_LIMIT_REACHED",
+                  "PERMISSION_MANAGEMENT_GRANT_FORBIDDEN",
+                  "PHONE_MISSING_FROM_DINGTALK",
+                  "PHONE_TAKEN",
+                  "POSITION_APPLICATION_INELIGIBLE",
+                  "POSITION_APPLY_STALE",
+                  "POSITION_APPLY_TARGET_UNAVAILABLE",
+                  "POSITION_DEPARTMENT_MISMATCH",
+                  "PROFILE_CHANGE_PENDING_EXISTS",
+                  "PROJECT_KEY_CONFLICT",
+                  "QR_INVALID",
+                  "QR_REVOKED",
+                  "RATE_LIMITED",
+                  "RECIPIENT_INVALID",
+                  "REDIS_UNAVAILABLE",
+                  "REJECT_REASON_REQUIRED",
+                  "REQUEST_TIMEOUT",
+                  "RESET_SELF_UNAVAILABLE",
+                  "RESOURCE_NOT_FOUND",
+                  "RESTORE_IN_PROGRESS",
+                  "RESTORE_SUPER_ADMIN_ONLY",
+                  "RESTORE_TARGET_STALE",
+                  "ROW_LIMIT_EXCEEDED",
+                  "SCOPE_NOT_COVERED",
+                  "SCOPE_NOT_SUPPORTED",
+                  "SERVICE_UNAVAILABLE",
+                  "SESSION_EXPIRED",
+                  "SETTLEMENT_COVERAGE_INCOMPLETE",
+                  "STATUS_CONFLICT",
+                  "STATUS_NOT_ALLOWED",
+                  "STOCK_CONFLICT",
+                  "SUPER_ADMIN_TARGET_ONLY",
+                  "SYSTEM_MAINTENANCE",
+                  "SYSTEM_NOT_OPEN",
+                  "SYSTEM_STATUS_NOT_ADJUSTABLE",
+                  "UNAUTHORIZED",
+                  "UNCLASSIFIED_NAME_CONFLICT",
+                  "UNIT_LOCKED",
+                  "USER_BATCH_BLOCKED",
+                  "USER_NOT_ACTIVE",
+                  "USER_NOT_PENDING",
+                  "VALIDATION_FAILED"
+                ],
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": true,
+                "description": "白名单结构化详情",
+                "type": "object"
+              },
+              "domain": {
+                "description": "业务域（仅 BUSINESS 类型必须返回）",
+                "enum": [
+                  "ACCOUNT",
+                  "PERMISSION",
+                  "APPROVAL",
+                  "ASSET",
+                  "INVENTORY",
+                  "HR",
+                  "FINANCE",
+                  "EXPORT",
+                  "BACKUP",
+                  "INTEGRATION"
+                ],
+                "type": "string"
+              },
+              "message": {
+                "description": "服务端控制、可向当前用户展示的文案",
+                "type": "string"
+              },
+              "requestId": {
+                "description": "请求追踪标识",
+                "type": "string"
+              },
+              "type": {
+                "description": "稳定错误大类（主 PRD §9.5）",
+                "enum": [
+                  "BUSINESS",
+                  "VALIDATION",
+                  "AUTHENTICATION",
+                  "AUTHORIZATION",
+                  "CONFLICT",
+                  "RATE_LIMIT",
+                  "TIMEOUT",
+                  "DEPENDENCY",
+                  "SYSTEM"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "code",
+              "message",
+              "requestId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "FilterPresetDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "description": "筛选条件内容（结构由前端定义）",
+            "type": "object"
+          },
+          "name": {
+            "description": "预设名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ],
+        "type": "object"
+      },
+      "FinanceAmountItemDto": {
+        "properties": {
+          "amount": {
+            "description": "金额（元，≥ 0，最多两位小数的十进制字符串）",
+            "example": "1234.50",
+            "type": "string"
+          },
+          "occurredDate": {
+            "description": "日期（YYYY-MM-DD）",
+            "example": "2026-08-01",
+            "type": "string"
+          },
+          "remark": {
+            "description": "单笔备注",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "type": "object"
+      },
+      "FinanceDetailCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "item": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FinanceAmountItemDto"
+              }
+            ],
+            "description": "金额明细内容"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "type": "object"
+      },
+      "FinanceDetailUpdateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "item": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FinanceAmountItemDto"
+              }
+            ],
+            "description": "金额明细内容（金额必填，日期/备注可清空）"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "type": "object"
+      },
+      "FinDictItemBatchDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "字典项 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "FinDictItemCreateDto": {
+        "properties": {
+          "dictType": {
+            "description": "字典类型",
+            "enum": [
+              "PROGRESS",
+              "COMPLETENESS",
+              "BIZ_CATEGORY",
+              "REGION"
+            ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "字典项名称（同类型下唯一；业务分类不得叫“未分类”）",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "semantic": {
+            "description": "金额语义（仅 PROGRESS 必填；被引用后不可修改）",
+            "enum": [
+              "TENTATIVE",
+              "AUDITED"
+            ],
+            "type": "string"
+          },
+          "sort": {
+            "default": 0,
+            "description": "排序（小的在前）",
+            "type": "number"
+          }
+        },
+        "required": [
+          "dictType",
+          "name"
+        ],
+        "type": "object"
+      },
+      "FinDictItemUpdateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "字典项名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "semantic": {
+            "description": "金额语义（仅 PROGRESS；已被引用后不可修改）",
+            "enum": [
+              "TENTATIVE",
+              "AUDITED"
+            ],
+            "type": "string"
+          },
+          "sort": {
+            "description": "排序（小的在前）",
+            "type": "number"
+          },
+          "status": {
+            "description": "状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sort",
+          "status"
+        ],
+        "type": "object"
+      },
+      "FinSettingsUpdateDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "ImportConfirmDto": {
+        "properties": {
+          "choices": {
+            "description": "选择映射（Excel 行号 → 覆盖/跳过）；数量与预览待选择行一致",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "required": [
+          "choices"
+        ],
+        "type": "object"
+      },
+      "ProfitCellSaveDto": {
+        "properties": {
+          "field": {
+            "description": "服务端白名单业务字段编码（一次一个）",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "projectId": {
+            "description": "项目 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "value": {
+            "description": "字段新值（字符串/布尔/数组按字段类型解析；金额为十进制字符串；null=清空）",
+            "type": "object"
+          }
+        },
+        "required": [
+          "projectId",
+          "field",
+          "value"
+        ],
+        "type": "object"
+      },
+      "ProjectBatchDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "项目 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "ProjectBatchRestoreDto": {
+        "properties": {
+          "ids": {
+            "description": "项目 id 列表（1～100 个，不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "ProjectCreateDto": {
+        "properties": {
+          "bizCategoryId": {
+            "description": "业务分类字典项 id（可空）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "completenessDocs": {
+            "description": "资料齐全度多选（按选择顺序，字典快照）",
+            "items": {
+              "$ref": "#/components/schemas/DictRefItemDto"
+            },
+            "type": "array"
+          },
+          "contractAmount": {
+            "description": "合同金额（元）",
+            "example": "100000.00",
+            "type": "string"
+          },
+          "contractEndDate": {
+            "description": "合同完工日期（YYYY-MM-DD）",
+            "example": "2026-12-31",
+            "type": "string"
+          },
+          "contractStartDate": {
+            "description": "合同开始日期（YYYY-MM-DD）",
+            "example": "2026-01-01",
+            "type": "string"
+          },
+          "generalContractor": {
+            "description": "总包方",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "managementFee": {
+            "description": "管理费（可能不为数字）",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "miscExpense": {
+            "description": "零星费用（元）",
+            "example": "1000.00",
+            "type": "string"
+          },
+          "name": {
+            "description": "项目名称（保留原文展示；与年度共同构成业务唯一键）",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "partyA": {
+            "description": "甲方",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "paymentNode": {
+            "description": "主合同付款节点",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "progressId": {
+            "description": "项目进度字典项 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "regionId": {
+            "description": "地区字典项 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "remark": {
+            "description": "项目级备注",
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "settlement": {
+            "description": "分包结算（元）",
+            "example": "30000.00",
+            "type": "string"
+          },
+          "subcontractors": {
+            "description": "分包方（手输数组）",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "tentativeAuditedAmount": {
+            "description": "暂定/审定金额（语义随项目进度切换）",
+            "example": "80000.00",
+            "type": "string"
+          },
+          "year": {
+            "description": "年度（四位公历年 1000～9999）",
+            "example": 2026,
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "year"
+        ],
+        "type": "object"
+      },
+      "RenameFilterPresetDto": {
+        "properties": {
+          "name": {
+            "description": "预设新名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "csrfHeader": {
+        "description": "CSRF 双提交头（状态变更请求必须与 wbme_csrf Cookie 一致）",
+        "in": "header",
+        "name": "X-WBME-CSRF-Token",
+        "type": "apiKey"
+      },
+      "sessionCookie": {
+        "description": "服务端会话 Cookie（HttpOnly；登录/激活成功后下发）",
+        "in": "cookie",
+        "name": "wbme_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "fin 部署单元（财务系统）OpenAPI 契约。构建期生成（主 PRD §9.5）：统一错误结构见 components.schemas.ErrorResponse；默认会话 Cookie + CSRF 头认证，公开路由无 security。",
+    "title": "WBME fin API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/finance-dict-items": {
+      "get": {
+        "operationId": "DictController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "字典类型过滤",
+            "in": "query",
+            "name": "dictType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PROGRESS",
+                "COMPLETENESS",
+                "BIZ_CATEGORY",
+                "REGION"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态过滤",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      },
+      "post": {
+        "operationId": "DictController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinDictItemCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/finance-dict-items/{id}": {
+      "put": {
+        "operationId": "DictController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinDictItemUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/finance-dict-items/batch": {
+      "delete": {
+        "operationId": "DictController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinDictItemBatchDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/finance-settings": {
+      "get": {
+        "operationId": "SettingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_update",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinSettingsUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/column-setting": {
+      "get": {
+        "operationId": "TablePrefsController_getColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_upsertColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnSettingDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/filter-presets": {
+      "get": {
+        "operationId": "TablePrefsController_listFilterPresets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "post": {
+        "operationId": "TablePrefsController_createFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}": {
+      "delete": {
+        "operationId": "TablePrefsController_deleteFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_updateFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}/name": {
+      "put": {
+        "operationId": "TablePrefsController_renameFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameFilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/profit/cells": {
+      "put": {
+        "operationId": "ProfitController_cellSave",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfitCellSaveDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profit"
+        ]
+      }
+    },
+    "/api/v1/profit/excel/export/{scope}": {
+      "get": {
+        "operationId": "ExcelController_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目名称关键字（规范化匹配，支持模糊）",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "甲方关键字（模糊匹配）",
+            "in": "query",
+            "name": "partyA",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "年度精确筛选",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "maximum": 9999,
+              "minimum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "description": "地区字典项 id",
+            "in": "query",
+            "name": "regionId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "业务分类字典项 id",
+            "in": "query",
+            "name": "bizCategoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目进度字典项 id",
+            "in": "query",
+            "name": "progressId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "视图：normal=正常列表（默认），deleted=已删除视图（仅批量恢复）",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "normal",
+                "deleted"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Excel"
+        ]
+      }
+    },
+    "/api/v1/profit/excel/import/confirm": {
+      "post": {
+        "operationId": "ExcelController_importConfirm",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportConfirmDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Excel"
+        ]
+      }
+    },
+    "/api/v1/profit/excel/import/preview": {
+      "post": {
+        "operationId": "ExcelController_importPreview",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Excel"
+        ]
+      }
+    },
+    "/api/v1/profit/projects": {
+      "get": {
+        "operationId": "ProfitController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目名称关键字（规范化匹配，支持模糊）",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "甲方关键字（模糊匹配）",
+            "in": "query",
+            "name": "partyA",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "年度精确筛选",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "maximum": 9999,
+              "minimum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "description": "地区字典项 id",
+            "in": "query",
+            "name": "regionId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "业务分类字典项 id",
+            "in": "query",
+            "name": "bizCategoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目进度字典项 id",
+            "in": "query",
+            "name": "progressId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "视图：normal=正常列表（默认），deleted=已删除视图（仅批量恢复）",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "normal",
+                "deleted"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profit"
+        ]
+      }
+    },
+    "/api/v1/profit/totals": {
+      "get": {
+        "operationId": "ProfitController_totals",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目名称关键字（规范化匹配，支持模糊）",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "甲方关键字（模糊匹配）",
+            "in": "query",
+            "name": "partyA",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "年度精确筛选",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "maximum": 9999,
+              "minimum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "description": "地区字典项 id",
+            "in": "query",
+            "name": "regionId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "业务分类字典项 id",
+            "in": "query",
+            "name": "bizCategoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目进度字典项 id",
+            "in": "query",
+            "name": "progressId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "视图：normal=正常列表（默认），deleted=已删除视图（仅批量恢复）",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "normal",
+                "deleted"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profit"
+        ]
+      }
+    },
+    "/api/v1/project-operations": {
+      "get": {
+        "operationId": "ProjectOperationController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "按项目过滤",
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ProjectOperation"
+        ]
+      }
+    },
+    "/api/v1/project-operations/{id}": {
+      "get": {
+        "operationId": "ProjectOperationController_getDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ProjectOperation"
+        ]
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "operationId": "ProjectController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目名称关键字（规范化匹配，支持模糊）",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "甲方关键字（模糊匹配）",
+            "in": "query",
+            "name": "partyA",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "年度精确筛选",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "maximum": 9999,
+              "minimum": 1000,
+              "type": "number"
+            }
+          },
+          {
+            "description": "地区字典项 id",
+            "in": "query",
+            "name": "regionId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "业务分类字典项 id",
+            "in": "query",
+            "name": "bizCategoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "项目进度字典项 id",
+            "in": "query",
+            "name": "progressId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "视图：normal=正常列表（默认），deleted=已删除视图（仅批量恢复）",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "normal",
+                "deleted"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      },
+      "post": {
+        "operationId": "ProjectController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      }
+    },
+    "/api/v1/projects/{id}": {
+      "get": {
+        "operationId": "ProjectController_getDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      },
+      "put": {
+        "operationId": "ProjectController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectId}/details/{kind}": {
+      "post": {
+        "operationId": "ProjectController_createDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinanceDetailCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectId}/details/{kind}/{detailId}": {
+      "delete": {
+        "operationId": "ProjectController_removeDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "detailId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      },
+      "put": {
+        "operationId": "ProjectController_updateDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "detailId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinanceDetailUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      }
+    },
+    "/api/v1/projects/batch": {
+      "delete": {
+        "operationId": "ProjectController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectBatchDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      }
+    },
+    "/api/v1/projects/deleted/restore": {
+      "put": {
+        "operationId": "ProjectController_batchRestore",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectBatchRestoreDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Project"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "HealthController_liveness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "HealthController_readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "csrfHeader": [],
+      "sessionCookie": []
+    }
+  ],
+  "servers": [],
+  "tags": []
+}

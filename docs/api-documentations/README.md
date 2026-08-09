@@ -15,3 +15,5 @@
   - `approval-center.md`：三部署单元审批中心契约、内部 pending-count、超时扫描
 - asset/hr 审批中心接口已上线（T5）；其余业务接口上线时沿用同一模式（nest-cli swagger 插件 + 构建期生成脚本 +
   产物提交 + verify 接入 CI），产物命名 `<unit>.openapi.json`。
+- 各部署单元接口文档（手写）：`asset.md`（T7）、`hr.md`（T6）、`fin.md`（T8 工程合同/利润分析/Excel 导入导出/操作记录/财务配置），
+  OpenAPI 产物 `asset.openapi.json` / `hr.openapi.json` / `fin.openapi.json` 由各单元 `openapi:generate` 生成并提交。

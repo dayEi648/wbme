@@ -99,12 +99,33 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.1.28
         version: 11.1.28(@nestjs/common@11.1.28(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@8.0.0))(@nestjs/core@11.1.28)(supports-color@8.0.0)
+      '@prisma/adapter-pg':
+        specifier: ^7.9.1
+        version: 7.9.1
+      '@prisma/client':
+        specifier: ^7.9.1
+        version: 7.9.1(prisma@7.9.1(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)
       '@wbme/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@wbme/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@wbme/server':
         specifier: workspace:*
         version: link:../../packages/server
+      class-transformer:
+        specifier: ^0.5.1
+        version: 0.5.1
+      class-validator:
+        specifier: ^0.15.1
+        version: 0.15.1
+      exceljs:
+        specifier: ^4.4.0
+        version: 4.4.0
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -115,18 +136,18 @@ importers:
       '@nestjs/cli':
         specifier: ^11.0.24
         version: 11.0.24(@types/node@24.13.3)(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.26)
+      '@nestjs/swagger':
+        specifier: ^11.4.6
+        version: 11.4.6(@nestjs/common@11.1.28(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@8.0.0))(@nestjs/core@11.1.28)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)
       '@nestjs/testing':
         specifier: ^11.1.28
         version: 11.1.28(@nestjs/common@11.1.28(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@8.0.0))(@nestjs/core@11.1.28)(@nestjs/platform-express@11.1.28)
-      '@prisma/adapter-pg':
-        specifier: ^7.9.1
-        version: 7.9.1
-      '@prisma/client':
-        specifier: ^7.9.1
-        version: 7.9.1(prisma@7.9.1(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
+      '@types/multer':
+        specifier: ^1.4.12
+        version: 1.4.12
       prisma:
         specifier: ^7.9.1
         version: 7.9.1(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
@@ -2266,6 +2287,9 @@ packages:
 
   '@types/methods@1.1.4':
     resolution: {integrity: sha512-ymXWVrDiCxTBE3+RIrrP533E70eA+9qu7zdWoHuOmGujkYtzf4HQF96b8nwHLqhuf4ykX61IGRIB38CC6/sImQ==}
+
+  '@types/multer@1.4.12':
+    resolution: {integrity: sha512-pQ2hoqvXiJt2FP9WQVLPRO+AmiIm/ZYkavPlIQnx282u4ZrVdztx0pkh3jjpQt0Kz+YI0YhSG264y08UJKoUQg==}
 
   '@types/node@14.0.1':
     resolution: {integrity: sha512-FAYBGwC+W6F9+huFIDtn43cpy7+SzG+atzRiTfdp3inUKL2hXnd4rG8hylJLIh4+hqrQy1P17kvJByE/z825hA==}
@@ -6759,6 +6783,10 @@ snapshots:
   '@types/lodash@4.17.25': {}
 
   '@types/methods@1.1.4': {}
+
+  '@types/multer@1.4.12':
+    dependencies:
+      '@types/express': 5.0.6
 
   '@types/node@14.0.1': {}
 

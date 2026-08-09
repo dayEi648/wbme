@@ -496,6 +496,15 @@ export const STOCK_CHANGE_HISTORY_FUNCTION_CODE = 'stock_change_history';
 /** asset「资产配置」功能编码（asset PRD §1 / §12：公司档，运行参数与业务字典） */
 export const ASSET_CONFIG_FUNCTION_CODE = 'asset_config';
 
+/** fin「财务数据查看」功能编码（fin PRD §1：公司档只读，项目/合同/利润分析/操作记录；利润分析页支持按模板导出） */
+export const FINANCE_VIEW_FUNCTION_CODE = 'finance_view';
+
+/** fin「财务数据维护」功能编码（fin PRD §1：项目新建编辑、财务数据与明细维护、利润分析模板导入；隐含财务数据查看） */
+export const FINANCE_MAINTAIN_FUNCTION_CODE = 'finance_maintain';
+
+/** fin「财务配置」功能编码（fin PRD §1：业务字典（含地区）） */
+export const FINANCE_CONFIG_FUNCTION_CODE = 'finance_config';
+
 /** 扁平化的目录功能条目：对账与守卫读取用（排序 = 各层数组下标） */
 export interface CatalogFunctionEntry {
   /** 所属系统编码 */

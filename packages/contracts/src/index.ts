@@ -42,6 +42,7 @@ export * from './dto/borrow.dto';
 export * from './dto/agent-settlement.dto';
 export * from './dto/disposal.dto';
 export * from './dto/qr.dto';
+export * from './dto/fin.dto';
 export * from './enums/common';
 export * from './permission/catalog';
 
