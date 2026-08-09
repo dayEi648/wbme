@@ -1,0 +1,316 @@
+# WBME 生产 Compose（主 PRD §9.12–§9.14、§13；目标：单台 ECS Ubuntu 22.04）。
+# 使用：在 deploy/ 下 `cp .env.production.example .env.production` 填写机密后
+#   `docker compose --env-file .env.production up -d`（首次）+ `deploy/release.sh <tag>`（发布）。
+# 本期只交付配置，不执行实际部署；实际部署与验证在 ECS 上进行。
+#
+# 安全边界（§9.14）：全部容器 cap_drop ALL + no-new-privileges + 非 root 用户 + 只读根文件系统
+# + 有界 tmpfs；不挂载 Docker Socket、不使用 privileged/host 网络；/internal/v1 不发布到公网。
+name: wbme
+
+# ---- 共享锚点 ----
+
+# 日志驱动（§9.12）：local 驱动 + 20MB × 5 + 压缩，全容器统一
+x-logging: &default-logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "5"
+    compress: "true"
+
+# 后端容器公共属性（构建/重启/安全/日志/网络）
+x-backend-common: &backend-common
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    target: runtime
+  image: wbme/backend:${WBME_TAG:-local}
+  restart: unless-stopped
+  logging: *default-logging
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  networks: [wbme-net]
+  stop_grace_period: 35s
+
+# 通用运行环境（数据库/Redis/内部令牌/发布 commit）
+x-backend-env: &backend-env
+  NODE_ENV: production
+  DATABASE_URL: ${DATABASE_URL}
+  REDIS_URL: ${REDIS_URL}
+  INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+  DEPLOY_COMMIT: ${WBME_TAG:-local}
+
+# 健康检查（node 24 内置 fetch；就绪探针在优雅停机期间返回 503）
+x-healthcheck-ready: &healthcheck-ready
+  test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['PLATFORM_CORE_PORT']||'3001')+'/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 30s
+
+services:
+  # ---- 基础设施 ----
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    # 命名持久化卷（§9.13：正式数据不得写在容器可写层或匿名卷）
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wbme}
+      POSTGRES_USER: ${POSTGRES_USER:-wbme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # 连接上限为各应用连接池（默认 10/服务 × 6 应用）与恢复/迁移保留余量（§9.13）
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wbme} -d ${POSTGRES_DB:-wbme}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    mem_limit: 512m
+    cpus: "1.0"
+    networks: [wbme-net]
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - redis_data:/data
+    # 持久化与淘汰策略（主 PRD §9.8）：AOF everysec + RDB 快照；noeviction 不静默淘汰会话/队列键
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 128m
+    cpus: "0.25"
+    networks: [wbme-net]
+
+  # 迁移执行器（一次性：顺序迁移 + 只读视图 + 幂等种子；迁移前自动备份钩子）
+  migration-runner:
+    <<: *backend-common
+    command: ["node", "apps/migration-runner/dist/main.js"]
+    environment:
+      <<: *backend-env
+      RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+      # 迁移前「立即备份」（主 PRD §9.9）：经 platform-core 内部接口触发并等待成功
+      PRE_MIGRATION_BACKUP_WAIT: "1"
+      PLATFORM_CORE_URL: http://platform-core:3001
+      PRE_MIGRATION_BACKUP_TOKEN: ${PRE_MIGRATION_BACKUP_TOKEN}
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 256m
+    cpus: "0.5"
+
+  # ---- 平台核心（base + backstage）----
+  platform-core:
+    <<: *backend-common
+    command: ["node", "apps/platform-core/dist/main.js"]
+    environment:
+      <<: *backend-env
+      PLATFORM_CORE_PORT: "3001"
+      COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
+      COOKIE_SECURE: "true"
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
+      DINGTALK_APP_KEY: ${DINGTALK_APP_KEY}
+      DINGTALK_APP_SECRET: ${DINGTALK_APP_SECRET}
+      DINGTALK_CORP_ID: ${DINGTALK_CORP_ID}
+      DINGTALK_REDIRECT_URI: ${DINGTALK_REDIRECT_URI}
+      OSS_BUCKET: ${OSS_BUCKET}
+      OSS_REGION: ${OSS_REGION}
+      OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
+      OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
+      HR_INTERNAL_BASE_URL: http://hr:3003/internal/v1
+      ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
+      RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}/internal/v1
+      # 维护标记/恢复状态目录（只读：标记由恢复执行器写入）
+      RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+      HEALTH_DISK_USAGE_RATIO: ${HEALTH_DISK_USAGE_RATIO:-0.85}
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
+    healthcheck:
+      <<: *healthcheck-ready
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: "1.0"
+
+  # ---- 业务服务（asset / hr / fin 可独立启停）----
+  asset:
+    <<: *backend-common
+    command: ["node", "apps/asset/dist/main.js"]
+    environment:
+      <<: *backend-env
+      ASSET_PORT: "3002"
+      COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
+      OSS_BUCKET: ${OSS_BUCKET}
+      OSS_REGION: ${OSS_REGION}
+      OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: "0.5"
+
+  hr:
+    <<: *backend-common
+    command: ["node", "apps/hr/dist/main.js"]
+    environment:
+      <<: *backend-env
+      HR_PORT: "3003"
+      COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: "0.5"
+
+  fin:
+    <<: *backend-common
+    command: ["node", "apps/fin/dist/main.js"]
+    environment:
+      <<: *backend-env
+      FIN_PORT: "3004"
+      COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3004/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: "0.5"
+
+  # ---- Worker（Outbox 调度 + BullMQ 消费者）----
+  worker:
+    <<: *backend-common
+    command: ["node", "apps/worker/dist/main.js"]
+    environment:
+      <<: *backend-env
+      HR_INTERNAL_BASE_URL: http://hr:3003/internal/v1
+      ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
+      RECOVERY_EXECUTOR_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      PG_DUMP_PATH: /usr/bin/pg_dump
+      PG_RESTORE_PATH: /usr/bin/pg_restore
+      PSQL_PATH: /usr/bin/psql
+    # 无 HTTP 端口：进程存活即健康（Redis 连接已在启动强检中校验；§9.8）
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: "0.5"
+
+  # ---- 恢复执行器（基础设施常驻；不监听业务端口）----
+  recovery-executor:
+    <<: *backend-common
+    command: ["node", "apps/recovery-executor/dist/main.js"]
+    environment:
+      <<: *backend-env
+      RECOVERY_EXECUTOR_PORT: ${RECOVERY_EXECUTOR_PORT:-3090}
+      RECOVERY_SESSION_SECRET: ${RECOVERY_SESSION_SECRET}
+      # 恢复状态目录（数据库外 ECS 持久化；读写）
+      RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+      # 正向迁移复用 Migration Runner（§9.9）；恢复期间在容器内执行
+      RECOVERY_MIGRATE_CMD: "node /wbme/apps/migration-runner/dist/main.js"
+      RECOVERY_SKIP_REDIS_FLUSH: "0"
+      OSS_BUCKET: ${OSS_BUCKET}
+      OSS_REGION: ${OSS_REGION}
+      OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state
+    # 就绪检查：状态目录读写 + 控制通道可达；数据库/OSS 不可用时报告依赖失败但不阻断控制路由
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['RECOVERY_EXECUTOR_PORT']||'3090')+'/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 128m
+    cpus: "0.25"
+
+  # ---- 前端 + Nginx 统一入口（唯一公网端口 80）----
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+    image: wbme/web:${WBME_TAG:-local}
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    networks: [wbme-net]
+    mem_limit: 64m
+    cpus: "0.1"
+    depends_on:
+      platform-core:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  wbme-net:
+    driver: bridge

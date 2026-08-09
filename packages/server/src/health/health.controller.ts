@@ -1,8 +1,9 @@
-import { ApiTags } from '@nestjs/swagger';
 import { Controller, Get, Inject, Optional, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { RedisService } from '../redis/redis.service';
 import { MIGRATION_READINESS, type MigrationReadinessChecker } from './migration-readiness';
+import { ShutdownStateService } from './shutdown-state';
 import { Public } from '../session/session.guard';
 
 /**
@@ -15,6 +16,7 @@ import { Public } from '../session/session.guard';
 export class HealthController {
   constructor(
     private readonly redis: RedisService,
+    private readonly shutdownState: ShutdownStateService,
     @Optional()
     @Inject(MIGRATION_READINESS)
     private readonly migrationReadiness?: MigrationReadinessChecker,
@@ -33,6 +35,11 @@ export class HealthController {
    */
   @Get('readyz')
   async readiness(@Res() res: Response): Promise<void> {
+    // 优雅停机流程中：立即置为未就绪，编排层停止路由新流量（主 PRD §9.13）
+    if (this.shutdownState.isShuttingDown()) {
+      res.status(503).json({ status: 'unready' });
+      return;
+    }
     if (!this.redis.isReady) {
       res.status(503).json({ status: 'unready' });
       return;

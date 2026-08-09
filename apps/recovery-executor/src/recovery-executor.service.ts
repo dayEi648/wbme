@@ -84,6 +84,40 @@ export class RecoveryExecutorService {
     return { ok: true };
   }
 
+  /**
+   * 就绪检查（主 PRD §9.13）：状态目录可读写 + 控制通道与依赖配置完整。
+   *
+   * 数据库/OSS 当前不可连接不视为不就绪（恢复本就可能用于处理数据库损坏），
+   * 仅当恢复状态目录不可写或控制配置缺失时返回不就绪。
+   *
+   * @returns 就绪结果（reason 仅写服务端日志，不进入探针响应）
+   */
+  async readiness(): Promise<{ ready: boolean; reason?: string }> {
+    try {
+      await mkdir(this.stateDir, { recursive: true });
+      const probe = join(this.stateDir, '.readiness-probe');
+      await writeFile(probe, String(Date.now()), 'utf8');
+      await rm(probe, { force: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`就绪检查失败：恢复状态目录不可读写（${this.stateDir}）: ${message}`);
+      return { ready: false, reason: '恢复状态目录不可读写' };
+    }
+    if (!process.env.RECOVERY_SESSION_SECRET?.trim()) {
+      this.logger.error('就绪检查失败：RECOVERY_SESSION_SECRET 未配置（控制会话通道不可用）');
+      return { ready: false, reason: '恢复控制会话密钥未配置' };
+    }
+    if (!this.deps && !process.env.DATABASE_URL?.trim()) {
+      this.logger.error('就绪检查失败：DATABASE_URL 未配置（恢复管道无法执行）');
+      return { ready: false, reason: '数据库连接串未配置' };
+    }
+    if (!this.deps && !process.env.REDIS_URL?.trim()) {
+      this.logger.error('就绪检查失败：REDIS_URL 未配置');
+      return { ready: false, reason: 'Redis 连接串未配置' };
+    }
+    return { ready: true };
+  }
+
   /** 当前恢复状态 */
   async getStatus(): Promise<{ maintenance: boolean; manifest: RestoreControlManifest | null }> {
     await this.loadManifest();

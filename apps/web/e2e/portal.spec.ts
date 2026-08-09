@@ -1,0 +1,36 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * 门户与个人中心 E2E（base PRD §5/§6；T9-3）。
+ * 前置：登录链路同 auth.spec.ts。
+ */
+const PHONE = process.env.E2E_USER_PHONE ?? '+8613800000001';
+const PASSWORD = process.env.E2E_USER_PASSWORD ?? 'E2ePassw0rd!';
+
+async function login(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/login');
+  await page.getByPlaceholder('手机号').fill(PHONE);
+  await page.getByPlaceholder('密码（8~32 位）').fill(PASSWORD);
+  await page.locator('button[type="submit"]').click();
+  await expect(page).toHaveURL(/\/portal/, { timeout: 15_000 });
+}
+
+test.describe('门户与个人中心', () => {
+  test('超管登录后门户展示全部系统入口与个人中心入口', async ({ page }) => {
+    await login(page);
+    // 超管视为拥有全部系统：资产 / 人事 / 财务 / 管理后台入口可见
+    for (const entry of ['资产', '人事', '财务', '管理后台']) {
+      await expect(page.getByText(entry).first()).toBeVisible();
+    }
+  });
+
+  test('个人中心展示身份信息与我的操作日志', async ({ page }) => {
+    await login(page);
+    await page.getByText('个人中心').first().click();
+    await expect(page).toHaveURL(/\/me/);
+    // 身份区域（E2E 用户姓名）
+    await expect(page.getByText('E2E测试员')).toBeVisible({ timeout: 15_000 });
+    // 我的操作日志表格加载（登录行为本身已写操作日志）
+    await expect(page.getByText('我的操作日志')).toBeVisible();
+  });
+});

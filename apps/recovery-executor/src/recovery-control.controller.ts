@@ -16,6 +16,23 @@ export class RecoveryControlController {
     return this.recovery.health();
   }
 
+  /** 存活探针（免登录最小状态；供 Docker/Nginx 使用） */
+  @Get('healthz')
+  liveness(): { status: 'ok' } {
+    return { status: 'ok' };
+  }
+
+  /** 就绪探针（免登录；状态目录读写 + 控制配置完整；数据库/OSS 不可连不阻断，主 PRD §9.13） */
+  @Get('readyz')
+  async readiness(@Res() res: Response): Promise<void> {
+    const result = await this.recovery.readiness();
+    if (!result.ready) {
+      res.status(503).json({ status: 'unready' });
+      return;
+    }
+    res.json({ status: 'ok' });
+  }
+
   @Get('status')
   async status(@Req() req: Request): Promise<unknown> {
     this.assertRecoverySession(req);

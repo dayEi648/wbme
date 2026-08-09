@@ -10,9 +10,13 @@ import {
   GlobalExceptionFilter,
   IdempotencyHeaderInterceptor,
   RequestTimeoutInterceptor,
+  ShutdownStateService,
 } from '@wbme/server';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma.service';
+
+/** 优雅停机宽限（毫秒，主 PRD §9.13：固定有界时间，超时强制退出） */
+const SHUTDOWN_GRACE_MS = 30_000;
 
 /** hr 应用入口 */
 async function bootstrap(): Promise<void> {
@@ -35,6 +39,34 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.HR_PORT ?? 3003);
   await app.listen(port);
   console.log(`hr listening on http://localhost:${port}`);
+
+  // 优雅停机（主 PRD §9.13）：SIGTERM/SIGINT → 就绪探针立即 503 → 有界宽限内
+  // 等待请求到达安全事务边界 → app.close（HTTP 停止 + Prisma/Redis 客户端关闭）→ 退出
+  const shutdownState = app.get(ShutdownStateService);
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    shutdownState.beginShutdown();
+    console.log(`[hr] 收到 ${signal}，开始优雅停机 ...`);
+    const timer = setTimeout(() => {
+      console.error('[hr] 优雅停机超时，强制退出');
+      process.exit(1);
+    }, SHUTDOWN_GRACE_MS);
+    timer.unref();
+    try {
+      await app.close();
+      clearTimeout(timer);
+      process.exit(0);
+    } catch (error) {
+      console.error('[hr] 停机失败', error);
+      process.exit(1);
+    }
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 void bootstrap().catch((error: unknown) => {

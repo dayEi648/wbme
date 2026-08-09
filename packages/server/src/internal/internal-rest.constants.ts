@@ -16,6 +16,8 @@ export const INTERNAL_SERVICES = [
   'fin',
   'worker',
   'recovery-executor',
+  // 生产发布脚本（宿主经 docker compose exec 在容器内调用；backstage PRD §9 更新日志追加）
+  'release-script',
 ] as const;
 
 export type InternalService = (typeof INTERNAL_SERVICES)[number];

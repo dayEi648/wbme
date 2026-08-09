@@ -1,0 +1,20 @@
+# WBME Docker 构建上下文排除（主 PRD §9.14：机密与本地数据不进入镜像层）
+**/node_modules
+**/dist
+.git
+.env
+.env.*
+!.env.example
+.agents
+.agents/**
+docs
+.claude
+coverage
+*.log
+*.pid
+.vite
+**/__snapshots__
+apps/web/dist
+# 部署编排目录中仅 nginx.conf 参与镜像构建（其余由发布脚本在宿主使用）
+deploy/*
+!deploy/nginx.conf

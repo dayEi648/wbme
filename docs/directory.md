@@ -17,6 +17,7 @@
 | `docs/references/` | 参考资料（利润分析 Excel 模板等） |
 | `docs/api-documentations/` | API 文档（`README.md` 目录约定；`base-auth.md` 认证链路；`approval-center.md` 统一审批中心（T5，T6 接入 hr 部门闭包与批准副作用，T7 接入 asset 六类业务副作用）；`backstage-permission.md` 权限管理；`backstage-users.md` 用户管理/超管任免与 hr 生命周期内部契约；`backstage-systems.md` 系统与业务结构管理；`backstage-stage4-infra.md` Stage 4 设置/操作日志/系统日志；`backstage-stage4-ops.md` Stage 4 运维（公告/备份/健康/导出/表格偏好）；`hr.md` hr 服务 API（T6：组织/部门/岗位/职称/节假日/加班/岗位申请/人事配置/生命周期内部接口）；`asset.md` asset 服务 API（T7：配置/分类/字典/台账/维修/品种/库位/库存/入库变更/调拨/申领/借还/处置/二维码/表格偏好）；`fin.md` fin 服务 API（T8：工程合同/金额明细/利润分析即时保存/Excel 导入导出/项目操作记录/财务配置与地区字典/表格偏好）；`openapi/` OpenAPI 构建期产物（platform-core / hr / asset / fin）） |
 | `docs/dev-workflow.md` | 协作与 CI/CD 流程（Git 分支模型、版本与发布、CI 门禁、开发环境、机密管理、分工建议） |
+| `docs/security-checklist.md` | 安全与合规收尾核对清单（T10-5：主 PRD §9.7/§9.8/§9.14 + backstage PRD §8 逐项核对与证据） |
 
 ## apps（部署单元与前端）
 
@@ -48,3 +49,12 @@
 | --- | --- |
 | `scripts/dev.mjs` | 开发环境一键启动（依赖检查 → 构建共享包 → Migration Runner → 并行启动各服务） |
 | `scripts/db-views/` | 幂等只读视图脚本（站点角色、操作日志联合视图、职称视图；Migration Runner 统一执行） |
+
+## deploy（生产部署，T10）
+
+| 路径 | 用途 |
+| --- | --- |
+| `deploy/Dockerfile` | 多阶段生产镜像（builder → web（Nginx + 前端） / runtime（后端/Worker/恢复执行器/Migration Runner 共用；含 pg_dump 客户端）） |
+| `deploy/docker-compose.yml` | 生产 Compose（postgres/redis/migration-runner/platform-core/asset/hr/fin/worker/recovery-executor/web；local 日志驱动锚点、命名持久卷、资源边界、健康检查、优雅停机宽限、安全边界 cap_drop + 只读根文件系统） |
+| `deploy/nginx.conf` | Nginx 统一入口（浏览器公开网关前缀反代、/internal 不暴露、上传上限、SSE 关缓冲、探针只经本入口、SPA fallback） |
+| `deploy/.env.production.example` | 生产环境变量模板（机密占位；实际值由发布时注入 .env.production，不入库） |

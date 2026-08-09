@@ -106,3 +106,88 @@ jobs:
           pnpm --filter @wbme/hr openapi:verify
           pnpm --filter @wbme/asset openapi:verify
           pnpm --filter @wbme/fin openapi:verify
+
+      # 生产 Compose 展开校验（主 PRD §9.12：提交前 docker compose config 校验展开结果；
+      # 本期只校验配置，不执行实际部署）
+      - name: Validate production compose
+        run: docker compose -f deploy/docker-compose.yml config -q
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/wbme
+          POSTGRES_PASSWORD: ci
+          INTERNAL_SERVICE_TOKEN: ci-internal-token
+          COOKIE_SIGNING_KEY: ci-cookie-signing-key-32-characters
+          RECOVERY_SESSION_SECRET: ci-recovery-session-secret-32
+          PUBLIC_ORIGIN: http://ci.local
+
+  # E2E（T10-4）：认证/门户/核心业务链路。复用 quality job 的 PostgreSQL/Redis 服务，
+  # 后端四服务与前端由 Playwright webServer 自动拉起（reuseExistingServer 本地复用）。
+  e2e:
+    name: E2E（认证/门户/核心链路）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wbme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wbme
+      REDIS_URL: redis://localhost:6379
+      INTERNAL_SERVICE_TOKEN: ci-internal-token-32-characters
+      COOKIE_SIGNING_KEY: ci-cookie-signing-key-32-characters
+      PUBLIC_ORIGIN: http://127.0.0.1:5173
+      DINGTALK_CORP_ID: ci
+      DINGTALK_APP_KEY: ci
+      DINGTALK_APP_SECRET: ci
+      DINGTALK_REDIRECT_URI: http://127.0.0.1:5173/api/v1/auth/dingtalk/callback
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmmirror.com
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma clients
+        run: pnpm prisma:generate
+
+      - name: Build shared packages and apps
+        run: pnpm -r build
+
+      - name: Run migrations on CI database
+        run: pnpm --filter @wbme/migration-runner start
+
+      - name: Seed E2E test user
+        run: pnpm --filter @wbme/platform-core exec node scripts/e2e-seed.mjs
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @wbme/web exec playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: pnpm --filter @wbme/web e2e

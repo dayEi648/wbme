@@ -19,10 +19,15 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
 import { BUSINESS_DOMAINS, ERROR_CATALOG, ERROR_TYPES } from '@wbme/contracts';
 import { createRedisClient } from '@wbme/server';
-import { AppModule } from '../app.module';
 
 /** 产物路径（dist/openapi → 仓库根 docs/；src 直跑同深度） */
 const OUTPUT_PATH = resolve(__dirname, '../../../../docs/api-documentations/openapi/platform-core.openapi.json');
+
+// 离线引导默认值：模块装饰器求值时即需要（InternalRestModule.forRoot 读取 token；
+// InternalAuthGuard 构造校验长度）；生成全程离线，不会被真实连接使用
+process.env.DATABASE_URL ??= 'postgresql://openapi:openapi@127.0.0.1:1/openapi-gen';
+process.env.COOKIE_SIGNING_KEY ??= 'openapi-generation-offline-key-32+chars';
+process.env.INTERNAL_SERVICE_TOKEN ??= 'openapi-generation-internal-token-32+';
 
 /**
  * 公开路由（与控制器 @Public() 标注一一对应；新增公开路由时同步本清单）。
@@ -119,14 +124,13 @@ function applySecurityModel(document: OpenAPIObject): void {
 }
 
 async function generate(): Promise<string> {
-  // 离线引导默认值：仅满足构造期必需的环境变量（不会被真实连接使用）
-  process.env.DATABASE_URL ??= 'postgresql://openapi:openapi@127.0.0.1:1/openapi-gen';
-  process.env.COOKIE_SIGNING_KEY ??= 'openapi-generation-offline-key-32+chars';
-
   const redis = createRedisClient('redis://127.0.0.1:1');
+  // 动态 import：模块装饰器求值（InternalRestModule.forRoot 读取 token 等）须在
+  // 顶层 env 默认值设置之后，否则静态 import 在文件顶部先加载、token 为空
+  const { AppModule } = await import('../app.module.js');
   const app = await NestFactory.create(AppModule.register({ redis }), { logger: false });
   try {
-    app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz'] });
+    app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz', 'internal/(.*)'] });
     const pkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8')) as { version: string };
     const config = new DocumentBuilder()
       .setTitle('WBME platform-core API')
