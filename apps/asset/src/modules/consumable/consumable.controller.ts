@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
   ASSET_CONFIG_FUNCTION_CODE,
+  CONSUMABLE_APPLY_FUNCTION_CODE,
   ConsumableBatchDeleteDto,
   ConsumableCreateDto,
   ConsumableQueryDto,
@@ -23,15 +24,15 @@ export class ConsumableController {
     private readonly consumables: ConsumableService,
   ) {}
 
-  /** 品种列表（分页；hasAvailableStock=true 时为申领目录：仅启用且有可用库存） */
+  /** 品种列表（配置管理；hasAvailableStock=true 时供申领页展示品种汇总） */
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: ConsumableQueryDto): Promise<{ items: unknown[]; total: number }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
-    const result = await this.consumables.list(query);
-    if (query.hasAvailableStock) {
-      result.items = result.items.filter((item: { availableQty: number; status: string }) => item.status === 'ACTIVE' && item.availableQty > 0);
-    }
-    return result;
+    await assertFunctionAccess(
+      this.prisma.client,
+      userId,
+      query.hasAvailableStock ? CONSUMABLE_APPLY_FUNCTION_CODE : ASSET_CONFIG_FUNCTION_CODE,
+    );
+    return this.consumables.list(query);
   }
 
   /** 创建品种（幂等；名称唯一；类型创建后不可变） */

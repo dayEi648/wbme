@@ -197,7 +197,7 @@ export class AgentClaimService {
         const borrowedAt = new Date();
         // 到期时间 = 出库时间 + 归还期限快照（与出库时间同源，避免独立取时偏差）
         const dueAt = new Date(borrowedAt.getTime() + (consumable.returnDays ?? 0) * 24 * 60 * 60 * 1000);
-        await tx.borrowRecord.create({
+        const borrowRecord = await tx.borrowRecord.create({
           data: {
             recordType: 'AGENT',
             userId: null,
@@ -215,6 +215,13 @@ export class AgentClaimService {
             // 借出时部门快照：受领人名单部门快照合并（部门档审批/注销处置数据范围数据源）
             departmentSnapshot: await this.mergeRecipientSnapshots(tx, head.id),
           },
+        });
+        await tx.borrowBatchAllocation.createMany({
+          data: allocations.map((allocation) => ({
+            borrowRecordId: borrowRecord.id,
+            batchId: allocation.batchId,
+            issuedQty: allocation.qty,
+          })),
         });
       }
       await cleanupEmptyItem(tx, line.inventoryItemId);

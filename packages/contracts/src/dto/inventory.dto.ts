@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, MaxLength, Min, Validate } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, Validate } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
 import { PaginationQueryDto } from './base.dto';
 
@@ -28,8 +28,15 @@ export class InventoryItemQueryDto extends PaginationQueryDto {
 
   @ApiProperty({ description: '仅显示低库存品种（可用 < 安全库存）', required: false })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
   lowStockOnly?: boolean;
+
+  @ApiProperty({ description: '申领目录：仅启用且有可用库存的条目', required: false })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  availableOnly?: boolean;
 }
 
 /** 批次查询 */

@@ -154,9 +154,9 @@ export class DisposalService {
    * @param operator 操作人（审批人）
    * @param userId 当前用户
    * @param dto 处置输入
-   * @returns 处置记录 id
+   * @returns 首条处置记录 id 与本次创建的全部处置记录 id
    */
-  async dispose(operator: AssetOperationLogOperator, userId: number, dto: DirectDisposalDto): Promise<{ id: number }> {
+  async dispose(operator: AssetOperationLogOperator, userId: number, dto: DirectDisposalDto): Promise<{ id: number; recordIds: number[] }> {
     const access = await assertFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPROVAL_FUNCTION_CODE);
     const scope = await this.approverScope(userId, access);
     const closure = await this.closures.closureOfUser(userId);
@@ -176,36 +176,26 @@ export class DisposalService {
         if (!dto.items || dto.items.length === 0) {
           throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '需要处置明细' });
         }
+        if (new Set(dto.items.map((item) => item.borrowRecordId)).size !== dto.items.length) {
+          throw new BusinessException(inventoryErrors.ITEM_DUPLICATED);
+        }
         // 个人借还处置：按借还记录 id 升序锁定（固定顺序）
-        const recordIds = [...new Set(dto.items.map((item) => item.borrowRecordId))].sort((a, b) => a - b);
+        const lockRecordIds = [...new Set(dto.items.map((item) => item.borrowRecordId))].sort((a, b) => a - b);
         const locked = new Map<number, Awaited<ReturnType<BorrowService['lockBorrowRecord']>>>();
-        for (const recordId of recordIds) {
+        for (const recordId of lockRecordIds) {
           const record = await this.borrow.lockBorrowRecord(tx, recordId);
           if (!record) {
             throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
           }
           locked.set(recordId, record);
         }
-        const refs: number[] = [];
+        const recordIds: number[] = [];
         for (const item of dto.items) {
           const record = locked.get(item.borrowRecordId)!;
           await this.assertDisposable(tx, record, scope, closure);
           // 可处理数量 = 未结清 − 待审批归还/核销占用（与申请互斥：先提交的申请先占）；
           // 处理方式按明细行 method 分流（M2 修复：行声明为权威字段，顶层仅表单默认值）
-          if (item.method === 'RETURN') {
-            await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', 0, operator.id);
-          } else {
-            await this.borrow.writeOffRecord(tx, record, item.qty);
-          }
-          const flowRows = await tx.stockFlow.findMany({
-            where: { refType: 'DIRECT_DISPOSAL', refId: 0 },
-            orderBy: { id: 'desc' },
-            take: 1,
-          });
-          if (flowRows[0]) {
-            refs.push(flowRows[0].id);
-          }
-          await tx.directDisposalRecord.create({
+          const disposalRecord = await tx.directDisposalRecord.create({
             data: {
               disposalType: item.method,
               borrowRecordId: record.id,
@@ -223,13 +213,21 @@ export class DisposalService {
               processorName: operator.name,
               // 借出时部门快照（PRD §8 保留；处置记录数据范围裁剪数据源）
               departmentSnapshot: record.departmentSnapshot ?? Prisma.JsonNull,
-              // 关联流水引用（可空字段省略即 DB NULL）
-              ...(refs.length > 0 ? { stockFlowRefs: { ids: refs } as Prisma.InputJsonValue } : {}),
             },
           });
+          if (item.method === 'RETURN') {
+            const flowIds = await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', disposalRecord.id, operator.id);
+            await tx.directDisposalRecord.update({
+              where: { id: disposalRecord.id },
+              data: { stockFlowRefs: { ids: flowIds } as Prisma.InputJsonValue },
+            });
+          } else {
+            await this.borrow.writeOffRecord(tx, record, item.qty);
+          }
+          recordIds.push(disposalRecord.id);
         }
         return {
-          result: { id: 0 },
+          result: { id: recordIds[0]!, recordIds },
           actionType: 'CREATE' as const,
           summary: `直接处置了已注销员工借还（${dto.disposalType}，${dto.items.length} 行）`,
         };
@@ -248,54 +246,72 @@ export class DisposalService {
     const access = await assertFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPROVAL_FUNCTION_CODE);
     const scope = await this.approverScope(userId, access);
     const closure = await this.closures.closureOfUser(userId);
-    // 关联借还记录取记录类型与借出时部门快照（处置记录创建时已保留快照；旧数据回退借还记录）
-    const rows = await this.prisma.client.$queryRaw<DisposalRecordRow[]>`
-      SELECT
-        dr.id, dr.disposal_type AS "disposalType", dr.borrow_record_id AS "borrowRecordId",
-        dr.agent_request_id AS "agentRequestId", dr.user_id AS "userId", dr.user_name AS "userName",
-        dr.inventory_item_id AS "inventoryItemId", dr.consumable_name AS "consumableName", dr.spec,
-        dr.warehouse_name AS "warehouseName", dr.warehouse_path AS "warehousePath", dr.qty,
-        dr.write_off_type AS "writeOffType", dr.reason, dr.processor_id AS "processorId",
-        dr.processor_name AS "processorName", dr.created_at AS "createdAt",
-        COALESCE(dr.department_snapshot, br.department_snapshot) AS "departmentSnapshot",
-        br.record_type AS "recordType"
-      FROM asset.direct_disposal_records dr
-      LEFT JOIN asset.borrow_records br ON br.id = dr.borrow_record_id
-      ORDER BY dr.created_at DESC, dr.id DESC
-      LIMIT 1000
-    `;
-    const filtered = rows.filter((row) => {
-      if (query.recordType && row.recordType !== query.recordType) {
-        return false;
-      }
-      if (query.disposalType && row.disposalType !== query.disposalType) {
-        return false;
-      }
-      if (query.processorName && !(row.processorName ?? '').includes(query.processorName)) {
-        return false;
-      }
-      if (query.userName && !(row.userName ?? '').includes(query.userName)) {
-        return false;
-      }
-      if (query.createdAtFrom && new Date(row.createdAt).getTime() < new Date(query.createdAtFrom).getTime()) {
-        return false;
-      }
-      if (query.createdAtTo && new Date(row.createdAt).getTime() > new Date(query.createdAtTo).getTime()) {
-        return false;
-      }
-      if (scope.kind === 'COMPANY') {
-        return true;
-      }
-      // DEPARTMENT：按借出时部门快照闭包裁剪（与待处置视图一致）
-      const deptIds = extractDepartmentIdsFromSnapshot(row.departmentSnapshot as Prisma.JsonValue | null).filter(
-        (id): id is number => id !== null,
-      );
-      return deptIds.some((id) => closure.has(id));
-    });
+    // 所有筛选（含数据范围）下沉 SQL，避免固定 1000 行截断或内存分页失真。
+    const conditions: Prisma.Sql[] = [Prisma.sql`TRUE`];
+    if (query.recordType) {
+      conditions.push(Prisma.sql`br.record_type = ${query.recordType}`);
+    }
+    if (query.disposalType) {
+      conditions.push(Prisma.sql`dr.disposal_type = ${query.disposalType}`);
+    }
+    if (query.processorName) {
+      conditions.push(Prisma.sql`dr.processor_name ILIKE ${`%${query.processorName}%`}`);
+    }
+    if (query.userName) {
+      conditions.push(Prisma.sql`COALESCE(dr.user_name, ar.applicant_name, '') ILIKE ${`%${query.userName}%`}`);
+    }
+    if (query.createdAtFrom) {
+      conditions.push(Prisma.sql`dr.created_at >= ${new Date(query.createdAtFrom)}`);
+    }
+    if (query.createdAtTo) {
+      conditions.push(Prisma.sql`dr.created_at <= ${new Date(query.createdAtTo)}`);
+    }
+    if (scope.kind === 'DEPARTMENT') {
+      conditions.push(Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof(COALESCE(dr.department_snapshot, br.department_snapshot)) = 'array'
+                THEN COALESCE(dr.department_snapshot, br.department_snapshot)
+              ELSE '[]'::jsonb
+            END
+          ) el
+          WHERE el->>'id' = ANY(${[...closure] as number[]})
+        )
+      `);
+    }
+    const whereSql = Prisma.join(conditions, ' AND ');
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const start = (page - 1) * pageSize;
-    return { items: filtered.slice(start, start + pageSize), total: filtered.length };
+    const offset = (page - 1) * pageSize;
+    const [countRows, rows] = await Promise.all([
+      this.prisma.client.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*)::bigint AS total
+        FROM asset.direct_disposal_records dr
+        LEFT JOIN asset.borrow_records br ON br.id = dr.borrow_record_id
+        LEFT JOIN asset.approval_requests ar ON ar.id = dr.agent_request_id
+        WHERE ${whereSql}
+      `,
+      this.prisma.client.$queryRaw<DisposalRecordRow[]>`
+        SELECT
+          dr.id, dr.disposal_type AS "disposalType", dr.borrow_record_id AS "borrowRecordId",
+          dr.agent_request_id AS "agentRequestId", dr.user_id AS "userId", COALESCE(dr.user_name, ar.applicant_name) AS "userName",
+          dr.inventory_item_id AS "inventoryItemId", dr.consumable_name AS "consumableName", dr.spec,
+          dr.warehouse_name AS "warehouseName", dr.warehouse_path AS "warehousePath", dr.qty,
+          dr.write_off_type AS "writeOffType", dr.reason, dr.processor_id AS "processorId",
+          dr.processor_name AS "processorName", dr.created_at AS "createdAt",
+          COALESCE(dr.department_snapshot, br.department_snapshot) AS "departmentSnapshot",
+          br.record_type AS "recordType"
+        FROM asset.direct_disposal_records dr
+        LEFT JOIN asset.borrow_records br ON br.id = dr.borrow_record_id
+        LEFT JOIN asset.approval_requests ar ON ar.id = dr.agent_request_id
+        WHERE ${whereSql}
+        ORDER BY dr.created_at DESC, dr.id DESC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `,
+    ]);
+    return { items: rows, total: Number(countRows[0]?.total ?? 0) };
   }
 
   /** 解析审批人数据范围（COMPANY / DEPARTMENT 闭包） */
@@ -365,7 +381,7 @@ export class DisposalService {
     items: Array<{ borrowRecordId: number; qty: number; method: string; writeOffType?: string; reason?: string }>,
     scope: { kind: 'COMPANY' } | { kind: 'DEPARTMENT'; departmentIds: ReadonlySet<number> },
     closure: ReadonlySet<number>,
-  ): Promise<{ result: { id: number }; actionType: 'CREATE'; summary: string }> {
+  ): Promise<{ result: { id: number; recordIds: number[] }; actionType: 'CREATE'; summary: string }> {
     const source = await tx.approvalRequest.findUnique({ where: { id: agentRequestId } });
     if (!source || source.requestType !== 'AGENT_REQUEST') {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
@@ -419,28 +435,19 @@ export class DisposalService {
       throw new BusinessException(inventoryErrors.SETTLEMENT_COVERAGE_INCOMPLETE);
     }
     // 锁定全部记录（升序）并执行回库/核销
-    const recordIds = [...new Set(items.map((item) => item.borrowRecordId))].sort((a, b) => a - b);
+    const lockRecordIds = [...new Set(items.map((item) => item.borrowRecordId))].sort((a, b) => a - b);
     const locked = new Map<number, Awaited<ReturnType<BorrowService['lockBorrowRecord']>>>();
-    for (const recordId of recordIds) {
+    for (const recordId of lockRecordIds) {
       const record = await this.borrow.lockBorrowRecord(tx, recordId);
       if (!record) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
       }
       locked.set(recordId, record);
     }
-    const refs: number[] = [];
+    const recordIds: number[] = [];
     for (const item of items) {
       const record = locked.get(item.borrowRecordId)!;
-      if (item.method === 'RETURN') {
-        await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', 0, operator.id);
-      } else {
-        await this.borrow.writeOffRecord(tx, record, item.qty);
-      }
-      const flowRows = await tx.stockFlow.findMany({ where: { refType: 'DIRECT_DISPOSAL', refId: 0 }, orderBy: { id: 'desc' }, take: 1 });
-      if (flowRows[0]) {
-        refs.push(flowRows[0].id);
-      }
-      await tx.directDisposalRecord.create({
+      const disposalRecord = await tx.directDisposalRecord.create({
         data: {
           disposalType: 'AGENT_SETTLE',
           borrowRecordId: record.id,
@@ -459,13 +466,21 @@ export class DisposalService {
           processorName: operator.name,
           // 借出时部门快照（AGENT 记录 = 受领人合并快照，H2 写入；处置记录数据范围裁剪数据源）
           departmentSnapshot: record.departmentSnapshot ?? Prisma.JsonNull,
-          // 关联流水引用（可空字段省略即 DB NULL）
-          ...(refs.length > 0 ? { stockFlowRefs: { ids: refs } as Prisma.InputJsonValue } : {}),
         },
       });
+      if (item.method === 'RETURN') {
+        const flowIds = await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', disposalRecord.id, operator.id);
+        await tx.directDisposalRecord.update({
+          where: { id: disposalRecord.id },
+          data: { stockFlowRefs: { ids: flowIds } as Prisma.InputJsonValue },
+        });
+      } else {
+        await this.borrow.writeOffRecord(tx, record, item.qty);
+      }
+      recordIds.push(disposalRecord.id);
     }
     return {
-      result: { id: 0 },
+      result: { id: recordIds[0]!, recordIds },
       actionType: 'CREATE' as const,
       summary: `直接整单结清了已注销代交人的代领清单（${items.length} 行）`,
     };

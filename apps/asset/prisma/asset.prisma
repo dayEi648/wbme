@@ -494,6 +494,7 @@ model Batch {
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   corrections BatchCorrection[]
+  borrowAllocations BorrowBatchAllocation[]
 
   @@index([inventoryItemId])
   @@index([sourceBatchId])
@@ -770,11 +771,29 @@ model BorrowRecord {
 
   borrowActionItems    BorrowActionItem[]
   agentSettlementItems AgentSettlementItem[]
+  batchAllocations     BorrowBatchAllocation[]
 
   @@index([userId])
   @@index([agentRequestId])
   @@index([createdAt])
   @@map("borrow_records")
+  @@schema("asset")
+}
+
+/// A-23-1 borrow_batch_allocations 借出批次分配（归还必须回到原批次）
+model BorrowBatchAllocation {
+  id             Int          @id @default(autoincrement())
+  borrowRecord   BorrowRecord @relation(fields: [borrowRecordId], references: [id], onDelete: Cascade)
+  borrowRecordId Int          @map("borrow_record_id")
+  batch          Batch        @relation(fields: [batchId], references: [id])
+  batchId        Int          @map("batch_id")
+  issuedQty      Int          @map("issued_qty")
+  returnedQty    Int          @default(0) @map("returned_qty")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([borrowRecordId, batchId])
+  @@index([batchId])
+  @@map("borrow_batch_allocations")
   @@schema("asset")
 }
 

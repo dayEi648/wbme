@@ -124,8 +124,8 @@ export async function allocateFifoBatches(tx: Prisma.TransactionClient, itemId: 
  * @param tx 事务客户端
  * @param flow 流水内容（book_before/after 由调用方按变动前/后实际值传入）
  */
-export async function writeStockFlow(tx: Prisma.TransactionClient, flow: StockFlowInput): Promise<void> {
-  await tx.stockFlow.create({
+export async function writeStockFlow(tx: Prisma.TransactionClient, flow: StockFlowInput): Promise<number> {
+  const created = await tx.stockFlow.create({
     data: {
       flowType: flow.flowType,
       direction: flow.direction,
@@ -144,6 +144,7 @@ export async function writeStockFlow(tx: Prisma.TransactionClient, flow: StockFl
       operatorName: flow.operator.name,
     },
   });
+  return created.id;
 }
 
 /**

@@ -96,11 +96,11 @@
 
 ## 消耗品品种与库位（asset PRD §5）
 
-权限：`asset_config`（品种）/ `asset_config`（库位，均公司档）。
+权限：品种与库位配置为 `asset_config`（公司档）；申领页的只读目录查询使用 `consumable_apply`。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/consumables` | 品种列表（分类/类型/状态/关键字筛选 + 分页；含汇总可用库存与低库存标记；hasAvailableStock=true 为申领目录：仅启用且有可用库存） |
+| `GET` | `/consumables` | 品种列表（配置查询需 `asset_config`；`hasAvailableStock=true` 为申领页品种汇总，需 `consumable_apply`，仅启用且有可用库存，筛选和 total 在分页前计算） |
 | `POST` | `/consumables` | 创建品种（幂等；类型创建后不可变；一次性必填周期+上限、借还必填归还期限+同时持有上限） |
 | `PUT` | `/consumables/{id}` | 编辑品种（类型不可变；有业务事实后单位不可修改 `UNIT_LOCKED`；品类参数只影响之后新提交/新借出；停用后不可新建入库/申领，既有库存与待审批不受影响） |
 | `DELETE` | `/consumables/batch` | 批量硬删除（存在当前库存/未结清借还/待审批引用整批拒绝；删除后同名可再建） |
@@ -111,11 +111,13 @@
 
 ## 库存条目、批次与流水（asset PRD §5）
 
-权限：`inventory_manage`（公司档）。账面/占用/可用一致性由各业务事务保证（整数精度）。
+权限：库存管理为 `inventory_manage`（公司档）。账面/占用/可用一致性由各业务事务保证（整数精度）。
+员工申领目录例外：`GET /inventory/items?availableOnly=true` 使用 `consumable_apply`，仅返回启用且
+可用库存大于 0 的条目，返回的 `id` 即提交申领所需的 `inventoryItemId`。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/inventory/items` | 库存条目列表（品种/库位/规格筛选 + 分页；含可用数量与低库存标记） |
+| `GET` | `/inventory/items` | 库存条目列表（库存管理需 `inventory_manage`；`availableOnly=true` 为员工申领目录并需 `consumable_apply`；品种/库位/规格筛选 + 分页；含可用数量与低库存标记，计算条件在分页前执行） |
 | `GET` | `/inventory/batches` | 批次列表（条目/品种/库位筛选 + 分页；含剩余数量；调拨子批次带 source_batch_id 追溯） |
 | `POST` | `/inventory/batches/{id}/corrections` | 批次资料纠正（供应商/品牌/单价/备注直接纠正并记录前后值+原因；规格/库位仅当批次无后续流水且来源条目无待审批占用时可纠正，同一事务归并账面并写 CORRECTION 流水） |
 | `GET` | `/inventory/stock-flows` | 库存流水列表（品种/类型/来源/时间筛选 + 分页；只追加不可编辑） |
@@ -211,7 +213,7 @@ TRANSFER_OUT / TRANSFER_IN 成对流水，全部来源减少量之和 = 全部�
 | --- | --- | --- |
 | `GET` | `/disposals?tab=PENDING` | 待处置列表（数据范围内已注销员工未结清个人借还 + 发起人已注销且可整单结清的代领共享清单） |
 | `GET` | `/disposals?tab=RECORDS` | 处置记录（处理时间倒序；记录类型/借用人/代交人/处理方式/处理人/时间筛选） |
-| `POST` | `/disposals` | 直接处置（幂等；disposalType=RETURN/WRITE_OFF（个人借还明细）或 AGENT_SETTLE（代领整单结清明细）） |
+| `POST` | `/disposals` | 直接处置（必须携带幂等键；disposalType=RETURN/WRITE_OFF（个人借还明细）或 AGENT_SETTLE（代领整单结清明细）；返回 `{ id, recordIds }`，其中 `recordIds` 为本次创建的全部处置记录，归还流水以对应处置记录 id 追溯） |
 
 ## 二维码（asset PRD §11）
 

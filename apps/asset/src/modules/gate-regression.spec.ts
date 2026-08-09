@@ -16,6 +16,11 @@ import { BorrowService } from './borrow/borrow.service';
 import { AgentClaimService } from './claim/agent-claim.service';
 import { ClaimService } from './claim/claim.service';
 import { DictService } from './catalog/dict.service';
+import { ConsumableController } from './consumable/consumable.controller';
+import { ConsumableService } from './consumable/consumable.service';
+import { InventoryController } from './inventory/inventory.controller';
+import { InventoryService } from './inventory/inventory.service';
+import { StockFlowService } from './inventory/stock-flow.service';
 import { QrService } from './qr/qr.service';
 import { RepairService } from './repair/repair.service';
 import { StockChangeService } from './request/stock-change.service';
@@ -43,6 +48,7 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
   const [topFixedId, subFixedId, topConsumableId, subConsumableId] = [BASE + 20, BASE + 21, BASE + 22, BASE + 23];
   const [reusableId, disposableId] = [BASE + 30, BASE + 31];
   const [warehouseId, reusableItemId, disposableItemId] = [BASE + 40, BASE + 41, BASE + 42];
+  const [reusableBatchFirstId, reusableBatchSecondId] = [BASE + 43, BASE + 44];
   const [assetInUseId, assetIdleId, assetDeptBId] = [BASE + 50, BASE + 51, BASE + 52];
   const [repairDeptAId, repairDeptBId] = [BASE + 60, BASE + 61];
   const [qrItemId, qrAssetId] = [BASE + 70, BASE + 71];
@@ -51,12 +57,15 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
 
   let prisma: PrismaService;
   let approval: AssetApprovalService;
+  let borrow: BorrowService;
   let claim: ClaimService;
   let agentSettlement: AgentSettlementService;
   let stockIn: StockInService;
   let qr: QrService;
   let dict: DictService;
   let assetService: AssetService;
+  let inventoryController: InventoryController;
+  let consumableController: ConsumableController;
   let repair: RepairService;
   let previousAssetStatus: string | null = null;
 
@@ -152,11 +161,13 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
         ON CONFLICT (id) DO NOTHING
       `;
     }
-    // 批次（H2 申领出库用）
+    // 批次（H2 申领出库用；分两批以验证归还回到实际借出批次）
     await prisma.client.$executeRaw`
-      INSERT INTO asset.batches (inventory_item_id, consumable_id, consumable_name, spec, warehouse_name, warehouse_path, remaining_qty, received_at, created_at, updated_at)
-      VALUES (${reusableItemId}, ${reusableId}, '关口测试借还品', '标准', '关口测试库位', '关口测试库位', 50, NOW(), NOW(), NOW())
-      ON CONFLICT (id) DO NOTHING
+      INSERT INTO asset.batches (id, inventory_item_id, consumable_id, consumable_name, spec, warehouse_name, warehouse_path, remaining_qty, received_at, created_at, updated_at)
+      VALUES
+        (${reusableBatchFirstId}, ${reusableItemId}, ${reusableId}, '关口测试借还品', '标准', '关口测试库位', '关口测试库位', 1, NOW() - INTERVAL '2 days', NOW(), NOW()),
+        (${reusableBatchSecondId}, ${reusableItemId}, ${reusableId}, '关口测试借还品', '标准', '关口测试库位', '关口测试库位', 49, NOW() - INTERVAL '1 day', NOW(), NOW())
+      ON CONFLICT (id) DO UPDATE SET remaining_qty = EXCLUDED.remaining_qty, updated_at = NOW()
     `;
     // 资产（IN_USE / IDLE / deptB）
     await prisma.client.$executeRaw`
@@ -220,15 +231,22 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
         DictService,
         AssetService,
         RepairService,
+        InventoryService,
+        StockFlowService,
+        ConsumableService,
       ],
+      controllers: [InventoryController, ConsumableController],
     }).compile();
     approval = moduleRef.get(AssetApprovalService);
+    borrow = moduleRef.get(BorrowService);
     claim = moduleRef.get(ClaimService);
     agentSettlement = moduleRef.get(AgentSettlementService);
     stockIn = moduleRef.get(StockInService);
     qr = moduleRef.get(QrService);
     dict = moduleRef.get(DictService);
     assetService = moduleRef.get(AssetService);
+    inventoryController = moduleRef.get(InventoryController);
+    consumableController = moduleRef.get(ConsumableController);
     repair = moduleRef.get(RepairService);
   });
 
@@ -245,6 +263,10 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
       USING asset.approval_requests ar
       WHERE aa.request_id = ar.id AND ar.applicant_id = ANY(${testUserIds})
     `;
+    await prisma.client.$executeRaw`
+      DELETE FROM asset.stock_flows
+      WHERE inventory_item_id IN (${reusableItemId}, ${disposableItemId}, ${stockInItemId})
+    `;
     await prisma.client.$executeRaw`DELETE FROM asset.borrow_records WHERE id IN (${borrowAgentAId}, ${borrowAgentBId})`;
     await prisma.client.$executeRaw`
       DELETE FROM asset.approval_requests
@@ -254,7 +276,7 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     await prisma.client.$executeRaw`DELETE FROM asset.qr_codes WHERE id IN (${qrItemId}, ${qrAssetId})`;
     await prisma.client.$executeRaw`DELETE FROM asset.repair_orders WHERE id IN (${repairDeptAId}, ${repairDeptBId})`;
     await prisma.client.$executeRaw`DELETE FROM asset.assets WHERE id IN (${assetInUseId}, ${assetIdleId}, ${assetDeptBId})`;
-    await prisma.client.$executeRaw`DELETE FROM asset.batches WHERE inventory_item_id IN (${reusableItemId}, ${disposableItemId})`;
+    await prisma.client.$executeRaw`DELETE FROM asset.batches WHERE inventory_item_id IN (${reusableItemId}, ${disposableItemId}, ${stockInItemId})`;
     await prisma.client.$executeRaw`DELETE FROM asset.inventory_items WHERE id IN (${reusableItemId}, ${disposableItemId}, ${stockInItemId})`;
     await prisma.client.$executeRaw`DELETE FROM asset.warehouses WHERE id = ${warehouseId}`;
     await prisma.client.$executeRaw`DELETE FROM asset.consumables WHERE id IN (${reusableId}, ${disposableId}, ${consumableIdForStockIn})`;
@@ -280,24 +302,63 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     expect(row?.status).toBe('ACTIVE');
   });
 
-  it('H2 借出时部门快照：申领批准后 borrow_record 写入申请人部门快照', async () => {
+  it('H2 借出批次追溯：申领批准后记录部门快照，并按原批次 LIFO 归还', async () => {
     const operator = await loadAssetOperationLogOperator(prisma.client, applicantId);
     const { requestId } = await claim.submit(operator, {
       items: [{ inventoryItemId: reusableItemId, qty: 3, purpose: '关口回归测试' }],
     });
     await approval.process(requestId, 'APPROVE', adminId);
-    const rows = await prisma.client.$queryRaw<Array<{ department_snapshot: unknown }>>`
-      SELECT department_snapshot FROM asset.borrow_records
+    const rows = await prisma.client.$queryRaw<Array<{ id: number; department_snapshot: unknown }>>`
+      SELECT id, department_snapshot FROM asset.borrow_records
       WHERE request_id = ${requestId} AND record_type = 'PERSONAL' LIMIT 1
     `;
+    const recordId = rows[0]?.id;
     const snapshot = rows[0]?.department_snapshot as Array<{ id: number; name: string }> | null;
+    expect(recordId).toBeDefined();
     expect(Array.isArray(snapshot)).toBe(true);
     expect(snapshot?.some((d) => d.id === deptA)).toBe(true);
     // 出库后条目保留（H1 修复：有未结清借还的条目不被清理）
     const item = await prisma.client.inventoryItem.findUnique({ where: { id: reusableItemId } });
     expect(item).not.toBeNull();
+    const allocations = await prisma.client.borrowBatchAllocation.findMany({
+      where: { borrowRecordId: recordId },
+      orderBy: { id: 'asc' },
+    });
+    expect(allocations.map((allocation) => [allocation.batchId, allocation.issuedQty])).toEqual([
+      [reusableBatchFirstId, 1],
+      [reusableBatchSecondId, 2],
+    ]);
+    const returnFlowIds = await prisma.client.$transaction(async (tx) => {
+      const record = await borrow.lockBorrowRecord(tx, recordId!);
+      expect(record).not.toBeNull();
+      return borrow.restoreRecord(tx, record!, 2, 'TEST_RETURN', requestId, adminId);
+    });
+    const returnFlows = await prisma.client.stockFlow.findMany({ where: { id: { in: returnFlowIds } } });
+    expect(returnFlows.map((flow) => flow.batchId)).toEqual([reusableBatchSecondId]);
+    const restoredAllocations = await prisma.client.borrowBatchAllocation.findMany({
+      where: { borrowRecordId: recordId },
+      orderBy: { id: 'asc' },
+    });
+    expect(restoredAllocations.map((allocation) => allocation.returnedQty)).toEqual([0, 2]);
     // 清理借还记录（避免影响其他用例）
     await prisma.client.$executeRaw`DELETE FROM asset.borrow_records WHERE request_id = ${requestId}`;
+  });
+
+  it('新增关口：仅固定资产维护的部门档列表不会越权显示其他部门资产', async () => {
+    const list = await assetService.list(assetMaintainerId, { page: 1, pageSize: 50 });
+    const ids = list.items.map((item) => item.id);
+    expect(ids).toContain(assetInUseId);
+    expect(ids).not.toContain(assetDeptBId);
+  });
+
+  it('新增关口：申领权限可读取携带 inventoryItemId 的可用库存目录，不能读取完整库存台账', async () => {
+    const catalog = await inventoryController.listItems(applicantId, { availableOnly: true, page: 1, pageSize: 50 });
+    expect(catalog.items).toContainEqual(expect.objectContaining({ id: reusableItemId, availableQty: expect.any(Number) }));
+    await expect(inventoryController.listItems(applicantId, { page: 1, pageSize: 50 })).rejects.toMatchObject({
+      entry: { code: 'RESOURCE_NOT_FOUND' },
+    });
+    const summary = await consumableController.list(applicantId, { hasAvailableStock: true, page: 1, pageSize: 50 });
+    expect(summary.items).toContainEqual(expect.objectContaining({ id: reusableId }));
   });
 
   it('M1 代领结清夹带非本清单借还记录 → RESOURCE_NOT_FOUND', async () => {

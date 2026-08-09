@@ -44,7 +44,7 @@ export interface BorrowRecordLockRow {
  * - 归还/核销申请：可申请处理数量 = 未结清 − 待审批归还占用 − 待审批核销占用
  *   （派生值，无独立占用表；锁定借还记录后按公式计算）；批准把占用转换为已归还/
  *   已核销，驳回或取消时占用随 PENDING 终态自然消失（无数据回写）；
- * - 归还批准回库到原批次：按该申请的 ISSUE 流水段逐段恢复批次剩余与条目账面；
+ * - 归还批准回库到原借出批次：批次分配在借出时持久化，按最后借出先归还恢复批次余量；
  * - 核销批准不回库；逾期只提示不阻止；到期后仍允许归还。
  */
 @Injectable()
@@ -136,7 +136,7 @@ export class BorrowService {
 
   /**
    * 归还数量回库（供归还申请批准与代领结清/直接处置复用）：
-   * 锁定记录 → returned_qty += qty → 按该记录来源申请的 ISSUE 流水段逐段恢复批次与账面。
+   * 锁定记录 → returned_qty += qty → 按借出时持久化的批次分配逐段恢复批次与账面。
    *
    * @param tx 事务客户端
    * @param record 锁定后的借还记录
@@ -144,7 +144,8 @@ export class BorrowService {
    * @param refType 流水业务来源（RETURN / AGENT_SETTLEMENT / DIRECT_DISPOSAL）
    * @param refId 业务来源标识
    * @param operatorId 操作人
-   * @throws STOCK_CONFLICT 数量超限/流水段不足
+   * @returns 本次写入的 RETURN 库存流水 ID，用于处置记录追溯
+   * @throws STOCK_CONFLICT 数量超限/批次分配不足或批次归属异常
    */
   async restoreRecord(
     tx: Prisma.TransactionClient,
@@ -153,60 +154,82 @@ export class BorrowService {
     refType: string,
     refId: number,
     operatorId: number,
-  ): Promise<void> {
+  ): Promise<number[]> {
     if ((await this.availableActionQty(tx, record)) < qty) {
+      throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
+    }
+
+    // 分配行与批次在同一顺序下锁定，防止同一借还记录的并发归还重复使用批次份额。
+    const allocations = await tx.$queryRaw<
+      Array<{
+        id: number;
+        batchId: number;
+        issuedQty: number;
+        returnedQty: number;
+        inventoryItemId: number;
+      }>
+    >`
+      SELECT
+        ba.id,
+        ba.batch_id AS "batchId",
+        ba.issued_qty AS "issuedQty",
+        ba.returned_qty AS "returnedQty",
+        b.inventory_item_id AS "inventoryItemId"
+      FROM asset.borrow_batch_allocations ba
+      INNER JOIN asset.batches b ON b.id = ba.batch_id
+      WHERE ba.borrow_record_id = ${record.id}
+      ORDER BY ba.id DESC
+      FOR UPDATE OF ba, b
+    `;
+
+    const allocatedQty = allocations.reduce((sum, allocation) => sum + allocation.issuedQty - allocation.returnedQty, 0);
+    if (allocatedQty < qty || allocations.length === 0 || allocations.some((allocation) => allocation.inventoryItemId !== record.inventoryItemId)) {
+      throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
+    }
+    const itemRow = await this.lockInventoryItem(tx, record.inventoryItemId);
+    if (!itemRow) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+
+    let remaining = qty;
+    let bookQty = itemRow.bookQty;
+    const returnFlowIds: number[] = [];
+    for (const allocation of allocations) {
+      if (remaining <= 0) {
+        break;
+      }
+      const availableQty = allocation.issuedQty - allocation.returnedQty;
+      if (availableQty <= 0) {
+        continue;
+      }
+      const take = Math.min(availableQty, remaining);
+      await tx.borrowBatchAllocation.update({ where: { id: allocation.id }, data: { returnedQty: { increment: take } } });
+      await tx.batch.update({ where: { id: allocation.batchId }, data: { remainingQty: { increment: take } } });
+      await tx.inventoryItem.update({ where: { id: itemRow.id }, data: { bookQty: { increment: take } } });
+      const flowId = await writeStockFlow(tx, {
+        flowType: 'RETURN',
+        direction: 'IN',
+        item: itemRow,
+        batchId: allocation.batchId,
+        qty: take,
+        bookBefore: bookQty,
+        bookAfter: bookQty + take,
+        refType,
+        refId,
+        operator: { id: operatorId, name: '审批系统' },
+      });
+      returnFlowIds.push(flowId);
+      bookQty += take;
+      remaining -= take;
+    }
+    if (remaining > 0) {
       throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
     }
     await tx.borrowRecord.update({
       where: { id: record.id },
       data: { returnedQty: { increment: qty } },
     });
-    // 回库到原批次：按该申请 ISSUE 流水段逐段恢复（最后出库先还）
-    const issuedFlows = await tx.stockFlow.findMany({
-      where: {
-        refType: { in: ['CONSUMABLE_REQUEST', 'AGENT_REQUEST'] },
-        refId: record.requestId,
-        batchId: { not: null },
-      },
-      orderBy: { id: 'desc' },
-    });
-    let remaining = qty;
-    for (const flow of issuedFlows) {
-      if (remaining <= 0) {
-        break;
-      }
-      if (flow.batchId === null || flow.direction !== 'OUT') {
-        continue;
-      }
-      const take = Math.min(Number(flow.qty), remaining);
-      // 恢复批次剩余（批次归属条目可能已被纠正移动；按批次当前归属恢复）
-      const batch = await tx.batch.findUnique({ where: { id: flow.batchId }, select: { id: true, inventoryItemId: true } });
-      if (!batch) {
-        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      await tx.batch.update({ where: { id: batch.id }, data: { remainingQty: { increment: take } } });
-      const itemRow = await this.lockInventoryItem(tx, batch.inventoryItemId);
-      if (!itemRow) {
-        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      await tx.inventoryItem.update({ where: { id: itemRow.id }, data: { bookQty: { increment: take } } });
-      await writeStockFlow(tx, {
-        flowType: 'RETURN',
-        direction: 'IN',
-        item: itemRow,
-        batchId: batch.id,
-        qty: take,
-        bookBefore: itemRow.bookQty,
-        bookAfter: itemRow.bookQty + take,
-        refType,
-        refId,
-        operator: { id: operatorId, name: '审批系统' },
-      });
-      remaining -= take;
-    }
-    if (remaining > 0) {
-      throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
-    }
+    return returnFlowIds;
   }
 
   /**

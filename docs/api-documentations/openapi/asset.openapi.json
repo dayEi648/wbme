@@ -926,7 +926,7 @@
             "type": "string"
           },
           "idempotencyKey": {
-            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "description": "本次处置意图的幂等键；网络重试时必须保持不变",
             "maxLength": 128,
             "type": "string"
           },
@@ -939,6 +939,7 @@
           }
         },
         "required": [
+          "idempotencyKey",
           "disposalType"
         ],
         "type": "object"
@@ -3875,6 +3876,15 @@
             "description": "仅显示低库存品种（可用 < 安全库存）",
             "in": "query",
             "name": "lowStockOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "申领目录：仅启用且有可用库存的条目",
+            "in": "query",
+            "name": "availableOnly",
             "required": false,
             "schema": {
               "type": "boolean"

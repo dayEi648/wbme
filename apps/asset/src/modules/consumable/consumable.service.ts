@@ -77,6 +77,9 @@ export class ConsumableService {
    * @returns items + total
    */
   async list(query: ConsumableQueryDto): Promise<{ items: ConsumableListItem[]; total: number }> {
+    if (query.hasAvailableStock) {
+      return this.listAvailableConsumables(query);
+    }
     const where: Prisma.ConsumableWhereInput = { status: query.status ?? undefined };
     if (query.categoryId) {
       where.categoryId = query.categoryId;
@@ -100,6 +103,67 @@ export class ConsumableService {
     ]);
     const items = await this.decorateWithStock(rows as unknown as ConsumableListItem[]);
     return { total, items };
+  }
+
+  /**
+   * 申领页品种汇总：在 SQL 内筛掉未启用或没有可用库存的品种，再进行分页。
+   *
+   * @param query 品种筛选条件
+   * @returns 已按申领资格筛选的品种汇总和总数
+   */
+  private async listAvailableConsumables(query: ConsumableQueryDto): Promise<{ items: ConsumableListItem[]; total: number }> {
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`c.status = 'ACTIVE'`,
+      Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM asset.inventory_items ii
+          WHERE ii.consumable_id = c.id
+            AND ii.book_qty > ii.reserved_qty
+        )
+      `,
+    ];
+    if (query.categoryId) {
+      conditions.push(Prisma.sql`c.category_id = ${query.categoryId}`);
+    }
+    if (query.type) {
+      conditions.push(Prisma.sql`c.type = ${query.type}`);
+    }
+    if (query.status) {
+      conditions.push(Prisma.sql`c.status = ${query.status}`);
+    }
+    if (query.keyword) {
+      conditions.push(Prisma.sql`c.name ILIKE ${`%${query.keyword}%`}`);
+    }
+    const whereSql = Prisma.join(conditions, ' AND ');
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    const [countRows, idRows] = await Promise.all([
+      this.prisma.client.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*)::bigint AS total
+        FROM asset.consumables c
+        WHERE ${whereSql}
+      `,
+      this.prisma.client.$queryRaw<Array<{ id: number }>>`
+        SELECT c.id
+        FROM asset.consumables c
+        WHERE ${whereSql}
+        ORDER BY c.id ASC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `,
+    ]);
+    const ids = idRows.map((row) => row.id);
+    const rows = await this.prisma.client.consumable.findMany({ where: { id: { in: ids } } });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const orderedRows = ids.flatMap((id) => {
+      const row = byId.get(id);
+      return row ? [row] : [];
+    });
+    return {
+      total: Number(countRows[0]?.total ?? 0),
+      items: await this.decorateWithStock(orderedRows as unknown as ConsumableListItem[]),
+    };
   }
 
   /**

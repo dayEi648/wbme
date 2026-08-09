@@ -6,6 +6,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
@@ -14,7 +15,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsDateString } from 'class-validator';
-import { IdempotentDto, PaginationQueryDto } from './base.dto';
+import { PaginationQueryDto } from './base.dto';
 
 /** 注销员工借还直接处置明细行（asset PRD §8：不创建申请、不进入待审批；确认成功即最终业务结果） */
 export class DirectDisposalItemDto {
@@ -80,7 +81,13 @@ export class AgentSettleDisposalItemDto {
  * 注销员工借还直接处置提交（asset PRD §8/§9：审批中心「注销员工借还处置」功能；
  * 直接归还在事务中回库+流水，直接核销不回库；必须携带幂等键语义）。
  */
-export class DirectDisposalDto extends IdempotentDto {
+export class DirectDisposalDto {
+  @ApiProperty({ description: '本次处置意图的幂等键；网络重试时必须保持不变', maxLength: 128 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  idempotencyKey!: string;
+
   @ApiProperty({ description: '处置类型', enum: ['RETURN', 'WRITE_OFF', 'AGENT_SETTLE'] })
   @IsIn(['RETURN', 'WRITE_OFF', 'AGENT_SETTLE'])
   disposalType!: 'RETURN' | 'WRITE_OFF' | 'AGENT_SETTLE';

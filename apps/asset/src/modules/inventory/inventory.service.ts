@@ -54,6 +54,11 @@ export class InventoryService {
    * @returns items + total
    */
   async listItems(query: InventoryItemQueryDto): Promise<{ items: InventoryItemListItem[]; total: number }> {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    if (query.lowStockOnly || query.availableOnly) {
+      return this.listItemsWithComputedFilters(query, page, pageSize);
+    }
     const where: Prisma.InventoryItemWhereInput = {};
     if (query.consumableId) {
       where.consumableId = query.consumableId;
@@ -64,8 +69,6 @@ export class InventoryService {
     if (query.spec) {
       where.spec = query.spec;
     }
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
       this.prisma.client.inventoryItem.count({ where }),
       this.prisma.client.inventoryItem.findMany({
@@ -92,8 +95,74 @@ export class InventoryService {
         lowStock: availableQty < row.consumable.safetyStock,
       };
     });
-    const filtered = query.lowStockOnly ? items.filter((item) => item.lowStock) : items;
-    return { total, items: filtered };
+    return { total, items };
+  }
+
+  /**
+   * 按可用库存/低库存计算字段查询条目。计算条件在 SQL 中完成，确保 total 与分页结果一致。
+   *
+   * @param query 查询条件
+   * @param page 页码
+   * @param pageSize 每页数量
+   * @returns 满足计算条件的条目和总数
+   */
+  private async listItemsWithComputedFilters(
+    query: InventoryItemQueryDto,
+    page: number,
+    pageSize: number,
+  ): Promise<{ items: InventoryItemListItem[]; total: number }> {
+    const conditions: Prisma.Sql[] = [Prisma.sql`TRUE`];
+    if (query.consumableId) {
+      conditions.push(Prisma.sql`ii.consumable_id = ${query.consumableId}`);
+    }
+    if (query.warehouseId) {
+      conditions.push(Prisma.sql`ii.warehouse_id = ${query.warehouseId}`);
+    }
+    if (query.spec) {
+      conditions.push(Prisma.sql`ii.spec = ${query.spec}`);
+    }
+    if (query.lowStockOnly) {
+      conditions.push(Prisma.sql`ii.book_qty - ii.reserved_qty < c.safety_stock`);
+    }
+    if (query.availableOnly) {
+      conditions.push(Prisma.sql`c.status = 'ACTIVE'`);
+      conditions.push(Prisma.sql`ii.book_qty > ii.reserved_qty`);
+    }
+    const whereSql = Prisma.join(conditions, ' AND ');
+    const offset = (page - 1) * pageSize;
+    const [countRows, rows] = await Promise.all([
+      this.prisma.client.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*)::bigint AS total
+        FROM asset.inventory_items ii
+        INNER JOIN asset.consumables c ON c.id = ii.consumable_id
+        WHERE ${whereSql}
+      `,
+      this.prisma.client.$queryRaw<
+        Array<InventoryItemListItem & { safetyStock: number }>
+      >`
+        SELECT
+          ii.id,
+          ii.consumable_id AS "consumableId",
+          c.name AS "consumableName",
+          ii.spec,
+          ii.warehouse_id AS "warehouseId",
+          ii.warehouse_name AS "warehouseName",
+          ii.warehouse_path AS "warehousePath",
+          ii.book_qty AS "bookQty",
+          ii.reserved_qty AS "reservedQty",
+          ii.book_qty - ii.reserved_qty AS "availableQty",
+          c.safety_stock AS "safetyStock"
+        FROM asset.inventory_items ii
+        INNER JOIN asset.consumables c ON c.id = ii.consumable_id
+        WHERE ${whereSql}
+        ORDER BY ii.id ASC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `,
+    ]);
+    return {
+      total: Number(countRows[0]?.total ?? 0),
+      items: rows.map(({ safetyStock, ...item }) => ({ ...item, lowStock: item.availableQty < safetyStock })),
+    };
   }
 
   /**

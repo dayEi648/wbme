@@ -29,10 +29,9 @@ export class DisposalController {
 
   /** 直接处置（幂等；RETURN 回库 / WRITE_OFF 核销 / AGENT_SETTLE 整单结清） */
   @Post()
-  async dispose(@CurrentUser() userId: number, @Body() dto: DirectDisposalDto): Promise<{ ok: true }> {
+  async dispose(@CurrentUser() userId: number, @Body() dto: DirectDisposalDto): Promise<{ id: number; recordIds: number[] }> {
     await assertFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPROVAL_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    await this.disposals.dispose(operator, userId, dto);
-    return { ok: true };
+    return this.disposals.dispose(operator, userId, dto);
   }
 }

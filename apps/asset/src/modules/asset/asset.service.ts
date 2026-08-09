@@ -18,7 +18,7 @@ import { RedisService, runExport } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
-import { getFunctionAccess } from '../../shared/cross-schema-auth';
+import { getFunctionAccess, widestScope } from '../../shared/cross-schema-auth';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -106,9 +106,6 @@ export class AssetService {
    */
   async list(userId: number, query: AssetQueryDto): Promise<{ items: AssetDetail[]; total: number }> {
     const where = await this.buildListWhere(userId, query);
-    if (where === null) {
-      return { items: [], total: 0 };
-    }
     return this.paginate(where, query.page ?? 1, query.pageSize ?? 20);
   }
 
@@ -123,7 +120,6 @@ export class AssetService {
   async export(userId: number, query: AssetQueryDto, res: Response): Promise<void> {
     const where = await this.buildListWhere(userId, query);
     const maxRows = await this.readExportMaxRows();
-    const exportWhere = where ?? { deletedAt: null };
     await runExport<AssetDetail>({
       userId,
       redis: this.redis.redis,
@@ -148,11 +144,11 @@ export class AssetService {
           isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
           timeout: options?.timeout,
         }),
-      fetchCount: async (tx) => (tx as PrismaService['client']).asset.count({ where: exportWhere }),
+      fetchCount: async (tx) => (tx as PrismaService['client']).asset.count({ where }),
       fetchRows: async (tx, offset, limit) => {
         const client = tx as PrismaService['client'];
         const rows = await client.asset.findMany({
-          where: exportWhere,
+          where,
           orderBy: { id: 'desc' },
           skip: offset,
           take: limit,
@@ -175,16 +171,23 @@ export class AssetService {
     });
   }
 
-  /** 列表/导出共用查询条件（查看/维护任一授权；无授权返回 null 表示空列表） */
-  private async buildListWhere(userId: number, query: AssetQueryDto): Promise<Prisma.AssetWhereInput | null> {
-    const access = await getFunctionAccess(this.prisma.client, userId, FIXED_ASSET_VIEW_FUNCTION_CODE);
-    if (!access.registered || !access.systemOpen || !access.allowed) {
-      // 维护隐含查看；两者都无 → 空列表
-      const maintain = await getFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
-      if (!maintain.registered || !maintain.systemOpen || !maintain.allowed) {
-        return null;
-      }
+  /** 列表/导出共用查询条件（查看/维护任一授权；取两项授权中最宽的数据范围） */
+  private async buildListWhere(userId: number, query: AssetQueryDto): Promise<Prisma.AssetWhereInput> {
+    const accesses = await Promise.all([
+      getFunctionAccess(this.prisma.client, userId, FIXED_ASSET_VIEW_FUNCTION_CODE),
+      getFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE),
+    ]);
+    const granted = accesses.filter((access) => access.registered && access.allowed);
+    if (granted.length === 0) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
+    const available = granted.filter((access) => access.systemOpen);
+    if (available.length === 0) {
+      throw new BusinessException(frameworkErrors.SYSTEM_NOT_OPEN, { system: granted[0]?.systemName });
+    }
+    const scope = available.some((access) => access.dataScope === null)
+      ? null
+      : widestScope(available.flatMap((access) => (access.dataScope ? [access.dataScope] : [])));
     const where: Prisma.AssetWhereInput = { deletedAt: null };
     if (query.categoryId) {
       where.categoryId = query.categoryId;
@@ -210,10 +213,12 @@ export class AssetService {
         { specModel: { contains: query.keyword, mode: 'insensitive' } },
       ];
     }
-    // DEPARTMENT 档按资产所属部门闭包裁剪
-    if (access.dataScope === 'DEPARTMENT') {
+    // 数据范围与用户筛选相交，绝不可用数据范围条件覆盖请求中的部门筛选。
+    if (scope === 'DEPARTMENT') {
       const closure = await this.closures.closureOfUser(userId);
-      where.departmentId = { in: [...closure] };
+      where.AND = [{ departmentId: { in: [...closure] } }];
+    } else if (scope === 'SELF') {
+      where.AND = [{ OR: [{ responsibleUserId: userId }, { currentUserId: userId }] }];
     }
     return where;
   }

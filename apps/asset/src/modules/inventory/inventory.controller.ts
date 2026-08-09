@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  CONSUMABLE_APPLY_FUNCTION_CODE,
   INVENTORY_MANAGE_FUNCTION_CODE,
   BatchCorrectionDto,
   BatchQueryDto,
@@ -26,10 +27,14 @@ export class InventoryController {
     private readonly stockFlows: StockFlowService,
   ) {}
 
-  /** 库存条目列表（品种/库位/规格筛选；低库存过滤） */
+  /** 库存条目列表（库存管理；availableOnly=true 时为员工申领目录） */
   @Get('items')
   async listItems(@CurrentUser() userId: number, @Query() query: InventoryItemQueryDto): Promise<{ items: unknown[]; total: number }> {
-    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
+    await assertFunctionAccess(
+      this.prisma.client,
+      userId,
+      query.availableOnly ? CONSUMABLE_APPLY_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE,
+    );
     return this.inventory.listItems(query);
   }
 
