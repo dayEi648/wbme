@@ -13,7 +13,7 @@ import { ApprovalCenterService } from './approval-center.service';
 import { ProfileChangeService } from './profile-change.service';
 
 /**
- * backstage 审批中心（主 PRD §3.2 / T5-2；本期 PROFILE_CHANGE）。
+ * backstage 审批中心（主 PRD §3.2；当前承载 PROFILE_CHANGE）。
  * 列表/详情/处理需 user_manage；取消仅需登录且操作人为申请人。
  */
 @ApiTags('审批')

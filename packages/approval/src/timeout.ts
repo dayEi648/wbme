@@ -25,7 +25,7 @@ export interface OverdueApprovalRow {
 }
 
 /**
- * 超时自动取消业务 hook（T7-8：asset 占用释放等）。
+ * 超时自动取消业务 hook（asset 占用释放等）。
  * 在取消同一事务内执行（客户端实现 transaction 时）；崩溃整体回滚、下轮扫描重试。
  */
 export interface AutoCancelHook {

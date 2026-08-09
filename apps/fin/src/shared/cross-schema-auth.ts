@@ -38,7 +38,7 @@ export function widestScope(scopes: readonly DataScope[]): DataScope | null {
 }
 
 /**
- * 从 backstage.user_accounts 只读视图加载会话用户（T6-8 整改：替代直连 base.users；
+ * 从 backstage.user_accounts 只读视图加载会话用户（替代直连 base.users；
  * 视图含全部用户（含软删，恢复兼容性需读注销用户），软删由本函数过滤）。
  *
  * @param prisma Prisma 客户端

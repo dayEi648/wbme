@@ -3,7 +3,7 @@ import { IMAGE_RETENTION_DEFAULT_HOURS } from '../retention.constants';
 import type { ProcessorContext } from './types';
 
 /**
- * 未关联业务图片清理（主 PRD §9.1 / T4-10）。
+ * 未关联业务图片清理（主 PRD §9.1）。
  *
  * 扫描 images/ 前缀下对象，删除「未被任何业务表引用」且「超过保留时长」的对象：
  * - 引用集查询资产业务表（asset.assets 主图、asset.consumables 品种图）；

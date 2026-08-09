@@ -39,7 +39,7 @@ class UpdateProfileDto extends IdempotentDto {
 }
 
 /**
- * 个人中心（base PRD §6，T2-7 / T6-6 岗位申请接通）：
+ * 个人中心（base PRD §6）：
  * P2 当前身份（部门/岗位经 hr 内部接口）、P3 资料修改（超管直改/员工审批）、
  * P4 岗位变更申请（hr 侧校验）、P5 我的岗位申请记录、P6 我的操作日志。
  */

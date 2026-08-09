@@ -77,7 +77,7 @@ export class StockChangeService {
           if (row.bookQty - row.reservedQty < item.qty) {
             throw new BusinessException(inventoryErrors.INSUFFICIENT_STOCK);
           }
-          // 变更类型必填（asset PRD §6；loadDictName 校验字典项存在，② 修复）
+          // 变更类型必填（asset PRD §6；loadDictName 校验字典项存在）
           const changeType = await this.loadDictName(tx, item.changeTypeId, 'CHANGE_TYPE');
           lines.push({
             inventoryItemId: item.inventoryItemId,

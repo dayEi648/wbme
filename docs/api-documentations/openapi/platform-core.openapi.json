@@ -108,7 +108,7 @@
             "type": "array"
           },
           "groupIds": {
-            "description": "权限组展开（T3-3）：组内失效项跳过不计入授权，展开为员工授权快照，不产生组关联",
+            "description": "权限组展开：组内失效项跳过不计入授权，展开为员工授权快照，不产生组关联",
             "items": {
               "type": "number"
             },
@@ -3002,7 +3002,7 @@
             "description": ""
           }
         },
-        "summary": "导出操作日志（xlsx 流；T4-11）",
+        "summary": "导出操作日志（xlsx 流）",
         "tags": [
           "操作日志"
         ]
@@ -3705,7 +3705,7 @@
             "description": ""
           }
         },
-        "summary": "签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10 T4-8 接线）。\nCookie 透传设置（path=/recovery；生产 Nginx 同域代理 /recovery/* → 恢复执行器）。",
+        "summary": "签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10）。\nCookie 透传设置（path=/recovery；生产 Nginx 同域代理 /recovery/* → 恢复执行器）。",
         "tags": [
           "数据备份"
         ]

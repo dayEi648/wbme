@@ -12,7 +12,7 @@ import { PositionService } from './position.service';
 import { SelfServiceController } from './self-service.controller';
 
 /**
- * 组织模块（T6-1/T6-2/T6-6）：部门树、岗位档案、用户组织编排、
+ * 组织模块：部门树、岗位档案、用户组织编排、
  * 岗位申请（提交 + 批准副作用注册到统一审批内核）。
  */
 @Module({

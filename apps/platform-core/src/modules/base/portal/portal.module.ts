@@ -11,7 +11,7 @@ import { ApprovalController } from '../approval-proxy/approval.controller';
 import { PendingBadgeClient } from './pending-badge.client';
 import { HrOrgClient } from '../me/hr-org.client';
 
-/** 门户与个人中心模块（base PRD §5/§6，T2-6/T2-7 / T5 / T6-6 岗位申请接通） */
+/** 门户与个人中心模块（base PRD §5/§6，含岗位申请） */
 @Module({
   imports: [PermissionModule, OperationLogModule, SettingsModule],
   providers: [

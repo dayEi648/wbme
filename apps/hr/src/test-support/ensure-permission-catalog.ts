@@ -2,14 +2,14 @@ import { PERMISSION_CATALOG } from '@wbme/contracts';
 import type { PrismaService } from '../prisma.service';
 
 /**
- * 集成测试前置：确保权限目录已在测试库注册（实现规划 T1-5 / T3-1）。
+ * 集成测试前置：确保权限目录已在测试库注册。
  *
  * 背景：CI 的 PostgreSQL 只执行迁移（不跑 seed、不启动应用钩子），`systems`/
  * `business_sections`/`functions` 为空；本地 dev 库则已被 seed/对账写入。
  * 依赖目录的 spec 若不自备注册，会在 CI 因 FUNCTION_NOT_REGISTERED 失败。
  *
  * 幂等：全部 ON CONFLICT DO NOTHING；只做首次注册（对账语义是 platform-core
- * T3-1 的职责，此处不覆盖已注册行）。
+ * 的职责，此处不覆盖已注册行）。
  *
  * @param prisma 集成测试使用的 PrismaService
  */

@@ -77,7 +77,7 @@ export interface RestorePreviewItem {
 }
 
 /**
- * 账号生命周期编排服务（backstage PRD §3、主 PRD §2.6/§9.4；实现规划 T3-5）。
+ * 账号生命周期编排服务（backstage PRD §3、主 PRD §2.6/§9.4）。
  *
  * 批量注销（单一本地事务三件套）：
  * ① base 注销——status=DEACTIVATED + 注销时间/操作人 + session_version 递增（全部会话下次请求即失效）
@@ -85,7 +85,7 @@ export interface RestorePreviewItem {
  * ② backstage 取消该批用户全部待审批资料修改申请（账号资料型，cancel_source=ACCOUNT_DEACTIVATED；
  *    加班/库存等业务型待审批记录不受影响，仍按原规则处理）；
  * ③ 每名用户一条"账号生命周期处理"任务（PENDING_ENQUEUE，stableTaskUuid 稳定业务键——
- *    hr 消费按业务键幂等；hr 下线不阻塞注销，恢复后继续处理，T4-2/T6-8 消费）。
+ *    hr 消费按业务键幂等；hr 下线不阻塞注销，恢复后继续处理）。
  * 任一部分失败整批回滚。
  *
  * 批量恢复（两阶段安全顺序）：预览与确认都必须实际调用 hr 受保护内部接口——hr 未就绪/超时/

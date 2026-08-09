@@ -1,5 +1,5 @@
 /**
- * 统一请求层（主 PRD §9.5/§10.5，T9-1 前置落地）。
+ * 统一请求层（主 PRD §9.5/§10.5）。
  *
  * - 平台核心使用 /api/v1；独立业务服务使用稳定网关前缀 /api/{service}/v1；
  *   credentials 携带 Cookie、自动附加 X-WBME-CSRF-Token（双提交）；

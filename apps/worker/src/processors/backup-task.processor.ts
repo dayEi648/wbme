@@ -4,7 +4,7 @@ import { runImmediateBackup, type BackupProcessorDeps, type BackupTaskType } fro
 import type { TaskProcessor } from './types';
 
 /**
- * 将备份执行器适配为统一 TaskProcessor（定时/立即/紧急备份共用；主 PRD §9.1 / T4-7）。
+ * 将备份执行器适配为统一 TaskProcessor（定时/立即/紧急备份共用；主 PRD §9.1）。
  *
  * @param task 任务行
  * @param ctx 处理器上下文（含 SQL）

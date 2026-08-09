@@ -6,7 +6,7 @@ import { StockInController } from './stock-in.controller';
 import { StockInService } from './stock-in.service';
 
 /**
- * 入库/库存变更申请模块（T7-6；asset PRD §6）。
+ * 入库/库存变更申请模块（asset PRD §6）。
  */
 @Module({
   imports: [forwardRef(() => ApprovalModule)],

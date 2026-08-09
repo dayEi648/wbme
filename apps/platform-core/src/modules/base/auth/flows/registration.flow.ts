@@ -7,7 +7,7 @@ import { AuthService, type LoginResult } from '../auth.service';
 import { FlowSessionService } from './flow-session.service';
 
 /**
- * 扫码注册完善（base PRD §2，T2-2）。
+ * 扫码注册完善（base PRD §2）。
  *
  * - 未绑定账号且未携带邀请的扫码 → 限时一次性注册会话 → 完善页
  *   （手机号取自钉钉授权结果只读展示，填写/确认姓名、性别并设置密码）；

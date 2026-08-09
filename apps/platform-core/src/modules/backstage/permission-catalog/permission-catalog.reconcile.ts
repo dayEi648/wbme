@@ -1,5 +1,5 @@
 /**
- * 权限目录启动对账核心逻辑（实现规划 T3-1、主 PRD §3.1、backstage PRD §1）。
+ * 权限目录启动对账核心逻辑（主 PRD §3.1、backstage PRD §1）。
  *
  * 以稳定功能编码把代码目录（@wbme/contracts 的 PERMISSION_CATALOG）与数据库注册表
  * （S-1 systems / S-2 business_sections / S-3 functions）幂等对账，全部变更与
@@ -19,9 +19,9 @@
  *
  * 缓存失效联动（base PRD §3）：守卫的 Redis 授权上下文快照包含
  * 「账号授权版本 users.permission_version + 权限目录版本 catalog_version +
- * 用户组织版本 + 组织树版本」，四项均一致才复用缓存。授权缓存由 T3-4 守卫实现；
+ * 用户组织版本 + 组织树版本」，四项均一致才复用缓存。授权缓存由守卫实现；
  * 本对账只需在目录语义变化时递增 catalog_version，旧授权缓存即自然失效，
- * **不需要**联动递增 users.permission_version（该版本只随 T3-2 员工授权事务递增）。
+ * **不需要**联动递增 users.permission_version（该版本只随员工授权事务递增）。
  */
 import { PERMISSION_CATALOG, type CatalogSystemDefinition } from '@wbme/contracts';
 import type { Prisma, PrismaClient } from '../../../generated/prisma/client';

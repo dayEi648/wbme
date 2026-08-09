@@ -31,7 +31,7 @@ export class DictService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
-   * 初始化内置字典项（幂等：同类型同名已存在则跳过；读路径惰性调用，② 欠账修复）。
+   * 初始化内置字典项（幂等：同类型同名已存在则跳过；读路径惰性调用）。
    */
   async ensureDefaults(): Promise<void> {
     for (const [index, name] of DEFAULT_CHANGE_TYPES.entries()) {

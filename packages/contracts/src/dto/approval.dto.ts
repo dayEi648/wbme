@@ -13,7 +13,7 @@ export type ApprovalListStatusFilter =
   | 'CANCELLED';
 
 /**
- * 审批中心列表查询（主 PRD §3.2 / T5-2）。
+ * 审批中心列表查询（主 PRD §3.2）。
  * 各部署单元同语义；requestType 取值由模块声明。
  */
 export class ApprovalListQueryDto extends PaginationQueryDto {

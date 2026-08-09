@@ -80,7 +80,7 @@ export interface SubmitTestHeaderInput {
   proxyName?: string;
 }
 
-/** 业务模块提交审批头入参（事务内调用；T7 各业务服务复用） */
+/** 业务模块提交审批头入参（事务内调用；各业务服务复用） */
 export interface CreateRequestHeadInput {
   requestType: AssetRequestType;
   applicantId: number;
@@ -93,10 +93,10 @@ export interface CreateRequestHeadInput {
 }
 
 /**
- * asset 审批头服务（主 PRD §3.2 / T5-3，T7 接入部门闭包与业务副作用）。
+ * asset 审批头服务（主 PRD §3.2；接入部门闭包与业务副作用）。
  *
  * - 六类 + 代领结清审批头创建、处理、取消、列表、导出与待办统计；
- * - T7：批准/驳回/取消业务副作用经 AssetApprovalSideEffect 编排器接线
+ * - 批准/驳回/取消业务副作用经 AssetApprovalSideEffect 编排器执行
  *   （库存入账/扣减、额度转换/释放、借还回库/核销、代领结清，与终态同一事务）；
  * - 数据范围：COMPANY 可见全部类型；DEPARTMENT 排除 STOCK_IN/STOCK_CHANGE
  *   （`isCompanyOnlyRequestType`）并按部门闭包裁剪（hr.department_closure 视图）。
@@ -112,7 +112,7 @@ export class AssetApprovalService {
   ) {}
 
   /**
-   * 业务模块提交审批头（事务内调用；创建 PENDING 审批头 + SUBMIT 动作，T7 各业务服务复用）。
+   * 业务模块提交审批头（事务内调用；创建 PENDING 审批头 + SUBMIT 动作，各业务服务复用）。
    *
    * @param tx 事务客户端（与业务明细同事务）
    * @param input 申请类型与申请人
@@ -783,7 +783,7 @@ export class AssetApprovalService {
   }
 
   /**
-   * 审批中心导出（T4-11 runExport；可见性与列表一致——DEPARTMENT 档按闭包裁剪；
+   * 审批中心导出（runExport；可见性与列表一致——DEPARTMENT 档按闭包裁剪；
    * 仅提供当前权限范围内的导出所有/导出已筛选，不提供当前页导出）。
    *
    * @param userId 当前用户

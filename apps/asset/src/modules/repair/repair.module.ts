@@ -3,7 +3,7 @@ import { RepairController } from './repair.controller';
 import { RepairService } from './repair.service';
 
 /**
- * 固定资产维修管理模块（T7-2；asset PRD §4）。
+ * 固定资产维修管理模块（asset PRD §4）。
  */
 @Module({
   controllers: [RepairController],

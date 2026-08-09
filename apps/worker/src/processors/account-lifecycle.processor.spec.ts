@@ -10,7 +10,7 @@ function taskRow(ref: unknown): BackgroundTaskRow {
   return { ref } as BackgroundTaskRow;
 }
 
-describe('processAccountLifecycle（T6-8 账号生命周期消费）', () => {
+describe('processAccountLifecycle（账号生命周期消费）', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();

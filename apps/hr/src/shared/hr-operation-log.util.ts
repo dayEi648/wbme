@@ -5,7 +5,7 @@ import { Prisma, type PrismaClient } from '../generated/prisma/client';
 import { loadSessionUser, loadUserName } from './cross-schema-auth';
 
 /**
- * hr 操作日志与幂等执行共享工具（主 PRD §3.3；T6 建立）。
+ * hr 操作日志与幂等执行共享工具（主 PRD §3.3）。
  *
  * 与 platform-core 的 operation-log.util.ts 同构：重要写操作在业务事务内写入
  * hr.operation_logs，以「操作者 + 系统(HR) + 幂等作用域 + 幂等键」部分唯一约束

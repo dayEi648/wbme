@@ -148,7 +148,7 @@ async function main(): Promise<void> {
   const root = resolve(__dirname, '../../..');
   const databaseUrl = process.env.DATABASE_URL;
 
-  // 迁移前「立即备份」钩子挂载点（主 PRD §9.9/T0-6）：仅在存在待执行迁移时、首个迁移执行前调用一次
+  // 迁移前「立即备份」钩子挂载点（主 PRD §9.9）：仅在存在待执行迁移时、首个迁移执行前调用一次
   let backupHookDone = false;
   let metaClient: Client | null = null;
 

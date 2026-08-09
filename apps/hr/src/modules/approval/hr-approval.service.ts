@@ -86,12 +86,12 @@ interface VisibleTypeEntry {
 }
 
 /**
- * hr 审批头服务（主 PRD §3.2 / T5-3，T6 接入部门闭包与业务副作用）。
+ * hr 审批头服务（主 PRD §3.2）。
  *
  * - 加班/岗位变更审批头创建、处理、取消、列表、导出与待办统计；
- * - T6：DEPARTMENT 档按部门闭包过滤（hr.department_closure 视图）；
+ * - DEPARTMENT 档按部门闭包过滤（hr.department_closure 视图）；
  *   批准业务副作用经 PositionApplicationService 注入（POSITION_CHANGE 由岗位申请服务注册，
- *   OVERTIME 无副作用）；T5 的"按公司可视/副作用 no-op"简化已移除。
+ *   OVERTIME 无副作用）。
  */
 @Injectable()
 export class HrApprovalService {
@@ -231,11 +231,11 @@ export class HrApprovalService {
       }
       assertTransitionAllowed(head.status, transition.status);
 
-      // T6：DEPARTMENT 档须覆盖批次全部申请对象（加班明细部门快照/岗位申请部门快照）；
+      // DEPARTMENT 档须覆盖批次全部申请对象（加班明细部门快照/岗位申请部门快照）；
       // 批准与驳回统一断言（主 PRD §3.2：列表、详情与处理接口执行相同的权限与范围校验）
       await this.assertScopeCovers(tx, head, access, processorId);
 
-      // T6：批准前校验申请人账号未注销（backstage PRD §3）——注销与生命周期任务消费之间的
+      // 批准前校验申请人账号未注销（backstage PRD §3）——注销与生命周期任务消费之间的
       // 窗口内，岗位审批发现目标账号已注销必须拒绝批准（APPLICANT_DEACTIVATED），不得产生
       // 组织变更；申请保持 PENDING，最终由任务写入统一的已取消终态。
       await this.assertApplicantActive(tx, head, action);
@@ -255,7 +255,7 @@ export class HrApprovalService {
       });
       throwIfTransitionLost(updated.count);
 
-      // T6：批准业务副作用（POSITION_CHANGE 组织生效；OVERTIME 无副作用）。
+      // 批准业务副作用（POSITION_CHANGE 组织生效；OVERTIME 无副作用）。
       // 副作用校验抛错 → 事务回滚 → 申请保持待审批（主 PRD §3.2 批准前重校验）。
       if (action === 'APPROVE' && this.sideEffect) {
         await this.sideEffect.apply(tx, head, processorId);
@@ -352,7 +352,7 @@ export class HrApprovalService {
   }
 
   /**
-   * 审批中心导出（hr PRD §4「支持导出」；复用 T4-11 runExport：行数上限/单用户并发/120s 超时/一致性快照）。
+   * 审批中心导出（hr PRD §4「支持导出」；复用 runExport：行数上限/单用户并发/120s 超时/一致性快照）。
    * 可见性与数据范围与列表完全一致（resolveVisibleTypes + buildWhere）。
    *
    * @param userId 导出人
@@ -532,8 +532,7 @@ export class HrApprovalService {
   /**
    * 解析用户可见的申请类型集合（携带数据范围档位）。
    *
-   * 超管/公司档全量可见；DEPARTMENT 档按部门闭包过滤（T6 接入，
-   * 替代 T5 的"DEPARTMENT 按公司可视"简化）。
+   * 超管/公司档全量可见；DEPARTMENT 档按部门闭包过滤。
    *
    * @param userId 用户
    * @param isSuperAdminHint 可选超管提示
@@ -622,7 +621,7 @@ export class HrApprovalService {
   }
 
   /**
-   * 断言当前审批人 DEPARTMENT 档范围覆盖批次全部申请对象（T6 部门闭包）。
+   * 断言当前审批人 DEPARTMENT 档范围覆盖批次全部申请对象（部门闭包）。
    * 对象部门 = 加班明细部门快照（多部门员工全部部门）/ 岗位申请申请人部门快照；
    * 无部门（空快照）仅公司范围可覆盖。范围未覆盖抛 SCOPE_NOT_COVERED。
    *
@@ -742,7 +741,7 @@ export class HrApprovalService {
         { processorName: { contains: query.keyword } },
       ];
     }
-    // T6：DEPARTMENT 档加班记录按闭包裁剪（快照部门全部 ∈ 审批人闭包）
+    // DEPARTMENT 档加班记录按闭包裁剪（快照部门全部 ∈ 审批人闭包）
     const departmentScopedOvertime = visibleTypes.some(
       (entry) => entry.requestType === 'OVERTIME' && entry.dataScope === 'DEPARTMENT',
     );

@@ -7,7 +7,7 @@ interface PendingCountBody {
 }
 
 /**
- * 门户待办角标聚合客户端（base PRD §5 / T5-2）。
+ * 门户待办角标聚合客户端（base PRD §5）。
  * 经内部 REST 拉取 hr/asset 可见待办数；依赖不可用时该系统贡献 0（不阻断门户）。
  */
 @Injectable()

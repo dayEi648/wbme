@@ -19,7 +19,7 @@ const PUBLIC_PROBE_PATHS = new Set(['/healthz', '/readyz']);
  *
  * 恢复执行器在数据库外持久化目录写入维护标记；标记存在时全部写请求
  * 返回 503 SYSTEM_MAINTENANCE，读请求与健康探针放行。
- * 生产环境由 Nginx 同标记只读挂载先行拦截（T10-1），本拦截为应用层兜底。
+ * 生产环境由 Nginx 同标记只读挂载先行拦截，本拦截为应用层兜底。
  */
 @Injectable()
 export class MaintenanceInterceptor implements NestInterceptor {

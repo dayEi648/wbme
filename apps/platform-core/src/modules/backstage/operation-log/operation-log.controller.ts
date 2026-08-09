@@ -71,7 +71,7 @@ export class OperationLogController {
     });
   }
 
-  /** 导出操作日志（xlsx 流；T4-11） */
+  /** 导出操作日志（xlsx 流） */
   @Post('export')
   async export(
     @CurrentUser() userId: number,

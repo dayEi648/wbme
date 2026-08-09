@@ -1,4 +1,4 @@
-# hr 服务 API 文档（阶段6）
+# hr 服务 API 文档
 
 > 统一前缀 `/api/v1`（内部接口 `/internal/v1`）；错误结构、幂等键、分页遵循主 PRD §9.5。
 > 权限：所有业务路由经全局会话守卫；功能授权在服务内断言（未注册/未授权 → 404 不泄露存在性，
@@ -57,7 +57,7 @@
 | `POST` | `/departments` | 创建部门（幂等；停用部门不能作为新建下级目标；`org_tree_version++`） |
 | `PUT` | `/departments/{id}` | 更新部门（名称/排序/启停） |
 | `PUT` | `/departments/{id}/move` | 移动部门节点（环校验 `ORGANIZATION_CYCLE`；页面展示受影响子树并二次确认） |
-| `GET` | `/departments/delete-preview?ids=` | 删除前引用确认（在职员工数/资产数[阶段7接入，当前0占位]/待审批申请数/职称规则引用数） |
+| `GET` | `/departments/delete-preview?ids=` | 删除前引用确认（在职员工数/待审批申请数/职称规则引用数；固定资产归属数当前不统计） |
 | `DELETE` | `/departments/delete` | 批量硬删除（有未删除下级整批不变更；同一事务清理员工/负责人/岗位适用引用；`org_tree_version++`） |
 
 ## 岗位管理（hr PRD §7）
@@ -131,7 +131,7 @@ DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批
 
 设置键：`overtime.advance.days`（提前申请窗口，默认 30）、`overtime.backfill.days`（补交窗口，默认 7）。
 
-## 表格偏好（主 PRD §10.2 / T4-12）
+## 表格偏好（主 PRD §10.2）
 
 仅需登录，无功能权限；账号维度读写（H-18，契约同 B-5）。
 
@@ -171,7 +171,7 @@ DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批
 全部保留部门时岗位置空（assigned_by 保留原值）；注销时 hr 停机导致生命周期任务未消费的场景由
 restore-apply 事务内兜底取消覆盖，之后到达的生命周期任务仅幂等确认。
 
-### 审批中心待办统计（T5-3，调用方 platform-core）
+### 审批中心待办统计（调用方 platform-core）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

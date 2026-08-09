@@ -9,7 +9,7 @@ import type { ErrorLogWriter } from '@wbme/server';
 import { PrismaService } from '../../../prisma.service';
 
 /**
- * 集中错误日志写入器（T4-3）：供 GlobalExceptionFilter fire-and-forget 调用。
+ * 集中错误日志写入器：供 GlobalExceptionFilter fire-and-forget 调用。
  */
 @Injectable()
 export class PlatformErrorLogWriter implements ErrorLogWriter {

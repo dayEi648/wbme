@@ -2,7 +2,7 @@ import { reconcilePermissionCatalog } from '../modules/backstage/permission-cata
 import type { PrismaService } from '../prisma.service';
 
 /**
- * 集成测试前置：确保权限目录已在测试库注册（实现规划 T3-1）。
+ * 集成测试前置：确保权限目录已在测试库注册。
  *
  * 背景：CI 的 PostgreSQL 只执行迁移（不跑 seed、不启动应用钩子），`systems`/
  * `business_sections`/`functions` 为空；本地 dev 库则已被 seed/对账写入。

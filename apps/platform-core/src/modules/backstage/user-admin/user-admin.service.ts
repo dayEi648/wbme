@@ -19,13 +19,13 @@ import {
 import type { CreateUserDto, ListUsersDto, UpdateUserDto } from './user-admin.dto';
 
 /**
- * 用户管理服务（backstage PRD §3；实现规划 T3-5）。
+ * 用户管理服务（backstage PRD §3）。
  *
  * - 操作人资格（持有"用户管理"功能或超管）由 FunctionPermissionGuard 在控制器层保证；
  *   超管目标保护（仅超管可管理超管账号）由本服务强制；
  * - 创建只产生待激活基础账号（无密码、未绑定钉钉；激活时以钉钉返回为准，base PRD §2）；
  *   手机号在待激活与正常账号间唯一（base B-1 部分唯一索引兜底，并发占用 P2002 → PHONE_TAKEN）；
- * - 编辑仅姓名与性别；手机号只读（本期不提供任何修改入口，backstage PRD §3）；
+ * - 编辑仅姓名与性别；手机号只读（不提供任何修改入口，backstage PRD §3）；
  * - 激活邀请/管理员发起密码重置/解锁复用 base 既有能力（admin-auth.controller 路由）；
  * - 写操作按主 PRD §3.3 写入 backstage 操作日志（feature=user_manage），支持幂等键。
  */

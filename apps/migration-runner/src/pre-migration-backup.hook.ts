@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 
 /**
- * 迁移前「立即备份」钩子（主 PRD §9.9、实现规划 T0-6 / T4-7）。
+ * 迁移前「立即备份」钩子（主 PRD §9.9）。
  *
  * 优先级：
- * 1. `PRE_MIGRATION_BACKUP_WAIT=1`：调用 platform-core 内部立即备份并轮询成功（T4-7）；
- * 2. `PRE_MIGRATION_BACKUP_CMD`：执行部署注入的 shell 命令（遗留通道）；
+ * 1. `PRE_MIGRATION_BACKUP_WAIT=1`：调用 platform-core 内部立即备份并轮询成功；
+ * 2. `PRE_MIGRATION_BACKUP_CMD`：执行部署注入的 shell 命令；
  * 3. 均未配置：跳过（开发默认）。
  */
 

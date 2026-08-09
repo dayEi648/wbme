@@ -5,7 +5,7 @@ import { Prisma, type PrismaClient } from '../generated/prisma/client';
 import { loadSessionUser, loadUserName } from './cross-schema-auth';
 
 /**
- * fin 操作日志与幂等执行共享工具（主 PRD §3.3；T8 建立）。
+ * fin 操作日志与幂等执行共享工具（主 PRD §3.3）。
  *
  * 与 platform-core / asset / hr 的操作日志工具同构：重要写操作在业务事务内写入
  * fin.operation_logs，以「操作者 + 系统(FIN) + 幂等作用域 + 幂等键」部分唯一约束

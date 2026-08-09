@@ -75,7 +75,7 @@ export class BatchGrantDto extends IdempotentDto {
   @Type(() => GrantItemDto)
   grants!: GrantItemDto[];
 
-  /** 权限组展开（T3-3）：组内失效项跳过不计入授权，展开为员工授权快照，不产生组关联 */
+  /** 权限组展开：组内失效项跳过不计入授权，展开为员工授权快照，不产生组关联 */
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(BATCH_LIMIT)

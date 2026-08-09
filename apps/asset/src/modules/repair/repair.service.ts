@@ -311,7 +311,7 @@ export class RepairService {
   async list(userId: number, query: RepairOrderQueryDto): Promise<{ items: unknown[]; total: number }> {
     const access = await this.requireMaintainAccess(userId);
     const where: Prisma.RepairOrderWhereInput = {};
-    // DEPARTMENT 档：按资产所属部门闭包裁剪（M8 修复：与台账列表一致，防闭包外维修单泄露）
+    // DEPARTMENT 档：按资产所属部门闭包裁剪（与台账列表一致，防闭包外维修单泄露）
     if (access.dataScope !== null && access.dataScope !== 'COMPANY') {
       const closure = await this.closures.closureOfUser(userId);
       where.asset = { departmentId: { in: [...closure] } };
@@ -376,7 +376,7 @@ export class RepairService {
     if (!order) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
-    // DEPARTMENT 档：资产部门须在授权闭包内（M8 修复：与列表裁剪一致）
+    // DEPARTMENT 档：资产部门须在授权闭包内（与列表裁剪一致）
     if (access.dataScope !== null && access.dataScope !== 'COMPANY') {
       const closure = await this.closures.closureOfUser(userId);
       if (order.asset.departmentId === null || !closure.has(order.asset.departmentId)) {

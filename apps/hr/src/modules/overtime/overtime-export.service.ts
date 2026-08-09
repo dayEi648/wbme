@@ -25,7 +25,7 @@ export interface OvertimeExportRow {
 }
 
 /**
- * 加班管理视图导出（T6-5，复用 T4-11 runExport）：
+ * 加班管理视图导出（复用 runExport）：
  * Redis 互斥 + REPEATABLE READ 一致性快照 + 120s 超时；
  * 行数上限 = 平台设置 export.max.rows（经 backstage.platform_settings 视图读取）。
  * 范围过滤（DEPARTMENT 闭包 / COMPANY）由调用方传入员工 id 集合。

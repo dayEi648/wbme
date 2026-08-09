@@ -31,13 +31,13 @@ import { getRequestContext } from './request-context';
  * 不得串联多个可能捕获同一异常的过滤器；响应不包含堆栈、SQL、文件路径或密钥。
  */
 
-/** 依赖异常识别接口：Redis/OSS/数据库连接或下游服务不可用/超时（T0-5 起按各依赖细化） */
+/** 依赖异常识别接口：Redis/OSS/数据库连接或下游服务不可用/超时（按各依赖细化） */
 export interface DependencyExceptionDetector {
   /** 判断异常是否属于依赖（不可用或超时） */
   isDependencyException(exception: unknown): boolean;
 }
 
-/** 集中错误日志写入回调（T4-3：fire-and-forget，不阻塞响应） */
+/** 集中错误日志写入回调（fire-and-forget，不阻塞响应） */
 export interface ErrorLogWriter {
   /**
    * 异步写入或聚合系统/依赖未知异常。
@@ -54,7 +54,7 @@ export interface ErrorLogWriter {
   }): void;
 }
 
-/** 常见依赖错误信号（挂载点默认实现，后续阶段可按具体客户端补充） */
+/** 常见依赖错误信号（挂载点默认实现，可按具体客户端补充） */
 const DEPENDENCY_ERROR_CODES = new Set([
   'ECONNREFUSED',
   'ECONNRESET',
@@ -125,7 +125,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 
   /**
-   * 系统/依赖未知异常 fire-and-forget 写入集中错误日志（T4-3）。
+   * 系统/依赖未知异常 fire-and-forget 写入集中错误日志。
    * 不阻塞 HTTP 响应。source 取规范化路由模板（backstage PRD §8）。
    */
   private maybeWriteErrorLog(
@@ -214,7 +214,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return this.mapHttpException(exception);
     }
 
-    // 9. 未知异常：SYSTEM 500 通用安全文案（T4-3 起在此追加集中系统日志）
+    // 9. 未知异常：SYSTEM 500 通用安全文案（集中系统日志在此追加）
     return { entry: frameworkErrors.INTERNAL_ERROR };
   }
 

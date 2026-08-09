@@ -13,14 +13,14 @@ import {
 } from '../permission/operation-log.util';
 
 /**
- * 系统与业务结构管理（backstage PRD §6、主 PRD §3.1；实现规划 T3-7）。
+ * 系统与业务结构管理（backstage PRD §6、主 PRD §3.1）。
  *
- * - 目录结构（系统/板块/功能的归属、排序、启停以外的定义）由代码目录权威定义（T3-1 启动对账），
+ * - 目录结构（系统/板块/功能的归属、排序、启停以外的定义）由代码目录权威定义（启动对账），
  *   本服务只开放：asset/hr/fin 的 product_status 调整、板块/功能的业务说明 description 维护；
  * - backstage 恒开放不可调；BASE 不进入目录（查询/调整返回 404）；
  * - 状态与说明调整不递增 catalog_version（对账语义：product_status 由管理员维护、description
- *   对账不覆盖；目录语义变化才递增，T3-1）；状态变更即时生效——门户入口与函数权限守卫均实时
- *   读取 product_status（T3-4：非 OPEN 系统 SYSTEM_NOT_OPEN）；重新开放不改变任何授权；
+ *   对账不覆盖；目录语义变化才递增）；状态变更即时生效——门户入口与函数权限守卫均实时
+ *   读取 product_status（非 OPEN 系统 SYSTEM_NOT_OPEN）；重新开放不改变任何授权；
  * - 变更写操作日志（feature=system_structure_manage，含变更前后值），支持幂等键。
  */
 

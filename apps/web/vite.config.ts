@@ -27,7 +27,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/fin\/v1/, '/api/v1'),
       },
-      // 平台核心公开 API（生产由 Nginx 承担，见 T10-1）。
+      // 平台核心公开 API（生产由 Nginx 承担）。
       '/api/v1': {
         target: process.env.PLATFORM_CORE_URL ?? 'http://localhost:3001',
         changeOrigin: true,

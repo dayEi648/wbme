@@ -7,7 +7,7 @@ import { InternalReleaseLogController } from './internal-release-log.controller'
 import { ReleaseLogController } from './release-log.controller';
 import { ReleaseLogService } from './release-log.service';
 
-/** 内容管理：更新日志 + 系统公告（T4-6） */
+/** 内容管理：更新日志 + 系统公告 */
 @Module({
   imports: [
     PermissionModule,

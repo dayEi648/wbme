@@ -67,7 +67,7 @@ export class AgentSettlementService {
         `;
         const openIds = new Set(openRecords.map((row) => row.id));
         if (openRecords.length === 0 || dto.items.some((item) => !openIds.has(item.borrowRecordId))) {
-          // 夹带非本清单的借还记录：整单拒绝且不泄露外部记录存在性（M1 修复）
+          // 夹带非本清单的借还记录：整单拒绝且不泄露外部记录存在性
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
         const claimedByRecord = new Map<number, number>();

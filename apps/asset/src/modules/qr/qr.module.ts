@@ -4,7 +4,7 @@ import { QrController } from './qr.controller';
 import { QrService } from './qr.service';
 
 /**
- * 二维码模块（T7-10；asset PRD §11）。
+ * 二维码模块（asset PRD §11）。
  */
 @Module({
   controllers: [QrController],

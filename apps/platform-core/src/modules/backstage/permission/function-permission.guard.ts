@@ -21,7 +21,7 @@ export function RequireFunction(functionCode: string): MethodDecorator & ClassDe
 }
 
 /**
- * 函数权限守卫（主 PRD §9.6 授权守卫链、§3.1；实现规划 T3-4）。
+ * 函数权限守卫（主 PRD §9.6 授权守卫链、§3.1）。
  *
  * 配合 `@UseGuards(FunctionPermissionGuard)` + `@RequireFunction(code)` 使用，
  * 在全局 SessionGuard 之后执行，依次校验：

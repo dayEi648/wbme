@@ -1101,7 +1101,7 @@
             "description": ""
           }
         },
-        "summary": "处理审批（APPROVE / REJECT；业务副作用 T5 no-op）。",
+        "summary": "处理审批（APPROVE / REJECT；业务副作用随状态迁移同事务执行）。",
         "tags": [
           "Approval"
         ]

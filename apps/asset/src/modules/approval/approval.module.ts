@@ -9,7 +9,7 @@ import { AssetApprovalSideEffect } from './asset-approval-side-effect';
 import { InternalApprovalController } from './internal-approval.controller';
 
 /**
- * asset 审批模块（T5-3 审批头；T7 接入业务副作用与部门闭包）。
+ * asset 审批模块（审批头；接入业务副作用与部门闭包）。
  *
  * 副作用编排器注入各域服务（Request/Claim/Borrow 模块 forwardRef 互引打破构造循环，
  * 与 hr 的 ApprovalModule/OrgModule 互引模式一致）。

@@ -15,10 +15,10 @@ try {
 const DATABASE_URL = process.env.DATABASE_URL;
 
 /**
- * 审批超时扫描集成测试（主 PRD §3.2 / T5-1）：
+ * 审批超时扫描集成测试（主 PRD §3.2）：
  * 构造一条过期 PENDING 资料修改审批头，扫描后应变为 CANCELLED + OVERDUE。
  */
-describe.skipIf(!DATABASE_URL)('processApprovalTimeoutScan（T5-1）', () => {
+describe.skipIf(!DATABASE_URL)('processApprovalTimeoutScan', () => {
   let client: Client;
   let sql: SqlClient;
   let createdRequestId: number | null = null;

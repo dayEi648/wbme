@@ -7,7 +7,7 @@ import { PermissionGroupService } from './permission-group.service';
 import { BatchDeleteGroupsDto, CreatePermissionGroupDto, UpdatePermissionGroupDto } from './permission-group.dto';
 
 /**
- * 权限组维护（backstage PRD §4、主 PRD §3.1；实现规划 T3-3）。
+ * 权限组维护（backstage PRD §4、主 PRD §3.1）。
  *
  * 权限组是命名的授权预设（可跨系统）：授予员工时展开为员工功能授权快照，
  * 之后修改/删除组不影响已授权员工。全部路由要求持有"权限管理"功能授权或超级管理员。

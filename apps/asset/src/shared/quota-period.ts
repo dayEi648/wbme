@@ -2,7 +2,7 @@ import { Prisma } from '../generated/prisma/client';
 import type { QuotaCycle } from '../generated/prisma/enums';
 
 /**
- * 申领额度周期工具（asset PRD §5/§12；T7 建立）。
+ * 申领额度周期工具（asset PRD §5/§12）。
  *
  * - 周期边界按北京时间（UTC+8，主 PRD §9.10）计算；
  * - 月/季/年上限分别在每个自然月 / 季度首月 / 每年 1 月的「申领上限重置日」重置；

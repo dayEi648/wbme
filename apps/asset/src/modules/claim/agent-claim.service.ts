@@ -349,7 +349,7 @@ export class AgentClaimService {
     let allowedIds = new Set<number>();
     if (access.dataScope === 'DEPARTMENT') {
       const closure = await this.closures.closureOfUser(operator.id);
-      // 在职过滤（③ 修复：与 COMPANY 档一致——PRD §7「在职受领人」；
+      // 在职过滤（与 COMPANY 档一致——PRD §7「在职受领人」；
       // 注销不删除 user_departments，须显式 JOIN 账号状态）
       const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number }>>`
         SELECT DISTINCT uo.user_id

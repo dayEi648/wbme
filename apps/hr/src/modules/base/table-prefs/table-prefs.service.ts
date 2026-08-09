@@ -4,7 +4,7 @@ import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 
 /**
- * 用户表格偏好服务（T4-12 补全；H-18 同构于 B-5，账号维度读写，不写操作日志）。
+ * 用户表格偏好服务（H-18 同构于 B-5，账号维度读写，不写操作日志）。
  */
 @Injectable()
 export class TablePrefsService {

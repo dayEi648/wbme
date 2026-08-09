@@ -10,7 +10,7 @@ const SETTING_KEY_APPROVAL_TIMEOUT_DAYS = 'approval.timeout.cancel.days';
 const DEFAULT_APPROVAL_TIMEOUT_DAYS = 30;
 
 /**
- * 待审批超时自动取消扫描（主 PRD §3.2 / T5-1，T7-8 接入 asset 占用释放）。
+ * 待审批超时自动取消扫描（主 PRD §3.2，含 asset 占用释放）。
  *
  * 读取系统设置 `approval.timeout.cancel.days`，扫描 backstage/hr/asset 三 schema
  * 中已超时的 PENDING 审批头，条件更新为 CANCELLED（cancel_source=OVERDUE）并写入

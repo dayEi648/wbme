@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { loadEnvFile } from 'node:process';
 
 /**
- * E2E 测试配置（主 PRD 前端 + 核心业务链路；T10-4）。
+ * E2E 测试配置（主 PRD 前端 + 核心业务链路）。
  *
  * - 前置：后端四服务已在本地运行（`pnpm dev`）或由 webServer 自动启动；
  *   测试库已执行迁移且 `node scripts/e2e-seed.mjs` 已创建 ACTIVE 测试用户

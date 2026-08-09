@@ -6,7 +6,7 @@ const SHUTDOWN_GRACE_MS = 15_000;
 
 /**
  * Worker 部署单元入口。
- * 不监听业务 HTTP 端口，承载 Outbox 调度与 BullMQ 消费者（主 PRD §9.1，T4-2）。
+ * 不监听业务 HTTP 端口，承载 Outbox 调度与 BullMQ 消费者（主 PRD §9.1）。
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(WorkerModule, {

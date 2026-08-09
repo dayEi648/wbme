@@ -9,7 +9,7 @@ import { CurrentUser } from '@wbme/server';
 import { AssetApprovalService } from './asset-approval.service';
 
 /**
- * asset 审批中心（主 PRD §3.2 / T5-3：六类 + 代领结清）。
+ * asset 审批中心（主 PRD §3.2：六类 + 代领结清）。
  * 会话守卫全局生效；功能授权与公司专属类型过滤在服务内完成。
  */
 @Controller('approval-requests')
@@ -58,7 +58,7 @@ export class ApprovalController {
   }
 
   /**
-   * 审批中心导出（T4-11 runExport；可见性与列表一致——DEPARTMENT 档按闭包裁剪）。
+   * 审批中心导出（runExport；可见性与列表一致——DEPARTMENT 档按闭包裁剪）。
    *
    * @param userId 当前用户
    * @param query 筛选
@@ -70,7 +70,7 @@ export class ApprovalController {
   }
 
   /**
-   * 处理审批（APPROVE / REJECT；业务副作用 T5 no-op）。
+   * 处理审批（APPROVE / REJECT；业务副作用随状态迁移同事务执行）。
    *
    * @param requestId 审批头 id
    * @param processorId 处理人

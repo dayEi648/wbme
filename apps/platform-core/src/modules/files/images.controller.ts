@@ -6,7 +6,7 @@ import { DownloadImageQuery, FinalizeImageDto, PresignImageDto } from './images.
 import { ImagesService } from './images.service';
 
 /**
- * 平台级图片上传与下载 API（主 PRD §9.2 / T4-10）。
+ * 平台级图片上传与下载 API（主 PRD §9.2）。
  * 仅需登录；业务关联时的功能权限由引用图片的业务保存接口校验。
  */
 @ApiTags('文件存储')

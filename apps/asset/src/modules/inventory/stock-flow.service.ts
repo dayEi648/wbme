@@ -12,7 +12,7 @@ type StockFlowExportRow = Prisma.StockFlowGetPayload<object>;
 /**
  * 库存流水服务（asset PRD §5/§6；A-13 只追加）。
  *
- * 流水按品种/类型/来源/时间查询并导出（T4-11 runExport 复用）；
+ * 流水按品种/类型/来源/时间查询并导出（runExport 复用）；
  * 流水记录不可编辑、不可删除，只追加。
  */
 @Injectable()

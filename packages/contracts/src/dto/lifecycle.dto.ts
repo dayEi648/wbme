@@ -14,7 +14,7 @@ import {
 import { BATCH_LIMIT } from './base.dto';
 
 /**
- * hr 生命周期内部接口 DTO（backstage PRD §3 / hr PRD §5，T6-8）。
+ * hr 生命周期内部接口 DTO（backstage PRD §3 / hr PRD §5）。
  * 调用方：platform-core（restore-preview / restore-apply）、worker（cancel-position-applications）。
  */
 

@@ -18,7 +18,7 @@ import { ActivationController } from './activation.controller';
 import { RegistrationController } from './registration.controller';
 import { PasswordController } from './password.controller';
 
-/** base 认证模块（登录/登出/当前身份/激活/注册/邀请/改密/重置/解锁，T2-2~T2-5） */
+/** base 认证模块（登录/登出/当前身份/激活/注册/邀请/改密/重置/解锁） */
 @Module({
   imports: [SettingsModule, SecurityLogModule, LoginProtectionModule, PermissionModule],
   providers: [

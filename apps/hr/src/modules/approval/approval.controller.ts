@@ -11,7 +11,7 @@ import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { HrApprovalService } from './hr-approval.service';
 
 /**
- * hr 审批中心（主 PRD §3.2 / T5-3：OVERTIME / POSITION_CHANGE）。
+ * hr 审批中心（主 PRD §3.2：OVERTIME / POSITION_CHANGE）。
  * 会话守卫全局生效；功能授权与数据范围在服务内按授予类型过滤（无 Nest 功能守卫）。
  */
 @Controller('approval-requests')
@@ -85,7 +85,7 @@ export class ApprovalController {
   }
 
   /**
-   * 处理审批（APPROVE / REJECT；业务副作用 T5 no-op）。
+   * 处理审批（APPROVE / REJECT；业务副作用随状态迁移同事务执行）。
    *
    * @param requestId 审批头 id
    * @param processorId 处理人

@@ -3,7 +3,7 @@ import type { BackgroundTaskRow } from '@wbme/tasks';
 import type { ProcessorContext } from './types';
 
 /**
- * 账号生命周期处理器（T6-8）：注销任务消费——调用 hr 内部接口
+ * 账号生命周期处理器：注销任务消费——调用 hr 内部接口
  * 幂等取消"注销前已提交且仍待审批"的岗位申请（cancelSource=ACCOUNT_DEACTIVATED）。
  *
  * - hr 暂时下线不阻塞整批注销（任务留存，恢复服务后继续处理）；

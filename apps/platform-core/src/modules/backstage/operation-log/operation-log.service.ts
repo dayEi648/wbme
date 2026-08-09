@@ -56,7 +56,7 @@ interface CountRow {
 }
 
 /**
- * 操作日志查询服务（主 PRD §3.3；T4-1）。
+ * 操作日志查询服务（主 PRD §3.3）。
  *
  * 经 backstage.operation_logs_union 只读视图统一查询各模块日志。
  */
@@ -129,7 +129,7 @@ export class OperationLogService {
   }
 
   /**
-   * 导出操作日志为 xlsx 流（T4-11；REPEATABLE READ 快照 + Redis 互斥）。
+   * 导出操作日志为 xlsx 流（REPEATABLE READ 快照 + Redis 互斥）。
    *
    * @param userId 导出人
    * @param query 与列表相同的过滤条件
@@ -238,7 +238,7 @@ export class OperationLogService {
   }
 
   /**
-   * 数据范围行级过滤（主 PRD §3.1，T6-6 接入）：
+   * 数据范围行级过滤（主 PRD §3.1）：
    * DEPARTMENT 档按当前用户部门闭包（hr.department_closure 视图，含下级、多部门并集）
    * 与日志 operator_departments JSON 数组求交集——日志中任一部门 ∈ 闭包即可见。
    * 经只读视图读取（hr 容器停止不使既有数据范围读取失效，主 PRD §9.4）。

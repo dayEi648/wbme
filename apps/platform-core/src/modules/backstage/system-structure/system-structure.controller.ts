@@ -30,7 +30,7 @@ class UpdateDescriptionDto extends IdempotentDto {
 }
 
 /**
- * 系统与业务结构管理（backstage PRD §6；实现规划 T3-7）。
+ * 系统与业务结构管理（backstage PRD §6）。
  * 全部路由要求持有"系统与业务结构管理"功能授权或超级管理员。
  */
 @ApiTags('系统与业务结构')

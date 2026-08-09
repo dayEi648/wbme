@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 /**
- * 部门闭包查询（hr PRD §5/§6、主 PRD §3.1"部门包含部门及全部下级"；T7 建立）。
+ * 部门闭包查询（hr PRD §5/§6、主 PRD §3.1"部门包含部门及全部下级"）。
  *
  * 经 hr.department_closure 只读视图（递归 CTE 含自身；ACTIVE 与 DISABLED 全部参与——
  * 停用不收缩既有数据范围，hr PRD §6）一次 SQL 取闭包。多部门员工按并集计算。

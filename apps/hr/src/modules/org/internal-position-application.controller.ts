@@ -12,7 +12,7 @@ import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { PositionApplicationService } from './position-application.service';
 
 /**
- * 岗位申请内部接口（base PRD §6 个人中心 P4/P5 承接，T6-6）：
+ * 岗位申请内部接口（base PRD §6 个人中心 P4/P5 承接）：
  * 调用方 platform-core（内部令牌 + 白名单）——个人中心代传会话用户的操作。
  * 业务校验（多部门不可申请/目标条件）在 hr 侧执行，4xx 业务码原样返回。
  */

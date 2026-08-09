@@ -17,7 +17,7 @@ export function createSqlClient(pool: Pool): SqlClient {
       const result = await pool.query(text, values as unknown[] | undefined);
       return result.rows as T[];
     },
-    // T7-8：事务化超时取消（状态迁移与占用释放同一事务；崩溃整体回滚、下轮扫描重试）
+    // 事务化超时取消（状态迁移与占用释放同一事务；崩溃整体回滚、下轮扫描重试）
     async transaction<T>(fn: (tx: SqlClient) => Promise<T>): Promise<T> {
       const conn: PoolClient = await pool.connect();
       const tx: SqlClient = {

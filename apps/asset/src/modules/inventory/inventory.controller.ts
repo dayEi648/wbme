@@ -64,7 +64,7 @@ export class InventoryController {
     return this.stockFlows.list(query);
   }
 
-  /** 库存流水导出（T4-11 runExport；导出全部筛选结果） */
+  /** 库存流水导出（runExport；导出全部筛选结果） */
   @Get('stock-flows/export')
   async exportStockFlows(
     @CurrentUser() userId: number,

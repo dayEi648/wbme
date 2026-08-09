@@ -29,7 +29,7 @@ function taskRow(taskType: string, ref: unknown): { taskType: string; taskUuid: 
   return { taskType, taskUuid: '11111111-2222-3333-4444-555555555555', initiatorId: 1, ref };
 }
 
-describe('processBackupTask（T4-7 备份任务编排）', () => {
+describe('processBackupTask（备份任务编排）', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();

@@ -33,7 +33,7 @@ import { lockUserRowsForUpdate } from '../user-lock.util';
 import type { BatchGrantDto, BatchRevokeDto, SaveEmployeeGrantsDto, SearchEmployeesDto } from './permission.dto';
 
 /**
- * 员工授权管理服务（backstage PRD §4、主 PRD §3.1/§3.3/§9.5；实现规划 T3-2/T3-3）。
+ * 员工授权管理服务（backstage PRD §4、主 PRD §3.1/§3.3/§9.5）。
  *
  * - 操作人资格（持有"权限管理"功能或超管）由 FunctionPermissionGuard 在控制器层保证；
  *   本服务负责委派规则（自我修改禁止、"权限管理"功能仅超管可授予/撤销、超管目标保护）；
@@ -43,11 +43,11 @@ import type { BatchGrantDto, BatchRevokeDto, SaveEmployeeGrantsDto, SearchEmploy
  * - 幂等（主 PRD §3.3）：重要写操作携带幂等键，以 backstage.operation_logs 的
  *   「操作者 + 系统 + 幂等作用域 + 幂等键」部分唯一约束为唯一事实（见 operation-log.util.ts）；
  * - 目录中已移除功能的授权行不生效、不参与"完整状态"替换（保留为审计数据）；
- * - 批量授权支持权限组展开（T3-3）：组内失效项（功能已移除/档位已失效）跳过不计入授权，
+ * - 批量授权支持权限组展开：组内失效项（功能已移除/档位已失效）跳过不计入授权，
  *   展开结果为员工功能授权快照，与组不产生关联（之后改组/删组不影响已授权员工）；
  * - 提权旋转（base PRD §3）：员工新获得"权限管理"功能（含组展开获得）时在授权事务提交后
  *   调用 SessionService.markElevation，其各会话下次请求由守卫透明旋转标识；
- *   站点角色提升（任命超管，T3-6）复用同一标记。普通功能授权的授予/撤销不旋转——
+ *   站点角色提升（任命超管）复用同一标记。普通功能授权的授予/撤销不旋转——
  *   防固定针对的是进入委派链/站点角色的特权等级变化，且守卫每次请求实时读取授权，
  *   撤权无需旋转即即时生效。
  */
@@ -105,7 +105,7 @@ export class GrantService {
    *
    * 范围：正常（ACTIVE）与待激活（PENDING_ACTIVATION）账号——待激活账号允许提前授权
    * （激活即生效）；已注销/已删除账号不出现在检索与授权选择器（主 PRD §2.6）。
-   * 所属部门：hr 未上线，本期恒为空数组（hr 组织视图接入后填充真实部门快照）。
+   * 所属部门：经 hr.user_org 只读视图加载部门快照；视图不可用时为空数组。
    *
    * @param query 检索词 + 分页参数
    * @returns data（员工摘要 + 有效授权摘要）与 pagination
@@ -146,7 +146,7 @@ export class GrantService {
     // 当前页员工的授权摘要（仅目录中仍注册的功能生效；超管视为拥有全部，不展开）
     const catalog = await loadCatalogMap(this.prisma.client);
     const grantsByUser = await this.loadGrantsByUser(users.map((user) => user.id));
-    // 当前页员工的部门快照（T6-6：经 hr.user_org 只读视图，主 PRD §9.4 跨 schema 边界；
+    // 当前页员工的部门快照（经 hr.user_org 只读视图，主 PRD §9.4 跨 schema 边界；
     // hr 停机/视图不可用时降级为空数组，不阻断检索）
     const departmentsByUser = await this.loadDepartments(users.map((user) => user.id));
     const data = users.map((user) => {
@@ -347,7 +347,7 @@ export class GrantService {
 
   /**
    * 批量授权（增量，backstage PRD §4、主 PRD §3.1）：为所选员工追加功能授权，不改动已有授权。
-   * 授权内容 = 逐项功能（grants）∪ 权限组展开（groupIds，T3-3）：
+   * 授权内容 = 逐项功能（grants）∪ 权限组展开（groupIds）：
    * - 组内失效项（功能已从目录移除或数据范围档位已失效）跳过且不计入授权，其余正常展开
    *   （主 PRD §3.1「该功能不再可从组内展开」）；展开为员工授权快照，不产生员工与组的关联；
    * - 逐项与组展开合并时同一功能按最宽数据范围生效；

@@ -24,7 +24,7 @@ function cookieSecure(): boolean {
 }
 
 /**
- * 扫码注册接口（base PRD §2，T2-2）：
+ * 扫码注册接口（base PRD §2）：
  * A8 注册确认（流程 Cookie；手机号取自钉钉授权结果只读展示，确认姓名/性别/密码后
  * 单事务创建账号 + 绑定钉钉 + 自动登录）。
  */

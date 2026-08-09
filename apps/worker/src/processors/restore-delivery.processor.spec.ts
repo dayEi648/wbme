@@ -10,7 +10,7 @@ function taskRow(ref: unknown): BackgroundTaskRow {
   return { ref } as BackgroundTaskRow;
 }
 
-describe('processRestoreDelivery（T4-8 恢复投递）', () => {
+describe('processRestoreDelivery（恢复投递）', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();

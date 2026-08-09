@@ -4,7 +4,7 @@ import { ApprovalCenterService } from '../approval-proxy/approval-center.service
 import { PendingBadgeClient } from './pending-badge.client';
 
 /**
- * 统一门户（base PRD §5，T2-6 / T5-2）。
+ * 统一门户（base PRD §5）。
  *
  * - 系统入口可见规则：当前用户拥有该系统至少一项功能授权；超级管理员视为拥有全部；
  * - 公告：仅展示当前唯一"正在展示"（PUBLISHING）的系统公告；

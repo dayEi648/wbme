@@ -109,7 +109,7 @@ export interface SecurityLogQuery extends PaginationQueryDto {
 }
 
 /**
- * 系统日志查询与处置服务（backstage PRD §8；T4-3/T4-4）。
+ * 系统日志查询与处置服务（backstage PRD §8）。
  */
 /** 系统日志查询（列表与导出共用） */
 export interface SystemLogQuery {
@@ -272,7 +272,7 @@ export class SystemLogService {
   }
 
   /**
-   * 错误日志导出为 xlsx（T4-11；PRD §8 脱敏摘要导出：只含白名单字段，
+   * 错误日志导出为 xlsx（PRD §8 脱敏摘要导出：只含白名单字段，
    * 不含备注、堆栈、requestId、客户端 IP、数据库错误正文等排障详情）。
    *
    * @param userId 导出人（并发互斥维度）
@@ -339,7 +339,7 @@ export class SystemLogService {
   }
 
   /**
-   * 安全日志导出为 xlsx（T4-11；PRD §8：可展示来源 IP，其余字段白名单）。
+   * 安全日志导出为 xlsx（PRD §8：可展示来源 IP，其余字段白名单）。
    *
    * @param userId 导出人
    * @param query 过滤条件

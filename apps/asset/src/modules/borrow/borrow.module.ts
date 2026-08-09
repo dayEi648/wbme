@@ -6,7 +6,7 @@ import { BorrowController } from './borrow.controller';
 import { BorrowService } from './borrow.service';
 
 /**
- * 借还/归还/核销/代领结清模块（T7-8；asset PRD §8）。
+ * 借还/归还/核销/代领结清模块（asset PRD §8）。
  */
 @Module({
   imports: [forwardRef(() => ApprovalModule)],

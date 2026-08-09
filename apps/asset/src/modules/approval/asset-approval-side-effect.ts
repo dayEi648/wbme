@@ -8,7 +8,7 @@ import { StockInService } from '../request/stock-in.service';
 import type { ApprovalHeadForSideEffect, ApprovalSideEffect } from './approval-side-effect';
 
 /**
- * asset 审批业务副作用编排器（T7：六类申请副作用接线）。
+ * asset 审批业务副作用编排器（六类申请副作用编排）。
  *
  * 按审批头 requestType 分派到各域服务的 applyApproved / applyRelease；
  * 批准失败 → 整个 process 事务回滚、申请保持待审批；驳回/取消 → 同一事务释放占用。

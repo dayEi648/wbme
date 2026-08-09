@@ -9,7 +9,7 @@ import { UserLifecycleService } from './user-lifecycle.service';
 import { BatchDeactivateDto, CreateUserDto, ListUsersDto, RestoreConfirmDto, RestorePreviewDto, UpdateUserDto } from './user-admin.dto';
 
 /**
- * 用户管理（backstage PRD §3；实现规划 T3-5）。
+ * 用户管理（backstage PRD §3）。
  *
  * 全部路由要求持有"用户管理"功能授权或超级管理员（类级守卫 + 功能声明）。
  * 激活邀请（M1）/管理员发起密码重置（M2）/解锁账号（M4）见 base 认证模块的

@@ -14,7 +14,7 @@ const NORMALIZED_PHONE_PATTERN = /^\+(\d{1,3})(\d{5,15})$/;
 
 /** 手机号脱敏展示格式：保留国家码与前 3 后 4，中间以 **** 掩蔽 */
 export function maskPhone(normalized: string): string {
-  // 中国（本期唯一实际场景）固定 +86 匹配，避免国家码贪婪吞位（861 vs 86）
+  // 中国（唯一实际场景）固定 +86 匹配，避免国家码贪婪吞位（861 vs 86）
   const cn = /^\+86(\d{5,15})$/.exec(normalized);
   if (cn?.[1]) {
     return `+86 ${cn[1].slice(0, 3)}****${cn[1].slice(-4)}`;

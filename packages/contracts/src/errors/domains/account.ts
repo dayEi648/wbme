@@ -179,7 +179,7 @@ export const accountErrors = {
     httpStatus: 422,
     message: '无法自助重置密码，请绑定钉钉后重试或联系管理员',
   },
-  /** 岗位变更申请不满足资格（多部门员工/岗位未启用/不允许自助申请/不适用目标部门；T6-6 启用） */
+  /** 岗位变更申请不满足资格（多部门员工/岗位未启用/不允许自助申请/不适用目标部门） */
   POSITION_APPLICATION_INELIGIBLE: {
     code: 'POSITION_APPLICATION_INELIGIBLE',
     type: 'BUSINESS',

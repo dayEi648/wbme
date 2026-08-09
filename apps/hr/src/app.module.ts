@@ -25,10 +25,10 @@ import { TitleModule } from './modules/title/title.module';
 import { CrossSchemaSessionLoader } from './shared/cross-schema-auth';
 import { SharedModule } from './shared.module';
 
-/** T5 固定空闲超时（毫秒）；后续可改为读系统设置 */
+/** 固定空闲超时（毫秒） */
 const T5_IDLE_TIMEOUT_MS = 86_400_000;
 
-/** hr 根模块（T5-3 接入会话守卫与审批头） */
+/** hr 根模块（接入会话守卫与审批头） */
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
 })

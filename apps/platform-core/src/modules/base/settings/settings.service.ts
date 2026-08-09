@@ -9,7 +9,7 @@ import {
 } from '../../backstage/permission/operation-log.util';
 
 /**
- * 系统设置读取与管理（主 PRD §1.4、backstage PRD §7；T4-5）。
+ * 系统设置读取与管理（主 PRD §1.4、backstage PRD §7）。
  *
  * 键名清单为开发期契约（本文件常量 + PRD 文档同步维护）：
  * 管理员可调业务参数统一存 system_settings 表，本服务提供默认值 + DB 覆盖 +
@@ -278,7 +278,7 @@ export class SettingsService {
     }
   }
 
-  /** 返回键名清单（T4-5 设置管理页与文档核对使用） */
+  /** 返回键名清单（设置管理页与文档核对使用） */
   static keys(): readonly SettingKey[] {
     return Object.values(SETTING_KEYS);
   }

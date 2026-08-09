@@ -2,7 +2,7 @@ import { BusinessException, frameworkErrors, PERMISSION_MANAGE_FUNCTION_CODE, pe
 import type { PrismaClient } from '../../../generated/prisma/client';
 
 /**
- * 权限目录注册表共享工具（backstage 权限域；T3-2 建立，T3-3 起供授权管理与权限组共用）。
+ * 权限目录注册表共享工具（backstage 权限域；授权管理与权限组共用）。
  *
  * 目录以数据库注册表为准（platform-core 启动对账保证与 @wbme/contracts 的代码目录一致）；
  * 授权/组明细的功能存在性与可选数据范围校验统一走此处。

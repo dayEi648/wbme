@@ -3,7 +3,7 @@ import { Prisma } from '../generated/prisma/client';
 import type { StockFlowType } from '../generated/prisma/enums';
 
 /**
- * 库存一致性共享工具（asset PRD §5/§6；T7 建立）。
+ * 库存一致性共享工具（asset PRD §5/§6）。
  *
  * 全部库存变动（入库/变更/申领/调拨/归还/处置）遵守同一套规则：
  * - 条目行锁按 id 升序统一加锁，避免并发事务交叉加锁死锁；
@@ -152,7 +152,7 @@ export async function writeStockFlow(tx: Prisma.TransactionClient, flow: StockFl
  *
  * 排除仍存在未结清借还记录（qty > returned + written_off）的条目：借还品出库后
  * 条目归零但借还尚未结清，归还/结清/处置仍须按原条目回库（PRD §5 归还例外，
- * §8 借出时部门快照关联），删除会导致归还路径 RESOURCE_NOT_FOUND（H1 修复）。
+ * §8 借出时部门快照关联），删除会导致归还路径 RESOURCE_NOT_FOUND。
  *
  * @param tx 事务客户端
  * @param itemId 条目 id

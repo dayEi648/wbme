@@ -23,7 +23,7 @@ export interface GrantedFunctionContext {
 export interface RequestContext {
   /** 请求追踪标识：响应头 X-Request-Id 返回同一值 */
   readonly requestId: string;
-  /** 链路追踪标识：本期与 requestId 同值，为跨服务传播预留 */
+  /** 链路追踪标识：与 requestId 同值，为跨服务传播预留 */
   readonly traceId: string;
   /** 请求起始时间（毫秒时间戳） */
   readonly startedAt: number;

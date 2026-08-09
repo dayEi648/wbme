@@ -1,4 +1,4 @@
-# asset 服务 API 文档（阶段7）
+# asset 服务 API 文档
 
 > 统一前缀 `/api/v1`（内部接口 `/internal/v1`）；错误结构、幂等键、分页遵循主 PRD §9.5。
 > 权限：所有业务路由经全局会话守卫；功能授权在服务内断言（未注册/未授权 → 404 不泄露存在性，
@@ -74,7 +74,7 @@
 | `GET` | `/assets` | 台账分页（分类/部门/状态/归属/责任人/使用者/关键字筛选；DEPARTMENT 按资产所属部门闭包裁剪） |
 | `GET` | `/assets/export` | 台账导出（runExport：Redis 互斥 + REPEATABLE READ + 120s 超时；行数上限=平台设置 export.max.rows；导出所有未逻辑删除或全部筛选结果；导出完成写 EXPORT 操作日志） |
 | `GET` | `/assets/{id}` | 详情（含调度历史/变更历史/维修单；范围外 404） |
-| `POST` | `/assets` | 建档（幂等；金额必填两位小数；主图对象标识经 T4-10 上传） |
+| `POST` | `/assets` | 建档（幂等；金额必填两位小数；主图对象标识经图片上传接口获取） |
 | `PUT` | `/assets/{id}` | 编辑基础资料/使用者/主图（责任人与所属部门变化必须走调度；状态仅 IDLE/IN_USE 互切或 SCRAPPED 恢复；变更记录只追加） |
 | `POST` | `/assets/{id}/schedule` | 调度（目标责任人必须属于目标部门 `ASSIGNEE_DEPARTMENT_MISMATCH`；部门与责任人均未变化 `ASSET_TRANSFER_NO_CHANGE`；写调度记录；来源与目标部门均须在授权闭包内） |
 | `POST` | `/assets/{id}/scrap` | 报废（二次确认 confirm=true；业务状态非删除） |
@@ -230,7 +230,7 @@ TRANSFER_OUT / TRANSFER_IN 成对流水，全部来源减少量之和 = 全部�
 | `POST` | `/qr-codes/{id}/action` | 管理动作（DISABLE/ENABLE/REGENERATE；按目标类型归属权限——ASSET 归 `fixed_asset_maintain`，其余归 `inventory_manage`；已作废不可操作） |
 | `POST` | `/qr-codes/parse` | 扫码解析（限流：IP 60 次/分 + 用户 120 次/分；解析后按当前用户功能权限/数据范围/目标状态/库存状态校验——INVENTORY_ITEM 需持 `consumable_apply`；无权限/目标已删除/二维码无效/条目不可申领统一 404 不泄露目标详情） |
 
-## 表格偏好（主 PRD §10.2 / T4-12）
+## 表格偏好（主 PRD §10.2）
 
 仅需登录，无功能权限；账号维度读写（A-30，契约同 B-5）。
 
@@ -262,7 +262,7 @@ CONSUMED + 借还记录生成；归还批准回库到原批次；核销批准不
 
 ## 内部接口（主 PRD §9.4：内部令牌 + 调用方白名单）
 
-### 审批中心待办统计（T5-3，调用方 platform-core）
+### 审批中心待办统计（调用方 platform-core）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

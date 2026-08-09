@@ -48,7 +48,7 @@ class DisposeErrorLogDto {
 }
 
 /**
- * 系统日志管理（backstage PRD §8；T4-3/T4-4）。
+ * 系统日志管理（backstage PRD §8）。
  */
 @ApiTags('系统日志')
 @Controller('system-logs')

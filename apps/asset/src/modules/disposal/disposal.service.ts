@@ -95,7 +95,7 @@ export class DisposalService {
     const access = await assertFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPROVAL_FUNCTION_CODE);
     const scope = await this.approverScope(userId, access);
     const closure = await this.closures.closureOfUser(userId);
-    // 范围条件（⑩ 修复：下沉 SQL 分页，消除 LIMIT 500 内存过滤；与处置记录视图同一闭包语义）：
+    // 范围条件（下沉 SQL 分页，消除 LIMIT 500 内存过滤；与处置记录视图同一闭包语义）：
     // PERSONAL 按借出时部门快照闭包；AGENT 按受领人名单部门快照闭包。
     // 闭包语义与审批中心一致（主 PRD §3.2 全部对象部门 ∈ 审批人闭包）：
     // 任一部门命中即显示会泄露范围外记录（多部门员工快照场景），此处全部部门须在闭包内
@@ -205,7 +205,7 @@ export class DisposalService {
           const record = locked.get(item.borrowRecordId)!;
           await this.assertDisposable(tx, record, scope, closure);
           // 可处理数量 = 未结清 − 待审批归还/核销占用（与申请互斥：先提交的申请先占）；
-          // 处理方式按明细行 method 分流（M2 修复：行声明为权威字段，顶层仅表单默认值）
+          // 处理方式按明细行 method 分流（行声明为权威字段，顶层仅表单默认值）
           const disposalRecord = await tx.directDisposalRecord.create({
             data: {
               disposalType: item.method,
@@ -439,7 +439,7 @@ export class DisposalService {
     `;
     const openIds = new Set(openRecords.map((row) => row.id));
     if (openRecords.length === 0 || items.some((item) => !openIds.has(item.borrowRecordId))) {
-      // 夹带非本清单的借还记录：整单拒绝且不泄露外部记录存在性（与提交结清一致，M1 修复）
+      // 夹带非本清单的借还记录：整单拒绝且不泄露外部记录存在性（与提交结清一致）
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
     const claimedByRecord = new Map<number, number>();

@@ -30,7 +30,7 @@ function assertBatchIds(value: unknown): boolean {
   return Array.isArray(value) && value.length >= 1;
 }
 
-/** 资产建档（asset PRD §4：金额必填；主图可选，经 T4-10 上传后提交对象标识；幂等） */
+/** 资产建档（asset PRD §4：金额必填；主图可选，经图片上传后提交对象标识；幂等） */
 export class AssetCreateDto extends IdempotentDto {
   @ApiProperty({ description: '资产名称', maxLength: 100 })
   @IsString()
@@ -92,7 +92,7 @@ export class AssetCreateDto extends IdempotentDto {
   @Min(1)
   currentUserId?: number;
 
-  @ApiProperty({ description: '主图对象标识（T4-10 上传返回的 OSS key）', required: false, maxLength: 200 })
+  @ApiProperty({ description: '主图对象标识（图片上传返回的 OSS key）', required: false, maxLength: 200 })
   @IsOptional()
   @IsString()
   @MaxLength(200)

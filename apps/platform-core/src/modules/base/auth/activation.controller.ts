@@ -25,7 +25,7 @@ function cookieSecure(): boolean {
 }
 
 /**
- * 激活接口（base PRD §2，T2-2）：
+ * 激活接口（base PRD §2）：
  * A6 凭证兑换（发 Path 限定一次性流程 Cookie）、A7 激活确认（单事务完成 + 自动登录）。
  * 凭证只在 A6 请求体出现一次，后续步骤由流程 Cookie 承接。
  */

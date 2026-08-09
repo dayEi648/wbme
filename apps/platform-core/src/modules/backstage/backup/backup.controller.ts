@@ -53,7 +53,7 @@ export class BackupController {
   }
 
   /**
-   * 签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10 T4-8 接线）。
+   * 签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10）。
    * Cookie 透传设置（path=/recovery；生产 Nginx 同域代理 /recovery/* → 恢复执行器）。
    */
   @Post('restores/session')

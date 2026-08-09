@@ -21,7 +21,7 @@ class UpdatePlatformSettingsDto extends IdempotentDto {
 }
 
 /**
- * 系统设置管理（backstage PRD §7；T4-5）。
+ * 系统设置管理（backstage PRD §7）。
  */
 @ApiTags('系统设置')
 @Controller('system-settings')

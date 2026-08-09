@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * 核心业务链路 E2E（T10-4：管理后台与资产台账读路径）。
+ * 核心业务链路 E2E（管理后台与资产台账读路径）。
  * 前置：登录链路同 auth.spec.ts；E2E 用户为超管（全部功能可见）。
  */
 const PHONE = process.env.E2E_USER_PHONE ?? '+8613800000001';

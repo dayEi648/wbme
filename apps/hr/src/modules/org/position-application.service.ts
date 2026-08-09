@@ -22,7 +22,7 @@ export class PositionApplicationService implements ApprovalSideEffect {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     // 显式 @Inject：TS 对带默认值的类类型参数发射 Object（design:paramtypes 丢失类型），
-    // 无 @Inject 时 Nest 无法解析该依赖（阶段 6 遗留：hr 应用 DI 启动失败）；
+    // 无 @Inject 时 Nest 无法解析该依赖；
     // forwardRef 打破与 HrApprovalService 的构造循环（两者互相引用）
     @Optional() @Inject(forwardRef(() => HrApprovalService)) approval: HrApprovalService | null = null,
   ) {

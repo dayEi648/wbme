@@ -39,9 +39,8 @@ import { FilesModule } from './modules/files/files.module';
 
 /**
  * platform-core 根模块。
- * base 与 backstage 的模块边界与领域拆分在 T2/T3 阶段落地，
- * 本期承载全局配置、Redis、健康探针、认证会话基础设施（全局会话守卫 + CSRF 守卫）、
- * backstage 权限目录启动对账（T3-1）与员工授权管理（T3-2）。
+ * 承载全局配置、Redis、健康探针、认证会话基础设施（全局会话守卫 + CSRF 守卫）、
+ * backstage 权限目录启动对账与员工授权管理。
  */
 
 /** 空闲超时提供者：按"记住我"读取系统设置（base PRD §3 双时限） */

@@ -13,7 +13,7 @@ import { BusinessException, accountErrors, approvalErrors, frameworkErrors } fro
 import { PrismaService } from '../../../prisma.service';
 
 /**
- * 资料修改审批（base PRD §6、backstage PRD §5；T5 统一审批内核）。
+ * 资料修改审批（base PRD §6、backstage PRD §5；统一审批内核）。
  *
  * - 员工提交姓名/性别修改 → 创建 PROFILE_CHANGE 审批头 + 明细 + SUBMIT 动作；
  * - 单待审批限制由条件唯一索引兜底（映射 PROFILE_CHANGE_PENDING_EXISTS）；

@@ -35,7 +35,7 @@ export interface HrSettingItem {
 
 /**
  * 人事设置服务（hr PRD §9）：运行参数读写，改参数即时生效（快照规则不追溯）。
- * 初始化时按定义 upsert 默认值，保证 T6-5 加班窗口读取总有值。
+ * 初始化时按定义 upsert 默认值，保证加班窗口读取总有值。
  */
 @Injectable()
 export class SettingsService {

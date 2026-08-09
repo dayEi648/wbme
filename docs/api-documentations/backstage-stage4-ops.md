@@ -1,8 +1,8 @@
-# Backstage Stage 4 运维 API（T4-6 ~ T4-12）
+# Backstage Stage 4 运维 API
 
 基础路径：`/api/v1`（需登录会话 + CSRF；写操作建议携带幂等键）。
 
-## 内容（T4-6）
+## 内容
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
@@ -17,7 +17,7 @@
 
 `appendReleaseLog({ releaseId, version, commitSha, subjects })` 由部署脚本调用 `ReleaseLogService`，`releaseId` 唯一。
 
-## 数据备份与恢复（T4-7）
+## 数据备份与恢复
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
@@ -33,7 +33,7 @@
 
 Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS 上传。
 
-## 健康状态（T4-9）
+## 健康状态
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
@@ -41,7 +41,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 环境变量：`PLATFORM_CORE_HEALTH_URL`、`WORKER_HEALTH_URL`、`HEALTH_DISK_USAGE_RATIO`。
 
-## 操作日志导出（T4-11）
+## 操作日志导出
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
@@ -49,7 +49,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 互斥键：`lock:export:{userId}`；超时 120s；超行数整次拒绝 `ROW_LIMIT_EXCEEDED`。
 
-## 表格偏好（T4-12）
+## 表格偏好
 
 账号作用域，仅需登录：
 
@@ -63,7 +63,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 | GET | `/me/table-prefs/:pageKey/column-setting` | 列设置 |
 | PUT | `/me/table-prefs/:pageKey/column-setting` | 保存列设置 |
 
-## 文件存储包（T4-10）
+## 文件存储包
 
 `@wbme/files`：`presignImageUpload`、`finalizeImage`、`presignBackupUpload`、`deleteObject`、`listPrefix`。
 
@@ -71,7 +71,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 本地开发：`OSS_ACCESS_KEY_ID=change-me` 时使用 `.agents/tmp-oss/`。
 
-## 恢复执行器（T4-8）
+## 恢复执行器
 
 独立端口（默认 3010），**非** `/api/v1`：
 

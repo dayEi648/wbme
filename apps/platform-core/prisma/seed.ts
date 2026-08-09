@@ -1,7 +1,7 @@
 /**
- * 种子与初始化数据（实现规划 T1-5、主 PRD §3.1、backstage PRD §1 及子系统 PRD §1）。
+ * 种子与初始化数据（主 PRD §3.1、backstage PRD §1 及子系统 PRD §1）。
  *
- * - 权限目录初始注册：复用 T3-1 启动对账逻辑（同一权威目录定义 @wbme/contracts
+ * - 权限目录初始注册：复用启动对账逻辑（同一权威目录定义 @wbme/contracts
  *   的 PERMISSION_CATALOG），systems / business_sections / functions 三层 +
  *   权限目录版本单行（permission_catalog_meta id=1），幂等（全新库=首次注册）；
  * - 第一个超级管理员种子账号（待激活、无密码、无钉钉绑定），
@@ -60,7 +60,7 @@ async function seedSuperAdmin(prisma: PrismaClient): Promise<void> {
   }
   // 不存在或仍待激活（含激活链接丢失需重取的场景）：创建账号（幂等）并签发一次性激活邀请。
   // 激活邀请生成（M1）要求已认证的用户管理权限，而种子超管是待激活状态无法登录，
-  // 故由种子直接签发并打印链接（T1-5 验收：初始化命令一次性展示激活链接，不写日志）。
+  // 故由种子直接签发并打印链接（初始化命令一次性展示激活链接，不写日志）。
   const admin =
     existing ??
     (await prisma.user.create({
@@ -92,7 +92,7 @@ async function seedSuperAdmin(prisma: PrismaClient): Promise<void> {
   const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
   const activationUrl = `${origin}/activate#${rawToken}`;
   console.log(`[seed] 超级管理员激活链接（一次性，${INVITATION_VALID_SECONDS / 86400} 天有效，仅本次展示）：${activationUrl}`);
-  // 终端二维码（与链接同一凭证，T1-5 验收：链接与二维码两种交付方式，仅 stdout 一次性展示）
+  // 终端二维码（与链接同一凭证；链接与二维码两种交付方式，仅 stdout 一次性展示）
   console.log('[seed] 激活二维码（扫码打开同一链接）：');
   console.log(await QRCode.toString(activationUrl, { type: 'terminal', small: true }));
   console.log('[seed] 账号激活后初始化入口永久关闭；链接丢失可重跑 seed 重新生成（旧链接立即失效）');

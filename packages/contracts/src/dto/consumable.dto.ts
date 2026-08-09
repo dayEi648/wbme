@@ -90,7 +90,7 @@ export class ConsumableCreateDto {
   @Min(0)
   safetyStock: number = 0;
 
-  @ApiProperty({ description: '图片对象标识（T4-10 上传返回的 OSS key）', required: false, maxLength: 200 })
+  @ApiProperty({ description: '图片对象标识（图片上传返回的 OSS key）', required: false, maxLength: 200 })
   @IsOptional()
   @IsString()
   @MaxLength(200)

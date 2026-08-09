@@ -4,7 +4,7 @@ import { AllowedCallers, InternalAuthGuard, Public } from '@wbme/server';
 import { LifecycleService } from './lifecycle.service';
 
 /**
- * 账号生命周期内部接口（backstage PRD §3 / hr PRD §5，T6-8）：
+ * 账号生命周期内部接口（backstage PRD §3 / hr PRD §5）：
  * - restore-preview / restore-apply：调用方 platform-core（恢复预览与最终确认必须实际调用 hr）；
  * - cancel-position-applications：调用方 worker（注销生命周期任务消费，幂等）。
  * hr 停机时调用方侧映射 HR_SERVICE_UNAVAILABLE（DEPENDENCY），本模块不承担该降级。

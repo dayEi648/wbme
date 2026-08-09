@@ -8,7 +8,7 @@ import {
 import { InternalHttpClient, InternalRequestError } from '@wbme/server';
 
 /**
- * hr 组织身份内部接口客户端（base PRD §6 个人中心 P2/P4/P5 承接，T6-6）。
+ * hr 组织身份内部接口客户端（base PRD §6 个人中心 P2/P4/P5 承接）。
  *
  * 契约：
  * - GET  /internal/v1/users/{userId}/org：当前身份部门/岗位/可否自助申请（P2）；

@@ -10,7 +10,7 @@ const RECOVERY_EXECUTOR_INTERNAL_BASE_URL =
 export const RECOVERY_SESSION_COOKIE_NAME = 'wbme_recovery_session';
 
 /**
- * 恢复控制会话签发客户端（backstage PRD §10 人工介入通道，T4-8 接线）：
+ * 恢复控制会话签发客户端（backstage PRD §10 人工介入通道）：
  * 超管登录验证后调用执行器 `POST /recovery/session`（内部令牌 + platform-core 白名单），
  * 取回控制 Cookie 值由调用方透传设置（path=/recovery；生产 Nginx 同域代理 /recovery/* → 执行器）。
  */

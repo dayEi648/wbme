@@ -1,9 +1,9 @@
 # Backstage Stage 4 基础设施 API
 
-> 覆盖 T4-1（操作日志查询）、T4-3/T4-4（系统日志）、T4-5（系统设置）。  
+> 覆盖系统设置、操作日志查询、系统日志（错误/安全）。  
 > 基础路径：`/api/v1`；除个人中心外均需登录会话。
 
-## 1. 系统设置（T4-5）
+## 1. 系统设置
 
 **权限**：`system_settings`（管理后台 → 系统 → 系统设置）
 
@@ -58,7 +58,7 @@
 
 ---
 
-## 2. 操作日志（T4-1）
+## 2. 操作日志
 
 **权限**：`operation_log_view`（数据范围：部门/公司）
 
@@ -84,7 +84,7 @@
 **数据范围**：
 
 - `COMPANY`：全公司可见
-- `DEPARTMENT`：按 `operator_departments` 与 `hr.department_closure` 闭包交集过滤（T6-6 已接入）
+- `DEPARTMENT`：按 `operator_departments` 与 `hr.department_closure` 闭包交集过滤
 
 ### GET `/me/operation-logs`
 
@@ -92,7 +92,7 @@
 
 ---
 
-## 3. 系统日志（T4-3 / T4-4）
+## 3. 系统日志
 
 **权限**：`system_log_view`
 
@@ -129,7 +129,7 @@
 
 ### POST `/system-logs/errors/export` / `/system-logs/security/export`
 
-导出为 xlsx（T4-11 通用导出：行数上限、单用户并发互斥、120s 超时、一致性快照）。错误日志导出按 backstage PRD §8 白名单构造「安全摘要」列（剥离堆栈/内部路径/requestId，仅含脱敏后的 message 首行）；安全日志导出含来源 IP，其余字段白名单。
+导出为 xlsx（通用导出：行数上限、单用户并发互斥、120s 超时、一致性快照）。错误日志导出按 backstage PRD §8 白名单构造「安全摘要」列（剥离堆栈/内部路径/requestId，仅含脱敏后的 message 首行）；安全日志导出含来源 IP，其余字段白名单。
 
 ---
 

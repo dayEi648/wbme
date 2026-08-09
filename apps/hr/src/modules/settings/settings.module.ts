@@ -5,7 +5,7 @@ import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 
 /**
- * 人事配置模块（T6-7）：hr_settings 运行参数 + hr_dicts 人事字典。
+ * 人事配置模块：hr_settings 运行参数 + hr_dicts 人事字典。
  */
 @Module({
   controllers: [SettingsController, DictController],

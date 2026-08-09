@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 
 /**
- * 迁移版本就绪检查（主 PRD §9.9、实现规划 T1-3/T0-5）。
+ * 迁移版本就绪检查（主 PRD §9.9）。
  *
  * 每个部署单元在 /readyz 校验自己拥有的 schema 迁移版本：
  * - PostgreSQL 连通性（SELECT 1）；

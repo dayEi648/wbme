@@ -1,7 +1,7 @@
 import { bucketStart, computeErrorFingerprint, upsertErrorLog } from './error-log';
 import type { RawSqlClient } from './raw-sql-client';
 
-/** 集中错误日志写入输入（与 GlobalExceptionFilter 的 ErrorLogWriter 回调同形；T4-3） */
+/** 集中错误日志写入输入（与 GlobalExceptionFilter 的 ErrorLogWriter 回调同形） */
 export interface ErrorLogWriterInput {
   errorCategory: 'SYSTEM' | 'DEPENDENCY';
   exception: unknown;
@@ -13,7 +13,7 @@ export interface ErrorLogWriterInput {
 }
 
 /**
- * 集中错误日志写入器（T4-3）：供各部署单元 GlobalExceptionFilter fire-and-forget 调用。
+ * 集中错误日志写入器：供各部署单元 GlobalExceptionFilter fire-and-forget 调用。
  *
  * 无框架依赖：asset/hr/fin 通过各自 Prisma 客户端（$executeRawUnsafe/$queryRawUnsafe）
  * 注入 {@link RawSqlClient}，把未知/依赖异常聚合写入 backstage.error_logs

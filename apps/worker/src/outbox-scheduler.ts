@@ -61,7 +61,7 @@ export async function ensureDailyScheduledBackup(sql: SqlClient, now: Date = new
 }
 
 /**
- * 每日 03:00 后创建当日未关联图片清理任务（主 PRD §9.1 / T4-10）。
+ * 每日 03:00 后创建当日未关联图片清理任务（主 PRD §9.1）。
  *
  * @param sql SQL 客户端
  * @param now 当前时间
@@ -90,7 +90,7 @@ export async function ensureDailyImageCleanup(sql: SqlClient, now: Date = new Da
 }
 
 /**
- * 每日 04:00 后创建当日审批超时扫描任务（主 PRD §3.2 / T5-1）。
+ * 每日 04:00 后创建当日审批超时扫描任务（主 PRD §3.2）。
  *
  * @param sql SQL 客户端
  * @param now 当前时间

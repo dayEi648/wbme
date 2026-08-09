@@ -7,7 +7,7 @@ import { GrantService } from './grant.service';
 import { BatchGrantDto, BatchRevokeDto, SaveEmployeeGrantsDto, SearchEmployeesDto } from './permission.dto';
 
 /**
- * 统一人员权限管理（backstage PRD §4；实现规划 T3-2）。
+ * 统一人员权限管理（backstage PRD §4）。
  *
  * 全部路由要求持有"权限管理"功能授权或超级管理员（类级守卫 + 功能声明）；
  * 委派规则（自我修改禁止、"权限管理"功能仅超管可授收、超管目标保护）由服务层强制。

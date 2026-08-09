@@ -23,7 +23,7 @@ interface CompatibilityCheck {
 }
 
 /**
- * 账号生命周期服务（backstage PRD §3 / hr PRD §5，T6-8）：
+ * 账号生命周期服务（backstage PRD §3 / hr PRD §5）：
  * - restore-preview：只读兼容性检查（不写数据）；
  * - restore-apply：单事务整批应用组织兼容性清理 + 幂等取消注销前待审批岗位申请；
  *   以 restoreRequestId 为幂等键（org_compat_records 兼任幂等事实）；

@@ -9,7 +9,7 @@ export interface AssetReleaseStats {
 }
 
 /**
- * asset 超时自动取消的业务占用释放 hook（T7-8）。
+ * asset 超时自动取消的业务占用释放 hook。
  *
  * 审批超时取消时释放提交阶段的占用（与状态迁移同一事务，由
  * `scanAndAutoCancelOverdue` 的 transaction 化执行保证）：

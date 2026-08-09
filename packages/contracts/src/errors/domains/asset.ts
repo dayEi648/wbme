@@ -74,7 +74,7 @@ export const assetErrors = {
     httpStatus: 422,
     message: '字典项仍被业务数据引用，不允许删除',
   },
-  /** 资产主图对象标识非法或不属于当前业务（asset PRD §4 / T4-10） */
+  /** 资产主图对象标识非法或不属于当前业务（asset PRD §4） */
   ASSET_IMAGE_INVALID: {
     code: 'ASSET_IMAGE_INVALID',
     type: 'VALIDATION',

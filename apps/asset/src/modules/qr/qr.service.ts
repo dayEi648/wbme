@@ -95,7 +95,7 @@ export class QrService {
   }
 
   /**
-   * 二维码列表（分页；目标类型/状态筛选；仅可见用户拥有管理权限的目标类型——M3 修复）。
+   * 二维码列表（分页；目标类型/状态筛选；仅可见用户拥有管理权限的目标类型）。
    *
    * @param userId 当前用户
    * @param query 筛选
@@ -137,7 +137,7 @@ export class QrService {
     id: number,
     action: 'DISABLE' | 'ENABLE' | 'REGENERATE',
   ): Promise<{ ok: true; regenerated?: { id: number; publicId: string } }> {
-    // 按目标类型校验管理权限（M3 修复：资产二维码归固定资产维护，库存/目录二维码归
+    // 按目标类型校验管理权限（资产二维码归固定资产维护，库存/目录二维码归
     // 消耗品库存管理，PRD §11 归属）；权限不足 → 404 不泄露存在性
     const qrForScope = await this.prisma.client.qrCode.findUnique({ where: { id }, select: { targetType: true } });
     if (!qrForScope) {
@@ -229,7 +229,7 @@ export class QrService {
       };
     }
     if (qr.targetType === 'INVENTORY_ITEM') {
-      // 库存条目扫码申领入口：须持有「消耗品申领」权限（M4 修复：无权限不泄露目标内部详情）
+      // 库存条目扫码申领入口：须持有「消耗品申领」权限（无权限不泄露目标内部详情）
       const applyAccess = await getFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPLY_FUNCTION_CODE);
       if (!applyAccess.registered || !applyAccess.systemOpen || !applyAccess.allowed) {
         throw new BusinessException(assetErrors.QR_INVALID);

@@ -7,7 +7,7 @@ import { getRequestContext } from './request-context';
  *
  * 记录内容：requestId、服务、路由模板、方法、结果类别（成功/失败）与耗时；
  * 不记录密码、Cookie、凭证、完整手机号等敏感数据。
- * MVP 阶段输出到 stdout（由容器日志驱动接管），T4-3 起接入集中系统日志模块。
+ * 输出到 stdout（由容器日志驱动接管）并接入集中系统日志模块。
  */
 @Injectable()
 export class AccessLogInterceptor implements NestInterceptor {

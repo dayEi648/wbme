@@ -1,8 +1,8 @@
-# backstage 系统与业务结构管理 API 文档（阶段3，T3-7）
+# backstage 系统与业务结构管理 API 文档
 
 > 统一前缀 `/api/v1`；错误结构、幂等键遵循主 PRD §9.5。
 > 本文档随接口提交同步维护；文档与实现不一致视为任务未完成（实现规划通用任务约定）。
-> 目录结构（系统/板块/功能的归属、排序、注册）由代码目录权威定义（T3-1 启动对账），
+> 目录结构（系统/板块/功能的归属、排序、注册）由代码目录权威定义（启动对账），
 > 本组接口只开放系统开放状态与业务说明维护（backstage PRD §6）。
 
 ## 通用约定
@@ -11,7 +11,7 @@
   （`FunctionPermissionGuard`，守卫链语义见 `backstage-permission.md` 通用约定）。
 - **catalog_version 语义**：状态调整与 description 维护**不递增**全局权限目录版本
   （主 PRD §3.1：仅功能新增/移除/归属/可选数据范围变化才递增）；管理员维护的 description
-  不会被启动对账覆盖（T3-1 分工）。
+  不会被启动对账覆盖。
 - **即时生效**：门户入口与函数权限守卫实时读取 `product_status`——系统置为 `COMING_SOON` 后，
   该系统功能的请求由守卫返回 `503 SYSTEM_NOT_OPEN`（含超管）；重新开放不改变任何授权。
 - **操作日志**：写操作写 backstage.operation_logs（feature=`system_structure_manage`，含变更前后值），支持幂等键。

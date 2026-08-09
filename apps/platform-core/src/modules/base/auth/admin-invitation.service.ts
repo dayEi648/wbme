@@ -89,7 +89,7 @@ export class AdminInvitationService {
     if (user.status !== 'ACTIVE') {
       throw new BusinessException(accountErrors.USER_NOT_ACTIVE);
     }
-    // 超管账号只能由另一名超管或本人经钉钉验证重置（backstage PRD §3；T3-5 完整校验接管）
+    // 超管账号只能由另一名超管或本人经钉钉验证重置（backstage PRD §3；完整校验）
     if (user.isSuperAdmin) {
       const operator = await this.prisma.client.user.findUnique({ where: { id: adminId }, select: { isSuperAdmin: true } });
       if (!operator?.isSuperAdmin) {

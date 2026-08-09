@@ -20,10 +20,10 @@ import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from './base.dto';
  * 运行参数（加班提前申请/补交窗口）与人事字典（机制保留，字典项随业务引入）。
  */
 
-/** 更新单条人事设置（值按 value_type 校验：本期全部为数值） */
+/** 更新单条人事设置（值按 value_type 校验：全部为数值） */
 export class HrSettingUpdateDto extends IdempotentDto {
   @ApiProperty({
-    description: '设置值（字符串表达；按 value_type 校验，本期全部为数值）',
+    description: '设置值（字符串表达；按 value_type 校验，全部为数值）',
     maxLength: 100,
   })
   @IsString()

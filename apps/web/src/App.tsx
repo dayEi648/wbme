@@ -18,7 +18,7 @@ const HrPage = lazy(() => import('./pages/hr/HrPage'));
 const FinPage = lazy(() => import('./pages/fin/FinPage'));
 const ScanPage = lazy(() => import('./pages/scan/ScanPage'));
 
-/** 路由表（T9-3 认证与门户；业务系统页面随对应后端检查点推进） */
+/** 路由表（认证与门户；业务系统页面） */
 export default function App() {
   return (
     <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin size="large" /></div>}>
@@ -35,7 +35,7 @@ export default function App() {
       {/* 根路径 → 门户（未登录由 RequireAuth 重定向登录页） */}
       <Route path="/" element={<Navigate to="/portal" replace />} />
 
-      {/* 登录态：门户 / 个人中心（业务系统页面随 T9-5~T9-7 推进） */}
+      {/* 登录态：门户 / 个人中心 / 业务系统页面 */}
       <Route
         path="/portal"
         element={

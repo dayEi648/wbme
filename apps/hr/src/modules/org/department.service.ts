@@ -170,7 +170,7 @@ export class DepartmentService {
 
   /**
    * 删除前引用确认（hr PRD §6：展示在职员工数/固定资产归属数/待审批申请数/职称规则引用数）。
-   * 固定资产归属数由 asset 服务拥有（阶段 7），本期返回 0 占位并注释。
+   * 固定资产归属数当前不统计（asset 服务未提供内部接口），返回 0。
    *
    * @param ids 部门 id 列表
    * @returns 逐部门引用统计
@@ -200,7 +200,7 @@ export class DepartmentService {
       items.push({
         id,
         activeEmployees: activeEmployees[0]?.c ?? 0,
-        assetCount: 0, // 固定资产归属数由 asset 服务拥有（阶段 7 接入）
+        assetCount: 0, // 固定资产归属数当前不统计（asset 服务未提供内部接口）
         pendingRequests: pendingRequests[0]?.c ?? 0,
         titleRuleRefs: titleRuleRefs,
       });

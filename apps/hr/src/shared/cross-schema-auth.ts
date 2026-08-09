@@ -38,7 +38,7 @@ export function widestScope(scopes: readonly DataScope[]): DataScope | null {
 }
 
 /**
- * 从 backstage.user_accounts 只读视图加载会话用户（T6-8 整改：替代直连 base.users；
+ * 从 backstage.user_accounts 只读视图加载会话用户（替代直连 base.users；
  * 视图含全部用户（含软删，恢复兼容性需读注销用户），软删由本函数过滤）。
  *
  * @param prisma Prisma 客户端
@@ -89,7 +89,7 @@ export async function loadUserName(prisma: RawPrisma, userId: number): Promise<s
 /**
  * 功能访问上下文（跨 schema 镜像 AuthorizationService.getFunctionAccess）。
  *
- * T6-8 整改：功能注册与员工授权分别经 backstage.function_registry /
+ * 功能注册与员工授权分别经 backstage.function_registry /
  * backstage.function_grants 只读视图读取（拥有模块 backstage），不再直连业务表。
  *
  * @param prisma Prisma 客户端
@@ -169,7 +169,7 @@ export async function assertFunctionAccess(prisma: RawPrisma, userId: number, fu
 }
 
 /**
- * hr 会话用户加载器：经 backstage.user_accounts 视图（T6-8 整改，替代直连 base.users）。
+ * hr 会话用户加载器：经 backstage.user_accounts 视图（替代直连 base.users）。
  */
 @Injectable()
 export class CrossSchemaSessionLoader implements SessionUserLoader {

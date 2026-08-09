@@ -7,7 +7,7 @@ import { PhoneSyncService } from '../phone-sync.service';
 import { FlowSessionService } from './flow-session.service';
 
 /**
- * 钉钉验证式密码重置（base PRD §2、backstage PRD §3 联动，T2-5）。
+ * 钉钉验证式密码重置（base PRD §2、backstage PRD §3 联动）。
  *
  * - 管理员发起限时一次性重置凭证（M2，不能查看/设置新密码）→ 目标员工钉钉授权
  *   （unionId 与账号现有绑定一致 + 组织成员）→ 短时重置流程会话 → 设新密码；

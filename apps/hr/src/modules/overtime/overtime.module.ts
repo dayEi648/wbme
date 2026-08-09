@@ -9,7 +9,7 @@ import { OvertimeSubmissionService } from './overtime-submission.service';
 import { OvertimeSummaryService } from './overtime-summary.service';
 
 /**
- * 加班模块（T6-5）：统一表单批次提交、取消、个人/管理视图与汇总、导出。
+ * 加班模块：统一表单批次提交、取消、个人/管理视图与汇总、导出。
  * 依赖：审批头（ApprovalModule）、节假日适配器（HolidayModule）、人事设置（SettingsModule）。
  */
 @Module({

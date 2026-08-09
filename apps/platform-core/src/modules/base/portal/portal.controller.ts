@@ -6,7 +6,7 @@ import { PrismaService } from '../../../prisma.service';
 import { PortalService } from './portal.service';
 
 /**
- * 统一门户（base PRD §5，T2-6）：P1 门户（系统入口 + 公告 + 待办角标）。
+ * 统一门户（base PRD §5）：P1 门户（系统入口 + 公告 + 待办角标）。
  */
 @ApiTags('门户')
 @Controller('portal')

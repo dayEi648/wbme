@@ -3,7 +3,7 @@ import { PrismaService } from '../../../prisma.service';
 import { reconcilePermissionCatalog } from './permission-catalog.reconcile';
 
 /**
- * 权限目录启动对账服务（实现规划 T3-1、主 PRD §3.1）。
+ * 权限目录启动对账服务（主 PRD §3.1）。
  *
  * platform-core 启动时（监听端口前的 NestJS 生命周期钩子）执行一次幂等对账：
  * 代码目录（@wbme/contracts PERMISSION_CATALOG）与数据库注册表对齐，

@@ -148,7 +148,7 @@ function runMigrationRunner() {
 /**
  * 种子与初始化数据（权限目录 + 首个超管账号，幂等：upsert / 已存在即跳过）。
  * `prisma migrate deploy` 不触发 seed（Prisma 设计），开发启动需显式执行；
- * 每次启动重复执行安全，全新库首次执行即完成初始化（主 PRD §3.1、T1-5）。
+ * 每次启动重复执行安全，全新库首次执行即完成初始化（主 PRD §3.1）。
  */
 function runSeed() {
   const result = spawnSync('pnpm', ['--filter', '@wbme/platform-core', 'exec', 'prisma', 'db', 'seed'], {
@@ -172,7 +172,7 @@ function startServices() {
       env: process.env,
     });
     child.on('exit', (code) => {
-      // Worker 为常驻进程（T4-2 后常驻消费任务）；code 0 退出属异常（调度器/消费者不应主动退出）
+      // Worker 为常驻进程（消费队列任务）；code 0 退出属异常（调度器/消费者不应主动退出）
       console.error(`[dev] ${service.name} 退出（code=${code}）`);
     });
     children.push({ name: service.name, child });

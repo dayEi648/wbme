@@ -1,8 +1,8 @@
 # 合并门禁 CI：push main 与 PR 时执行质量检查。
 # 依赖安装统一走国内镜像（npmmirror），与开发机网络环境保持一致。
-# 引用的聚合脚本（lint/typecheck/test/build）在工程基座阶段于根 package.json 定义。
-# 集成测试依赖真实 PostgreSQL（4 套迁移序列执行）+ Redis。
-# 后续扩展：Playwright E2E（测试环境稳定后）、镜像构建（发布流程纳入后）。
+# 引用的聚合脚本（lint/typecheck/test/build）在根 package.json 定义。
+# 集成测试依赖真实 PostgreSQL（4 套迁移序列执行）+ Redis；E2E 见下方 e2e job；
+# 镜像构建由 deploy/release.sh 在发布时执行，不进入 CI。
 
 name: CI
 
@@ -119,7 +119,7 @@ jobs:
           RECOVERY_SESSION_SECRET: ci-recovery-session-secret-32
           PUBLIC_ORIGIN: http://ci.local
 
-  # E2E（T10-4）：认证/门户/核心业务链路。复用 quality job 的 PostgreSQL/Redis 服务，
+  # E2E：认证/门户/核心业务链路。复用 quality job 的 PostgreSQL/Redis 服务，
   # 后端四服务与前端由 Playwright webServer 自动拉起（reuseExistingServer 本地复用）。
   e2e:
     name: E2E（认证/门户/核心链路）

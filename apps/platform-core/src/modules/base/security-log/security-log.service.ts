@@ -8,7 +8,7 @@ import type { SecurityEventType as GeneratedSecurityEventType } from '../../../g
  * 安全日志服务（主 PRD §9.3、backstage PRD §8）。
  *
  * 认证与账号安全事件逐条写入 backstage.security_logs；
- * 写入通道由 @wbme/logging insertSecurityLog 统一受限语句实现（T4-4）。
+ * 写入通道由 @wbme/logging insertSecurityLog 统一受限语句实现。
  */
 
 /** 事件类型（与 Prisma enum SecurityEventType 对齐） */

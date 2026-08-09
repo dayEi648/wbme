@@ -9,7 +9,7 @@ import { AdminInvitationService } from './admin-invitation.service';
 /**
  * 管理后台认证操作（backstage PRD §3 联动）：
  * M1 生成激活邀请、M2 生成重置邀请、M4 解锁账号。
- * 权限："用户管理"功能（T3-4 函数权限守卫：超管豁免 + 目录存在性过滤）。
+ * 权限："用户管理"功能（函数权限守卫：超管豁免 + 目录存在性过滤）。
  */
 @ApiTags('用户管理')
 @Controller('users')

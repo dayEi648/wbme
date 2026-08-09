@@ -9,7 +9,7 @@ import { AuthService, type LoginResult } from '../auth.service';
 import { FlowSessionService } from './flow-session.service';
 
 /**
- * 激活流程（base PRD §2，T2-2）。
+ * 激活流程（base PRD §2）。
  *
  * - A6 redeem：一次性凭证（URL fragment → body）兑换 → 校验邀请有效 →
  *   发 Path 限定的一次性流程 Cookie（激活后续步骤不再携带原始凭证）；

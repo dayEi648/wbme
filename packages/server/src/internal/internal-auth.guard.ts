@@ -19,7 +19,7 @@ import {
 /** 内部认证配置注入令牌 */
 export const INTERNAL_AUTH_OPTIONS = Symbol('WBME_INTERNAL_AUTH_OPTIONS');
 
-/** 内部令牌校验失败信息（安全日志 INTERNAL_TOKEN_FAILED 事件入参，T4-4） */
+/** 内部令牌校验失败信息（安全日志 INTERNAL_TOKEN_FAILED 事件入参） */
 export interface InternalAuthRejection {
   /** 拒绝原因：令牌无效（401）或调用方不在白名单（403） */
   reason: 'TOKEN_INVALID' | 'CALLER_NOT_ALLOWED';
@@ -44,7 +44,7 @@ export interface InternalAuthOptions {
  *
  * - 恒定时间方式校验 `Authorization: Bearer <token>`；令牌错误返回 401；
  * - 调用方服务名（X-WBME-Caller）必须在路由声明白名单内，否则 403；
- * - 两种失败只记录脱敏安全事件（T4-4 接入安全日志），不泄露内部信息。
+ * - 两种失败只记录脱敏安全事件（接入安全日志），不泄露内部信息。
  *
  * 共享令牌只证明请求来自平台可信服务范围，不等于用户权限：
  * 用户触发的跨服务动作必须携带实际操作者标识与业务幂等键，由目标服务另行校验。

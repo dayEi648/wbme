@@ -4,8 +4,7 @@ import { getRequestContext } from '@wbme/server';
 import { Prisma, type PrismaClient } from '../../../generated/prisma/client';
 
 /**
- * backstage 操作日志与幂等执行共享工具（主 PRD §3.3；T3-2 建立，T3-3 起供
- * 授权管理与权限组维护共用）。
+ * backstage 操作日志与幂等执行共享工具（主 PRD §3.3；授权管理与权限组维护共用）。
  *
  * 幂等机制：重要写操作在业务事务内写入 backstage.operation_logs，并以
  * 「操作者 + 系统(BACKSTAGE) + 幂等作用域 + 幂等键」部分唯一约束为唯一事实；
@@ -18,7 +17,7 @@ export interface OperationLogOperator {
   id: number;
   name: string;
   isSuperAdmin: boolean;
-  /** 操作时归属部门快照 [{id, name}]（T6-6 经 hr.user_org 视图填充；多部门并列） */
+  /** 操作时归属部门快照 [{id, name}]（经 hr.user_org 视图填充；多部门并列） */
   departments?: Array<{ id: number; name: string }>;
 }
 
@@ -52,7 +51,7 @@ export async function loadOperationLogOperator(prisma: PrismaClient, operatorId:
   if (!operator || operator.deletedAt !== null) {
     throw new BusinessException(frameworkErrors.UNAUTHORIZED);
   }
-  // T6-6：经 hr.user_org 只读视图取操作时部门快照（hr 停机不使快照读取失效，主 PRD §9.4）
+  // 经 hr.user_org 只读视图取操作时部门快照（hr 停机不使快照读取失效，主 PRD §9.4）
   let departments: Array<{ id: number; name: string }> | undefined;
   try {
     const rows = await prisma.$queryRaw<Array<{ department_id: number; department_name: string }>>`
@@ -99,7 +98,7 @@ export function fingerprintPayload(payload: unknown): string {
 
 /**
  * 写入 backstage 操作日志（只追加）。
- * operator_departments 经 loadOperationLogOperator 填充（T6-6，hr.user_org 视图快照）；
+ * operator_departments 经 loadOperationLogOperator 填充（hr.user_org 视图快照）；
  * requestId 取当前请求上下文。
  *
  * @param tx 事务客户端（与业务写入同事务，业务回滚日志同步回滚）

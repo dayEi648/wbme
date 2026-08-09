@@ -7,7 +7,7 @@ import { UserLifecycleService } from './user-lifecycle.service';
 import { SuperAdminService } from './super-admin.service';
 
 /**
- * 用户管理模块（backstage，实现规划 T3-5）。
+ * 用户管理模块（backstage）。
  *
  * 创建/列表/详情/编辑 + 批量注销/恢复（账号生命周期编排，UserLifecycleService；
  * HrLifecycleClient 按契约调用 hr：hr 未就绪时恢复类操作返回 HR_SERVICE_UNAVAILABLE）。

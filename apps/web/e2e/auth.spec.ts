@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * 认证链路 E2E（base PRD §2/§3；T9-3）。
+ * 认证链路 E2E（base PRD §2/§3）。
  * 前置：scripts/e2e-seed.mjs 已创建 ACTIVE 测试用户（默认 +8613800000001 / E2ePassw0rd!）。
  */
 const PHONE = process.env.E2E_USER_PHONE ?? '+8613800000001';

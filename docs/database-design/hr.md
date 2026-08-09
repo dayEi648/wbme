@@ -200,7 +200,7 @@
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `integer` | PK，serial4 自增 | |
-| `dict_type` | `enum hr_dict_type` | NOT NULL | 字典类型（随业务引入；PostgreSQL/Prisma enum 不可为空集，MVP 实现时须先定义至少一个占位枚举值，业务引入时扩展） |
+| `dict_type` | `enum hr_dict_type` | NOT NULL | 字典类型（随业务引入扩展；PostgreSQL/Prisma enum 不可为空集，已定义占位枚举值） |
 | `name` | `text` | NOT NULL | 字典项名称 |
 | `sort` | `integer` | NOT NULL `DEFAULT 0` | 排序 |
 | `status` | `enum dict_status` | NOT NULL `DEFAULT ACTIVE` | `ACTIVE / DISABLED` |

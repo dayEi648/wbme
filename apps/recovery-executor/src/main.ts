@@ -11,7 +11,7 @@ try {
 }
 
 /**
- * 恢复执行器入口（backstage PRD §10；T4-8）。
+ * 恢复执行器入口（backstage PRD §10）。
  * 不依赖 Redis 启动；承载 /recovery 内部控制路由。
  */
 async function bootstrap(): Promise<void> {

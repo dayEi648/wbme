@@ -28,7 +28,7 @@ export interface ApprovalListItem {
 }
 
 /**
- * backstage 审批中心查询（主 PRD §3.2 / T5-2；本期仅 PROFILE_CHANGE）。
+ * backstage 审批中心查询（主 PRD §3.2；当前承载 PROFILE_CHANGE）。
  * user_manage 为公司范围：持有者可见全部资料修改审批。
  */
 @Injectable()
@@ -62,7 +62,7 @@ export class ApprovalCenterService {
   }
 
   /**
-   * 导出审批列表为 xlsx 流（T4-11 通用导出；与列表同一筛选、排序与快照）。
+   * 导出审批列表为 xlsx 流（与列表同一筛选、排序与快照）。
    *
    * @param userId 导出人（需 user_manage）
    * @param query 与列表相同的筛选条件
@@ -220,7 +220,7 @@ export class ApprovalCenterService {
   /** 构造列表 where */
   private buildWhere(query: ApprovalListQueryDto): Prisma.ApprovalRequestWhereInput {
     const where: Prisma.ApprovalRequestWhereInput = {
-      // backstage 本期仅 PROFILE_CHANGE；非法 requestType 由空结果体现
+      // backstage 当前承载 PROFILE_CHANGE；非法 requestType 由空结果体现
       requestType: 'PROFILE_CHANGE',
     };
     if (query.requestType !== undefined && query.requestType !== 'PROFILE_CHANGE') {

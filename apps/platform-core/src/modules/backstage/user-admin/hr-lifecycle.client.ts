@@ -3,7 +3,7 @@ import { BusinessException, frameworkErrors, integrationErrors } from '@wbme/con
 import { InternalHttpClient, InternalRequestError } from '@wbme/server';
 
 /**
- * hr 账号生命周期内部接口客户端（backstage PRD §3、主 PRD §9.4；T6-8 由 hr 服务实现）。
+ * hr 账号生命周期内部接口客户端（backstage PRD §3、主 PRD §9.4）。
  *
  * 契约（详见 docs/api-documentations/backstage-users.md「hr 内部接口契约」）：
  * - POST /internal/v1/lifecycle/restore-preview：恢复兼容性预览（组织关系侧）；

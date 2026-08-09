@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * 门户与个人中心 E2E（base PRD §5/§6；T9-3）。
+ * 门户与个人中心 E2E（base PRD §5/§6）。
  * 前置：登录链路同 auth.spec.ts。
  */
 const PHONE = process.env.E2E_USER_PHONE ?? '+8613800000001';

@@ -3,7 +3,7 @@ import { PermissionModule } from '../permission/permission.module';
 import { SystemStructureController } from './system-structure.controller';
 import { SystemStructureService } from './system-structure.service';
 
-/** 系统与业务结构管理模块（backstage PRD §6；实现规划 T3-7） */
+/** 系统与业务结构管理模块（backstage PRD §6） */
 @Module({
   imports: [PermissionModule],
   controllers: [SystemStructureController],

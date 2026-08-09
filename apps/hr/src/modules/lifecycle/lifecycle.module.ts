@@ -4,7 +4,7 @@ import { LifecycleController } from './lifecycle.controller';
 import { LifecycleService } from './lifecycle.service';
 
 /**
- * 账号生命周期模块（T6-8）：恢复兼容性应用 + 注销待审批岗位申请幂等取消。
+ * 账号生命周期模块：恢复兼容性应用 + 注销待审批岗位申请幂等取消。
  */
 @Module({
   imports: [

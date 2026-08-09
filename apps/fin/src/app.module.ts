@@ -23,10 +23,10 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { CrossSchemaSessionLoader } from './shared/cross-schema-auth';
 import { SharedModule } from './shared.module';
 
-/** fin 固定空闲超时（毫秒）；后续可改为读系统设置 */
+/** fin 固定空闲超时（毫秒） */
 const FIN_IDLE_TIMEOUT_MS = 86_400_000;
 
-/** fin 根模块（T8 业务模块全部挂载） */
+/** fin 根模块（业务模块全部挂载） */
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
 })

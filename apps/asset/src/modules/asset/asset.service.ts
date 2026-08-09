@@ -114,7 +114,7 @@ export class AssetService {
   }
 
   /**
-   * 台账导出（T4-11 runExport：Redis 互斥 + REPEATABLE READ + 120s 超时；
+   * 台账导出（runExport：Redis 互斥 + REPEATABLE READ + 120s 超时；
    * 行数上限 = 平台设置 export.max.rows；导出所有未逻辑删除数据或导出全部筛选结果）。
    *
    * @param userId 当前用户
@@ -689,7 +689,7 @@ export class AssetService {
   }> {
     let categoryName: string | null = null;
     if (dto.categoryId !== undefined) {
-      // 固定资产只能归入固定资产顶级分类（M6 修复：与消耗品侧校验对称，asset PRD §3）
+      // 固定资产只能归入固定资产顶级分类（与消耗品侧校验对称，asset PRD §3）
       const rows = await tx.$queryRaw<Array<{ name: string; topName: string }>>`
         SELECT c.name, COALESCE(p.name, c.name) AS "topName"
         FROM asset.asset_categories c
