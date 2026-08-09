@@ -99,6 +99,10 @@
         ],
         "type": "object"
       },
+      "CancelApprovalDto": {
+        "properties": {},
+        "type": "object"
+      },
       "ChangePasswordDto": {
         "properties": {
           "confirmPassword": {
@@ -946,6 +950,93 @@
         ]
       }
     },
+    "/api/v1/approval-requests": {
+      "get": {
+        "operationId": "ApprovalController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "审批列表",
+        "tags": [
+          "审批"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}": {
+      "get": {
+        "operationId": "ApprovalController_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "审批详情",
+        "tags": [
+          "审批"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}/cancel": {
+      "post": {
+        "operationId": "ApprovalController_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelApprovalDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "申请人取消待审批（cancelSource=USER）",
+        "tags": [
+          "审批"
+        ]
+      }
+    },
     "/api/v1/approval-requests/{id}/process": {
       "post": {
         "operationId": "ApprovalController_process",
@@ -974,7 +1065,22 @@
             "description": ""
           }
         },
-        "summary": "X1 处理资料修改审批（APPROVE 生效 / REJECT 不改正式资料）",
+        "summary": "处理资料修改审批（APPROVE / REJECT）",
+        "tags": [
+          "审批"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/pending-count": {
+      "get": {
+        "operationId": "ApprovalController_pendingCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "待审批数量",
         "tags": [
           "审批"
         ]

@@ -1,24 +1,35 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, accountErrors, frameworkErrors } from '@wbme/contracts';
+import {
+  APPLICATION_NO_PREFIX_PROFILE_CHANGE,
+  assertOpinionIfRequired,
+  assertPending,
+  assertTransitionAllowed,
+  generateApplicationNo,
+  isPrismaUniqueViolation,
+  resolveProcessTransition,
+  throwIfTransitionLost,
+} from '@wbme/approval';
+import { BusinessException, accountErrors, approvalErrors, frameworkErrors } from '@wbme/contracts';
 import { PrismaService } from '../../../prisma.service';
 
 /**
- * 资料修改审批最小实现（base PRD §6、backstage PRD §3/§5；T5 统一审批内核接管完整规则）。
+ * 资料修改审批（base PRD §6、backstage PRD §5；T5 统一审批内核）。
  *
- * - 员工提交姓名/性别修改 → 创建 PROFILE_CHANGE 审批头 + 明细（S-16/S-18，同一事务），
- *   单待审批限制由条件唯一索引 `(applicant_id) WHERE request_type='PROFILE_CHANGE' AND status='PENDING'` 兜底；
- * - 审批通过才生效（X1 APPROVE：状态+版本条件更新，同一事务内生效修改；驳回不改正式资料）；
- * - 审批权：持有"用户管理"功能者（本期最小校验；T3 完整守卫接管）；
- * - 超级管理员修改立即生效（不走审批）。
+ * - 员工提交姓名/性别修改 → 创建 PROFILE_CHANGE 审批头 + 明细 + SUBMIT 动作；
+ * - 单待审批限制由条件唯一索引兜底（映射 PROFILE_CHANGE_PENDING_EXISTS）；
+ * - 审批通过才生效；驳回须填原因；申请人可取消；注销自动取消见 UserLifecycleService。
  */
-
 @Injectable()
 export class ProfileChangeService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
    * 提交资料修改（P3）。
-   * @returns applied=true 超管直改生效；applied=false 已创建审批单（含 requestId）
+   *
+   * @param userId 申请人
+   * @param isSuperAdmin 是否超管（超管直改）
+   * @param input 姓名/性别（至少一项变更）
+   * @returns applied=true 超管直改；否则含 requestId
    */
   async submitProfileChange(
     userId: number,
@@ -39,13 +50,12 @@ export class ProfileChangeService {
     }
 
     if (isSuperAdmin) {
-      // 超管立即生效（base PRD §6）
       await this.prisma.client.user.update({ where: { id: userId }, data: { name: newName, gender: newGender } });
       return { applied: true };
     }
 
-    // 员工：创建 PROFILE_CHANGE 审批单（头 + 明细同一事务；单待审批限制由条件唯一索引兜底）
-    const applicationNo = `PC${Date.now()}${Math.floor(Math.random() * 900 + 100)}`;
+    const applicationNo = generateApplicationNo(APPLICATION_NO_PREFIX_PROFILE_CHANGE);
+    const now = new Date();
     try {
       const request = await this.prisma.client.$transaction(async (tx) => {
         const head = await tx.approvalRequest.create({
@@ -55,7 +65,8 @@ export class ProfileChangeService {
             applicantId: userId,
             applicantName: user.name,
             status: 'PENDING',
-            submittedAt: new Date(),
+            submittedAt: now,
+            createdBy: userId,
           },
         });
         await tx.profileChangeRequest.create({
@@ -69,15 +80,22 @@ export class ProfileChangeService {
             newGender,
           },
         });
+        await tx.approvalActionRecord.create({
+          data: {
+            requestId: head.id,
+            action: 'SUBMIT',
+            actorId: userId,
+            actorName: user.name,
+          },
+        });
         return head;
       });
       return { applied: false, requestId: request.id };
     } catch (error) {
-      // 条件唯一索引冲突（已有待审批单）→ 409；其余错误原样上抛
       if (error instanceof BusinessException) {
         throw error;
       }
-      if (typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002') {
+      if (isPrismaUniqueViolation(error)) {
         throw new BusinessException(accountErrors.PROFILE_CHANGE_PENDING_EXISTS);
       }
       throw error;
@@ -85,8 +103,12 @@ export class ProfileChangeService {
   }
 
   /**
-   * 审批处理（X1，仅 PROFILE_CHANGE；状态+版本条件更新防并发）。
-   * APPROVE：同一事务内生效姓名/性别修改；REJECT：不改正式资料。
+   * 审批处理（APPROVE 生效 / REJECT 不改正式资料）。
+   *
+   * @param requestId 审批头 id
+   * @param action APPROVE | REJECT
+   * @param processorId 处理人
+   * @param opinion 意见（驳回必填）
    */
   async processProfileChange(
     requestId: number,
@@ -94,34 +116,40 @@ export class ProfileChangeService {
     processorId: number,
     opinion?: string,
   ): Promise<void> {
+    const transition = resolveProcessTransition(action);
+    assertOpinionIfRequired(transition.requiresOpinion, opinion);
+
     await this.prisma.client.$transaction(async (tx) => {
-      // 条件更新：仅 PENDING 可处理（版本 + 状态条件，并发仅一个成功）
       const head = await tx.approvalRequest.findUnique({ where: { id: requestId } });
       if (!head || head.requestType !== 'PROFILE_CHANGE') {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
       }
       if (head.status !== 'PENDING') {
-        throw new BusinessException(frameworkErrors.CONFLICT);
+        // 终态或并发已被处理：统一 STATUS_CONFLICT（主 PRD §3.2）
+        throw new BusinessException(approvalErrors.STATUS_CONFLICT);
       }
+      assertTransitionAllowed(head.status, transition.status);
+
+      const processor = await tx.user.findUnique({ where: { id: processorId }, select: { name: true } });
+      const now = new Date();
       const updated = await tx.approvalRequest.updateMany({
         where: { id: requestId, status: 'PENDING', version: head.version },
         data: {
-          status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+          status: transition.status,
           version: { increment: 1 },
           processorId,
-          processedAt: new Date(),
+          processorName: processor?.name ?? '',
+          processedAt: now,
           opinion: opinion ?? null,
         },
       });
-      if (updated.count === 0) {
-        throw new BusinessException(frameworkErrors.CONFLICT);
-      }
+      throwIfTransitionLost(updated.count);
+
       if (action === 'APPROVE') {
         const detail = await tx.profileChangeRequest.findUnique({ where: { requestId } });
         if (!detail) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
-        // 通过时重新校验目标数据有效性（backstage PRD §5）
         const target = await tx.user.findUnique({ where: { id: detail.userId }, select: { status: true } });
         if (!target || target.status !== 'ACTIVE') {
           throw new BusinessException(accountErrors.USER_NOT_ACTIVE);
@@ -131,17 +159,71 @@ export class ProfileChangeService {
           data: { name: detail.newName, gender: detail.newGender },
         });
       }
-      // 审批动作流水（S-17 approval_actions：审批记录作为审计信息保留，base PRD §6）
-      const processor = await tx.user.findUnique({ where: { id: processorId }, select: { name: true } });
+
       await tx.approvalActionRecord.create({
         data: {
           requestId,
-          action,
+          action: transition.action,
           actorId: processorId,
           actorName: processor?.name ?? '',
           opinion: opinion ?? null,
         },
       });
+    });
+  }
+
+  /**
+   * 申请人取消待审批资料修改（cancelSource=USER）。
+   *
+   * @param requestId 审批头 id
+   * @param actorId 操作人（须为申请人）
+   */
+  async cancelProfileChange(requestId: number, actorId: number): Promise<void> {
+    const transition = resolveProcessTransition('CANCEL', 'USER');
+    await this.prisma.client.$transaction(async (tx) => {
+      const head = await tx.approvalRequest.findUnique({ where: { id: requestId } });
+      if (!head || head.requestType !== 'PROFILE_CHANGE') {
+        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+      }
+      if (head.applicantId !== actorId) {
+        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+      }
+      assertPending(head.status);
+      assertTransitionAllowed(head.status, transition.status);
+
+      const actor = await tx.user.findUnique({ where: { id: actorId }, select: { name: true } });
+      const now = new Date();
+      const updated = await tx.approvalRequest.updateMany({
+        where: { id: requestId, status: 'PENDING', version: head.version },
+        data: {
+          status: 'CANCELLED',
+          version: { increment: 1 },
+          cancelledBy: actorId,
+          cancelledAt: now,
+          cancelSource: 'USER',
+        },
+      });
+      throwIfTransitionLost(updated.count);
+      await tx.approvalActionRecord.create({
+        data: {
+          requestId,
+          action: 'CANCEL',
+          actorId,
+          actorName: actor?.name ?? '',
+          cancelSource: 'USER',
+        },
+      });
+    });
+  }
+
+  /**
+   * 当前用户可见的资料修改待审批数量（user_manage 公司范围：全部 PENDING）。
+   *
+   * @returns 待办数
+   */
+  async countPendingVisible(): Promise<number> {
+    return this.prisma.client.approvalRequest.count({
+      where: { requestType: 'PROFILE_CHANGE', status: 'PENDING' },
     });
   }
 }

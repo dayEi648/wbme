@@ -20,6 +20,7 @@
     "@nestjs/platform-express": "^11.1.28",
     "@nestjs/swagger": "^11.4.6",
     "@node-rs/argon2": "^2.0.2",
+    "@wbme/approval": "workspace:*",
     "@wbme/contracts": "workspace:*",
     "@wbme/logging": "workspace:*",
     "@wbme/server": "workspace:*",

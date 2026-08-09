@@ -123,13 +123,15 @@
 ### P6 我的操作日志 `GET /me/operation-logs`
 登录态。仅返回当前用户的操作日志（`operator_id = 当前用户`），分页；走操作日志联合视图查询（主 PRD §3.3）。
 
-## 资料修改审批处理
+## 资料修改审批处理（T5 统一审批内核）
+
+完整审批中心契约见 [`approval-center.md`](./approval-center.md)。
 
 ### X1 审批处理 `POST /approval-requests/{id}/process`
 权限"用户管理"。入参 `{ action: APPROVE | REJECT, opinion?, idempotencyKey? }`。
-- APPROVE：状态+版本条件更新，同一事务生效姓名/性别修改；REJECT：不改正式资料
-- 失败：`FORBIDDEN` / `RESOURCE_NOT_FOUND`(404) / `CONFLICT`(409 非 PENDING 或并发处理)
-- 边界：本期仅 PROFILE_CHANGE 类型最小实现；完整审批内核 T5-1/T5-3 接管
+- APPROVE：状态+版本条件更新，同一事务生效姓名/性别修改；REJECT：须填意见，不改正式资料
+- 失败：`FORBIDDEN` / `RESOURCE_NOT_FOUND`(404) / `STATUS_CONFLICT`(409) / `REJECT_REASON_REQUIRED`(400)
+- 列表/详情/取消/pending-count 见审批中心文档；提交写 SUBMIT 动作流水
 
 ## 会话与安全契约（实现约定）
 

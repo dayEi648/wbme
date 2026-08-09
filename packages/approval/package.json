@@ -2,7 +2,7 @@
   "name": "@wbme/approval",
   "version": "0.1.0",
   "private": true,
-  "description": "WBME 统一审批内核共享包（主 PRD §3.2，T5-1 实现）",
+  "description": "WBME 统一审批内核共享包：状态机、版本条件更新、范围校验与待审批限制（主 PRD §3.2，T5-1）",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,5 +10,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@wbme/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "reflect-metadata": "^0.2.2"
   }
 }
+

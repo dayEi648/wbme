@@ -9,5 +9,7 @@
 - 阶段 4 平台基础设施（手写文档）：
   - `backstage-stage4-infra.md`：系统设置、操作日志、系统日志（错误/安全）
   - `backstage-stage4-ops.md`：更新日志/公告、备份恢复、健康状态、表格偏好、导出约定
-- asset/hr/fin 当前无业务接口；其接口上线时沿用同一模式（nest-cli swagger 插件 + 构建期生成脚本 +
+- 阶段 5 统一审批（手写文档）：
+  - `approval-center.md`：三部署单元审批中心契约、内部 pending-count、超时扫描
+- asset/hr 审批中心接口已上线（T5）；其余业务接口上线时沿用同一模式（nest-cli swagger 插件 + 构建期生成脚本 +
   产物提交 + verify 接入 CI），产物命名 `<unit>.openapi.json`。

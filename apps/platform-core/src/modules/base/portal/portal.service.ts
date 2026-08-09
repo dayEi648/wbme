@@ -1,19 +1,22 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma.service';
+import { ApprovalCenterService } from '../approval-proxy/approval-center.service';
+import { PendingBadgeClient } from './pending-badge.client';
 
 /**
- * 统一门户（base PRD §5，T2-6）。
+ * 统一门户（base PRD §5，T2-6 / T5-2）。
  *
  * - 系统入口可见规则：当前用户拥有该系统至少一项功能授权；超级管理员视为拥有全部；
- *   "即将上线"的系统展示状态但不可进入（入口可见 ≠ 可进入）；
- * - 公告：仅展示当前唯一"正在展示"（PUBLISHING）的系统公告，无则 null；
- *   不展示历史已撤回公告或更新日志；
- * - 待办角标：本期恒为 0（依赖各系统审批统计契约，T5/6/7 联调后接入）。
+ * - 公告：仅展示当前唯一"正在展示"（PUBLISHING）的系统公告；
+ * - 待办角标：本地 backstage 可见待办 + hr/asset 内部 pending-count 之和。
  */
-
 @Injectable()
 export class PortalService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly approvalCenter: ApprovalCenterService,
+    private readonly pendingBadge: PendingBadgeClient,
+  ) {}
 
   /** 门户数据：系统入口 + 当前公告 + 待办角标 */
   async getPortal(userId: number, isSuperAdmin: boolean): Promise<{
@@ -21,7 +24,7 @@ export class PortalService {
     announcement: { title: string; content: string | null; publishedAt: Date | null } | null;
     badgeCount: number;
   }> {
-    const [systems, announcement] = await Promise.all([
+    const [systems, announcement, localPending, remotePending] = await Promise.all([
       this.prisma.client.system.findMany({
         orderBy: { sort: 'asc' },
         select: { id: true, code: true, name: true, productStatus: true },
@@ -31,9 +34,10 @@ export class PortalService {
         orderBy: { publishedAt: 'desc' },
         select: { title: true, content: true, publishedAt: true },
       }),
+      this.countLocalPending(userId, isSuperAdmin),
+      this.pendingBadge.fetchRemotePendingTotal(userId),
     ]);
 
-    // 员工按授权推导入口：拥有该系统至少一项功能（经 functions 目录关联系统）
     let grantedSystemIds = new Set<number>();
     if (!isSuperAdmin) {
       const grants = await this.prisma.client.employeeGrant.findMany({
@@ -67,7 +71,28 @@ export class PortalService {
       announcement: announcement
         ? { title: announcement.title, content: announcement.content, publishedAt: announcement.publishedAt }
         : null,
-      badgeCount: 0,
+      badgeCount: localPending + remotePending,
     };
+  }
+
+  /**
+   * 本地 backstage 待办：持有 user_manage 或超管才计入资料修改 PENDING。
+   *
+   * @param userId 用户
+   * @param isSuperAdmin 是否超管
+   * @returns 本地待办数
+   */
+  private async countLocalPending(userId: number, isSuperAdmin: boolean): Promise<number> {
+    if (!isSuperAdmin) {
+      const grant = await this.prisma.client.employeeGrant.findFirst({
+        where: { userId, functionCode: 'user_manage' },
+        select: { id: true },
+      });
+      if (!grant) {
+        return 0;
+      }
+    }
+    const { total } = await this.approvalCenter.pendingCount();
+    return total;
   }
 }

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import { throwIfTransitionLost } from '@wbme/approval';
 import {
   accountErrors,
   BusinessException,
@@ -432,9 +433,7 @@ export class UserLifecycleService {
           version: { increment: 1 },
         },
       });
-      if (cancelled.count === 0) {
-        throw new BusinessException(frameworkErrors.CONFLICT);
-      }
+      throwIfTransitionLost(cancelled.count);
       await tx.approvalActionRecord.create({
         data: {
           requestId: request.id,

@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq';
 import {
   beijingDateString,
+  beijingHour,
   claimOutboxBatch,
   insertPendingTaskSql,
   isPastScheduledBackupBoundary,
@@ -9,6 +10,7 @@ import {
   releaseEnqueueLease,
   SAFELY_REPLAYABLE_TASK_TYPES,
   stableTaskUuid,
+  TASK_TYPE_APPROVAL_TIMEOUT_SCAN,
   TASK_TYPE_SCHEDULED_BACKUP,
   TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP,
   TASK_QUEUE_NAME,
@@ -22,6 +24,9 @@ let lastScheduledBackupCycleDate: string | null = null;
 
 /** 每日图片清理调度内存状态（进程内，重启后靠 stable uuid 去重） */
 let lastImageCleanupCycleDate: string | null = null;
+
+/** 每日审批超时扫描调度内存状态（进程内，重启后靠 stable uuid 去重） */
+let lastApprovalTimeoutCycleDate: string | null = null;
 
 /**
  * 若已过北京时间 02:00 且当日尚无定时备份任务，则创建 PENDING_ENQUEUE。
@@ -68,8 +73,7 @@ export async function ensureDailyScheduledBackup(sql: SqlClient, now: Date = new
  */
 export async function ensureDailyImageCleanup(sql: SqlClient, now: Date = new Date()): Promise<void> {
   // 与定时备份错峰：北京时间 03:00 之后（备份 02:00）
-  const beijingHour = (now.getUTCHours() + 8) % 24;
-  if (beijingHour < 3) {
+  if (beijingHour(now) < 3) {
     return;
   }
   const cycleDate = beijingDateString(now);
@@ -88,6 +92,35 @@ export async function ensureDailyImageCleanup(sql: SqlClient, now: Date = new Da
     console.log(`[scheduler] 已创建当日图片清理任务 cycleDate=${cycleDate} uuid=${taskUuid}`);
   }
   lastImageCleanupCycleDate = cycleDate;
+}
+
+/**
+ * 每日 04:00 后创建当日审批超时扫描任务（主 PRD §3.2 / T5-1）。
+ *
+ * @param sql SQL 客户端
+ * @param now 当前时间
+ */
+export async function ensureDailyApprovalTimeoutScan(sql: SqlClient, now: Date = new Date()): Promise<void> {
+  // 与备份(02)/图片清理(03)错峰：北京时间 04:00 之后
+  if (beijingHour(now) < 4) {
+    return;
+  }
+  const cycleDate = beijingDateString(now);
+  if (lastApprovalTimeoutCycleDate === cycleDate) {
+    return;
+  }
+  const taskUuid = stableTaskUuid(`${TASK_TYPE_APPROVAL_TIMEOUT_SCAN}:${cycleDate}`);
+  const result = await insertPendingTaskSql(sql, {
+    taskUuid,
+    taskType: TASK_TYPE_APPROVAL_TIMEOUT_SCAN,
+    module: 'backstage',
+    initiatorType: 'SCHEDULER',
+    ref: { cycleDate },
+  }, now);
+  if (result.created) {
+    console.log(`[scheduler] 已创建当日审批超时扫描任务 cycleDate=${cycleDate} uuid=${taskUuid}`);
+  }
+  lastApprovalTimeoutCycleDate = cycleDate;
 }
 
 /**
@@ -138,6 +171,7 @@ export class OutboxScheduler {
       const now = new Date();
       await ensureDailyScheduledBackup(this.sql, now);
       await ensureDailyImageCleanup(this.sql, now);
+      await ensureDailyApprovalTimeoutScan(this.sql, now);
       const batch = await claimOutboxBatch(
         this.sql,
         this.schedulerId,

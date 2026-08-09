@@ -95,9 +95,9 @@ describe('资料修改审批（P3/X1）', () => {
     expect(rejected?.name).toBe('资料测试');
     expect(rejected?.gender).toBe('MALE');
 
-    // 终态不可重复处理（CONFLICT）
+    // 终态不可重复处理（STATUS_CONFLICT）
     await expect(service.processProfileChange(requestId as number, 'APPROVE', id)).rejects.toMatchObject({
-      entry: { code: 'CONFLICT' },
+      entry: { code: 'STATUS_CONFLICT' },
     });
 
     // 再次提交 → APPROVE：生效

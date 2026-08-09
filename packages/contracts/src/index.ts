@@ -20,8 +20,10 @@ export * from './errors/domains/export';
 export * from './errors/domains/backup';
 export * from './errors/domains/integration';
 export * from './dto/base.dto';
+export * from './dto/approval.dto';
 export * from './enums/common';
 export * from './permission/catalog';
+
 export * from './money';
 export * from './phone';
 export * from './time';

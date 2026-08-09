@@ -424,6 +424,15 @@ export const RELEASE_LOG_VIEW_FUNCTION_CODE = 'release_log_view';
 /** backstage「系统公告管理」功能编码（backstage PRD §1 内容板块） */
 export const ANNOUNCEMENT_MANAGE_FUNCTION_CODE = 'announcement_manage';
 
+/** hr「加班审批」功能编码（hr PRD §1 / §4） */
+export const OVERTIME_APPROVAL_FUNCTION_CODE = 'overtime_approval';
+
+/** hr「组织架构」功能编码（含岗位申请审批权，hr PRD §1 / §5） */
+export const ORG_STRUCTURE_FUNCTION_CODE = 'org_structure';
+
+/** asset「消耗品审批」功能编码（asset PRD §1 / §9 六类审批） */
+export const CONSUMABLE_APPROVAL_FUNCTION_CODE = 'consumable_approval';
+
 /** 扁平化的目录功能条目：对账与守卫读取用（排序 = 各层数组下标） */
 export interface CatalogFunctionEntry {
   /** 所属系统编码 */
