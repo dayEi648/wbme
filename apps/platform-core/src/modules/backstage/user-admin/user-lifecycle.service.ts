@@ -7,7 +7,7 @@ import {
   maskPhone,
   USER_MANAGE_FUNCTION_CODE,
 } from '@wbme/contracts';
-import { stableTaskUuid, TASK_TYPE_ACCOUNT_LIFECYCLE, type AccountLifecycleTaskRef } from '@wbme/tasks';
+import { stableTaskUuid, TASK_TYPE_ACCOUNT_LIFECYCLE, createPendingTask, prismaTaskWriter, type AccountLifecycleTaskRef } from '@wbme/tasks';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 import { grantLabel, loadCatalogMap } from '../permission/catalog-registry.util';
@@ -149,16 +149,13 @@ export class UserLifecycleService {
             deactivatedAt: now.toISOString(),
             lifecycleVersion,
           };
-          await tx.backgroundTask.create({
-            data: {
-              taskUuid: stableTaskUuid(`${TASK_TYPE_ACCOUNT_LIFECYCLE}:DEACTIVATED:${target.id}:${lifecycleVersion}`),
-              taskType: TASK_TYPE_ACCOUNT_LIFECYCLE,
-              module: 'backstage',
-              initiatorId: operator.id,
-              initiatorType: 'USER',
-              // ref 结构由 @wbme/tasks 契约定义（JSON 列）
-              ref: ref as unknown as Prisma.InputJsonValue,
-            },
+          await createPendingTask(prismaTaskWriter(tx), {
+            taskUuid: stableTaskUuid(`${TASK_TYPE_ACCOUNT_LIFECYCLE}:DEACTIVATED:${target.id}:${lifecycleVersion}`),
+            taskType: TASK_TYPE_ACCOUNT_LIFECYCLE,
+            module: 'backstage',
+            initiatorId: operator.id,
+            initiatorType: 'USER',
+            ref,
           });
           await writeBackstageOperationLog(tx, {
             operator,

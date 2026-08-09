@@ -10,5 +10,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@wbme/contracts": "workspace:*",
+    "ali-oss": "^6.23.0",
+    "sharp": "^0.34.3"
+  },
+  "devDependencies": {
+    "@types/ali-oss": "^6.16.11",
+    "reflect-metadata": "^0.2.2"
   }
 }

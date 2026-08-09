@@ -8,5 +8,7 @@ allowBuilds:
   '@prisma/client': true
   esbuild: true
   '@scarf/scarf': false
+  msgpackr-extract: true
+  sharp: true
 minimumReleaseAgeExclude:
   - eslint@10.8.1

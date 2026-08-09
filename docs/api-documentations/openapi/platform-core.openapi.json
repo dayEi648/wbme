@@ -18,6 +18,20 @@
         ],
         "type": "object"
       },
+      "BatchDeleteAnnouncementsDto": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
       "BatchDeleteGroupsDto": {
         "properties": {
           "groupIds": {
@@ -111,6 +125,18 @@
         ],
         "type": "object"
       },
+      "ColumnSettingDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
       "ConfirmProfileDto": {
         "properties": {
           "confirmPassword": {
@@ -196,6 +222,10 @@
           "phone",
           "gender"
         ],
+        "type": "object"
+      },
+      "DisposeErrorLogDto": {
+        "properties": {},
         "type": "object"
       },
       "ErrorResponse": {
@@ -371,6 +401,23 @@
         ],
         "type": "object"
       },
+      "FilterPresetDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ],
+        "type": "object"
+      },
       "GrantItemDto": {
         "properties": {
           "dataScope": {
@@ -395,6 +442,10 @@
         "type": "object"
       },
       "IdempotentDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "ImmediateBackupDto": {
         "properties": {},
         "type": "object"
       },
@@ -426,6 +477,10 @@
         "properties": {},
         "type": "object"
       },
+      "PublishAnnouncementDto": {
+        "properties": {},
+        "type": "object"
+      },
       "RedeemTokenDto": {
         "properties": {
           "token": {
@@ -437,6 +492,18 @@
         },
         "required": [
           "token"
+        ],
+        "type": "object"
+      },
+      "RenameFilterPresetDto": {
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -475,24 +542,27 @@
       },
       "RestoreConfirmDto": {
         "properties": {
-          "restoreRequestId": {
-            "description": "稳定恢复请求 ID（预览响应返回；同 ID 重试幂等）",
-            "format": "uuid",
-            "type": "string"
+          "backupId": {
+            "type": "number"
           },
-          "targets": {
-            "description": "恢复目标（含生命周期版本；最多 100 个）",
-            "items": {
-              "$ref": "#/components/schemas/RestoreTargetDto"
-            },
-            "minItems": 1,
-            "type": "array",
-            "uniqueItems": true
+          "note": {
+            "maxLength": 500,
+            "type": "string"
           }
         },
         "required": [
-          "restoreRequestId",
-          "targets"
+          "backupId"
+        ],
+        "type": "object"
+      },
+      "RestorePrecheckDto": {
+        "properties": {
+          "backupId": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "backupId"
         ],
         "type": "object"
       },
@@ -530,6 +600,10 @@
           "userId",
           "lifecycleVersion"
         ],
+        "type": "object"
+      },
+      "RevokeAnnouncementDto": {
+        "properties": {},
         "type": "object"
       },
       "SaveEmployeeGrantsDto": {
@@ -583,6 +657,10 @@
         ],
         "type": "object"
       },
+      "UpdatePlatformSettingsDto": {
+        "properties": {},
+        "type": "object"
+      },
       "UpdateProfileDto": {
         "properties": {},
         "type": "object"
@@ -612,6 +690,22 @@
           "gender"
         ],
         "type": "object"
+      },
+      "UpsertAnnouncementDto": {
+        "properties": {
+          "content": {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -637,6 +731,221 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/announcements": {
+      "get": {
+        "operationId": "AnnouncementController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "DRAFT",
+                "PUBLISHING",
+                "REVOKED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "系统公告"
+        ]
+      },
+      "post": {
+        "operationId": "AnnouncementController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAnnouncementDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "系统公告"
+        ]
+      }
+    },
+    "/api/v1/announcements/{id}": {
+      "put": {
+        "operationId": "AnnouncementController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAnnouncementDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "系统公告"
+        ]
+      }
+    },
+    "/api/v1/announcements/{id}/publish": {
+      "post": {
+        "operationId": "AnnouncementController_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishAnnouncementDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "系统公告"
+        ]
+      }
+    },
+    "/api/v1/announcements/{id}/revoke": {
+      "post": {
+        "operationId": "AnnouncementController_revoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeAnnouncementDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "系统公告"
+        ]
+      }
+    },
+    "/api/v1/announcements/batch": {
+      "delete": {
+        "operationId": "AnnouncementController_batchDelete",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteAnnouncementsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "系统公告"
+        ]
+      }
+    },
     "/api/v1/approval-requests/{id}/process": {
       "post": {
         "operationId": "ApprovalController_process",
@@ -1023,6 +1332,79 @@
         ]
       }
     },
+    "/api/v1/backups": {
+      "get": {
+        "operationId": "BackupController_listBackups",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "数据备份"
+        ]
+      }
+    },
+    "/api/v1/backups/immediate": {
+      "post": {
+        "operationId": "BackupController_immediateBackup",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImmediateBackupDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "数据备份"
+        ]
+      }
+    },
+    "/api/v1/health-status": {
+      "get": {
+        "operationId": "HealthStatusController_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "健康状态"
+        ]
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "MeController_me",
@@ -1061,7 +1443,7 @@
             "description": ""
           }
         },
-        "summary": "P6 我的操作日志（契约预留：T4-1 操作日志模块落地后接通；本期前端入口\"即将开放\"）",
+        "summary": "P6 我的操作日志（全员可用，仅本人记录）",
         "tags": [
           "个人中心"
         ]
@@ -1131,6 +1513,287 @@
         "summary": "P3 资料修改（超管直改生效；员工创建审批单）",
         "tags": [
           "个人中心"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/column-setting": {
+      "get": {
+        "operationId": "TablePrefsController_getColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "表格偏好"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_upsertColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnSettingDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "表格偏好"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/filter-presets": {
+      "get": {
+        "operationId": "TablePrefsController_listFilterPresets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "表格偏好"
+        ]
+      },
+      "post": {
+        "operationId": "TablePrefsController_createFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "表格偏好"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}": {
+      "delete": {
+        "operationId": "TablePrefsController_deleteFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "表格偏好"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_updateFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "表格偏好"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}/name": {
+      "put": {
+        "operationId": "TablePrefsController_renameFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameFilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "表格偏好"
+        ]
+      }
+    },
+    "/api/v1/operation-logs": {
+      "get": {
+        "operationId": "OperationLogController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "分页查询全员操作日志",
+        "tags": [
+          "操作日志"
+        ]
+      }
+    },
+    "/api/v1/operation-logs/export": {
+      "post": {
+        "operationId": "OperationLogController_export",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "导出操作日志（xlsx 流；T4-11）",
+        "tags": [
+          "操作日志"
         ]
       }
     },
@@ -1474,6 +2137,330 @@
         "summary": "P1 门户数据（登录态）",
         "tags": [
           "门户"
+        ]
+      }
+    },
+    "/api/v1/release-logs": {
+      "get": {
+        "operationId": "ReleaseLogController_listForViewer",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "更新日志"
+        ]
+      }
+    },
+    "/api/v1/release-logs/for-announcement": {
+      "get": {
+        "operationId": "ReleaseLogController_listForAnnouncement",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "公告管理员复制来源用（同一数据，独立权限码）",
+        "tags": [
+          "更新日志"
+        ]
+      }
+    },
+    "/api/v1/restores": {
+      "get": {
+        "operationId": "BackupController_listRestores",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "数据备份"
+        ]
+      }
+    },
+    "/api/v1/restores/confirm": {
+      "post": {
+        "operationId": "BackupController_confirmRestore",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreConfirmDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "数据备份"
+        ]
+      }
+    },
+    "/api/v1/restores/precheck": {
+      "post": {
+        "operationId": "BackupController_precheckRestore",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestorePrecheckDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "数据备份"
+        ]
+      }
+    },
+    "/api/v1/system-logs/errors": {
+      "get": {
+        "operationId": "SystemLogController_listErrors",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "错误日志列表",
+        "tags": [
+          "系统日志"
+        ]
+      }
+    },
+    "/api/v1/system-logs/errors/{id}": {
+      "get": {
+        "operationId": "SystemLogController_getErrorDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "错误日志详情（含脱敏 sample）",
+        "tags": [
+          "系统日志"
+        ]
+      }
+    },
+    "/api/v1/system-logs/errors/{id}/dispose": {
+      "post": {
+        "operationId": "SystemLogController_disposeError",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisposeErrorLogDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "处置错误日志（PENDING → HANDLED/IGNORED）",
+        "tags": [
+          "系统日志"
+        ]
+      }
+    },
+    "/api/v1/system-logs/errors/export": {
+      "post": {
+        "operationId": "SystemLogController_exportErrors",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "错误日志导出（stub）",
+        "tags": [
+          "系统日志"
+        ]
+      }
+    },
+    "/api/v1/system-logs/security": {
+      "get": {
+        "operationId": "SystemLogController_listSecurity",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "安全日志列表",
+        "tags": [
+          "系统日志"
+        ]
+      }
+    },
+    "/api/v1/system-logs/security/export": {
+      "post": {
+        "operationId": "SystemLogController_exportSecurity",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "安全日志导出（stub）",
+        "tags": [
+          "系统日志"
+        ]
+      }
+    },
+    "/api/v1/system-settings": {
+      "get": {
+        "operationId": "SystemSettingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "列出全部平台设置项",
+        "tags": [
+          "系统设置"
+        ]
+      },
+      "put": {
+        "operationId": "SystemSettingsController_update",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlatformSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "批量更新平台设置",
+        "tags": [
+          "系统设置"
         ]
       }
     },

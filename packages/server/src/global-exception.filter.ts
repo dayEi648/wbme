@@ -7,6 +7,7 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -33,6 +34,23 @@ import { getRequestContext } from './request-context';
 export interface DependencyExceptionDetector {
   /** 判断异常是否属于依赖（不可用或超时） */
   isDependencyException(exception: unknown): boolean;
+}
+
+/** 集中错误日志写入回调（T4-3：fire-and-forget，不阻塞响应） */
+export interface ErrorLogWriter {
+  /**
+   * 异步写入或聚合系统/依赖未知异常。
+   * 实现方应自行捕获异常，不得向上抛出。
+   */
+  write(input: {
+    errorCategory: 'SYSTEM' | 'DEPENDENCY';
+    exception: unknown;
+    requestId: string;
+    service: string;
+    source: string;
+    deployCommit: string;
+    occurredAt: Date;
+  }): void;
 }
 
 /** 常见依赖错误信号（挂载点默认实现，后续阶段可按具体客户端补充） */
@@ -78,12 +96,19 @@ interface FieldError {
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
-  constructor(private readonly dependencyDetector: DependencyExceptionDetector = defaultDependencyDetector) {}
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
+  constructor(
+    private readonly dependencyDetector: DependencyExceptionDetector = defaultDependencyDetector,
+    private readonly errorLogWriter?: ErrorLogWriter,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     const mapped = this.mapException(exception);
     const requestId = getRequestContext()?.requestId ?? randomUUID();
+
+    this.maybeWriteErrorLog(exception, mapped.entry, requestId);
 
     const body: ErrorResponseBody = {
       error: {
@@ -96,6 +121,45 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       },
     };
     response.status(mapped.entry.httpStatus).json(body);
+  }
+
+  /**
+   * 系统/依赖未知异常 fire-and-forget 写入集中错误日志（T4-3）。
+   * 不阻塞 HTTP 响应。
+   */
+  private maybeWriteErrorLog(exception: unknown, entry: ErrorEntry, requestId: string): void {
+    if (!this.errorLogWriter) {
+      return;
+    }
+    const isDependency = this.dependencyDetector.isDependencyException(exception);
+    const isSystemUnknown =
+      !isDependency &&
+      !(exception instanceof BusinessException) &&
+      !(exception instanceof BadRequestException) &&
+      !(exception instanceof UnauthorizedException) &&
+      !(exception instanceof ForbiddenException) &&
+      !(exception instanceof ConflictException) &&
+      !(exception instanceof HttpException) &&
+      entry.code === frameworkErrors.INTERNAL_ERROR.code;
+    if (!isDependency && !isSystemUnknown) {
+      return;
+    }
+    const ctx = getRequestContext();
+    const errorCategory = isDependency ? 'DEPENDENCY' : 'SYSTEM';
+    try {
+      this.errorLogWriter.write({
+        errorCategory,
+        exception,
+        requestId,
+        service: ctx?.service ?? 'unknown',
+        source: 'HTTP',
+        deployCommit: process.env.DEPLOY_COMMIT ?? 'unknown',
+        occurredAt: new Date(),
+      });
+    } catch (writeError) {
+      const message = writeError instanceof Error ? writeError.message : String(writeError);
+      this.logger.error(`集中错误日志写入回调失败: ${message}`);
+    }
   }
 
   private mapException(exception: unknown): { entry: ErrorEntry; details?: Record<string, unknown> } {

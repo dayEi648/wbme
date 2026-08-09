@@ -7,10 +7,12 @@ import {
   createRedisClient,
   createRequestContextMiddleware,
   createValidationPipe,
+  defaultDependencyDetector,
   GlobalExceptionFilter,
   RequestTimeoutInterceptor,
 } from '@wbme/server';
 import { AppModule } from './app.module';
+import { PlatformErrorLogWriter } from './modules/base/security-log/platform-error-log.writer';
 
 // 加载仓库根 .env（开发环境本地变量；生产/CI 由部署环境注入，缺失时跳过）
 // dist/main.js → apps/platform-core/dist → 仓库根需要上三级
@@ -30,7 +32,8 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule.register({ redis }));
   app.use(createRequestContextMiddleware('platform-core'));
   app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz'] });
-  app.useGlobalFilters(new GlobalExceptionFilter());
+  const errorLogWriter = app.get(PlatformErrorLogWriter);
+  app.useGlobalFilters(new GlobalExceptionFilter(defaultDependencyDetector, errorLogWriter));
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalInterceptors(new AccessLogInterceptor(), new RequestTimeoutInterceptor());
 

@@ -27,6 +27,13 @@ import { PermissionCatalogModule } from './modules/backstage/permission-catalog/
 import { PermissionModule } from './modules/backstage/permission/permission.module';
 import { UserAdminModule } from './modules/backstage/user-admin/user-admin.module';
 import { SystemStructureModule } from './modules/backstage/system-structure/system-structure.module';
+import { SystemSettingsModule } from './modules/backstage/system-settings/system-settings.module';
+import { OperationLogModule } from './modules/backstage/operation-log/operation-log.module';
+import { SystemLogModule } from './modules/backstage/system-log/system-log.module';
+import { ContentModule } from './modules/backstage/content/content.module';
+import { BackupModule } from './modules/backstage/backup/backup.module';
+import { HealthStatusModule } from './modules/backstage/health-status/health-status.module';
+import { TablePrefsModule } from './modules/base/table-prefs/table-prefs.module';
 
 /**
  * platform-core 根模块。
@@ -64,6 +71,13 @@ export class AppModule {
         PermissionModule,
         UserAdminModule,
         SystemStructureModule,
+        SystemSettingsModule,
+        OperationLogModule,
+        SystemLogModule,
+        ContentModule,
+        BackupModule,
+        HealthStatusModule,
+        TablePrefsModule,
       ],
       providers: [
         SessionIntegrityLoader,

@@ -5,6 +5,7 @@ import { CurrentUser } from '@wbme/server';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PrismaService } from '../../../prisma.service';
 import { ProfileChangeService } from '../approval-proxy/profile-change.service';
+import { OperationLogService } from '../../backstage/operation-log/operation-log.service';
 
 /** P3 资料修改（至少一项；超管直改，员工提交审批；幂等键防重复提交建单） */
 class UpdateProfileDto extends IdempotentDto {
@@ -29,6 +30,7 @@ export class MeController {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     private readonly profileChange: ProfileChangeService,
+    private readonly operationLog: OperationLogService,
   ) {}
 
   /** P2 当前身份信息（部门/岗位由 hr 提供，T6 填充；手机号只读） */
@@ -86,9 +88,12 @@ export class MeController {
     return { data: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 } };
   }
 
-  /** P6 我的操作日志（契约预留：T4-1 操作日志模块落地后接通；本期前端入口"即将开放"） */
+  /** P6 我的操作日志（全员可用，仅本人记录） */
   @Get('operation-logs')
-  async listMyOperationLogs(@Query() _query: PaginationQueryDto): Promise<unknown> {
-    return { data: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 } };
+  async listMyOperationLogs(
+    @CurrentUser() userId: number,
+    @Query() query: PaginationQueryDto,
+  ): Promise<unknown> {
+    return this.operationLog.listMine(userId, { page: query.page, pageSize: query.pageSize });
   }
 }

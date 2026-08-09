@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { RecoveryControlController } from './recovery-control.controller';
+import { RecoveryExecutorService } from './recovery-executor.service';
 
-/** 恢复执行器根模块（backstage PRD §10 恢复逻辑 T10-3 阶段落地） */
+/** 恢复执行器模块（T4-8） */
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true })],
+  controllers: [RecoveryControlController],
+  providers: [RecoveryExecutorService],
+  exports: [RecoveryExecutorService],
 })
 export class RecoveryExecutorModule {}

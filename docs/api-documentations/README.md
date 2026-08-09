@@ -6,5 +6,8 @@
   重新生成并随代码同一次提交**；CI 以 `openapi:verify` 校验产物与代码一致（不一致即失败）。
 - 产物约定：错误结构 `ErrorResponse` 的 type/domain/code 枚举从 `@wbme/contracts` 错误目录自动生成，
   不手抄；DTO 与描述来自 swagger 编译器插件（docstring 即描述），控制器只补 `@ApiTags` 等最少标注。
+- 阶段 4 平台基础设施（手写文档）：
+  - `backstage-stage4-infra.md`：系统设置、操作日志、系统日志（错误/安全）
+  - `backstage-stage4-ops.md`：更新日志/公告、备份恢复、健康状态、表格偏好、导出约定
 - asset/hr/fin 当前无业务接口；其接口上线时沿用同一模式（nest-cli swagger 插件 + 构建期生成脚本 +
   产物提交 + verify 接入 CI），产物命名 `<unit>.openapi.json`。

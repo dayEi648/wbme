@@ -31,3 +31,4 @@ export * from './session/csrf.service';
 export * from './session/csrf.guard';
 export * from './session/cookie';
 export * from './rate-limit/rate-limit.guard';
+export * from './export/workbook-export';

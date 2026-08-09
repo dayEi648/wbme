@@ -92,3 +92,12 @@ export function setGrantedFunction(granted: GrantedFunctionContext): void {
     context.grantedFunction = granted;
   }
 }
+
+/**
+ * 读取当前路由的授权功能与数据范围（函数权限守卫写入后可用）。
+ *
+ * @returns 授权上下文；未声明功能要求的路由返回 undefined
+ */
+export function getGrantedFunction(): GrantedFunctionContext | undefined {
+  return getRequestContext()?.grantedFunction;
+}

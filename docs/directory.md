@@ -15,19 +15,19 @@
 | `docs/for-frontend/` | 前端设计规范（Ant Design 主题与设计文档） |
 | `docs/database-design/` | 数据库表结构设计（`00-baseline.md` 公共基线 + `base.md`/`backstage.md`/`hr.md`/`asset.md`/`fin.md` 各模块表设计） |
 | `docs/references/` | 参考资料（利润分析 Excel 模板等） |
-| `docs/api-documentations/` | API 文档（`README.md` 目录约定；`base-auth.md` 认证链路与用户管理操作；`backstage-permission.md` 权限管理；`backstage-users.md` 用户管理/超管任免与 hr 生命周期内部契约；`backstage-systems.md` 系统与业务结构管理；`openapi/platform-core.openapi.json` OpenAPI 构建期产物） |
+| `docs/api-documentations/` | API 文档（`README.md` 目录约定；`base-auth.md` 认证链路与用户管理操作；`backstage-permission.md` 权限管理；`backstage-users.md` 用户管理/超管任免与 hr 生命周期内部契约；`backstage-systems.md` 系统与业务结构管理；`backstage-stage4-infra.md` Stage 4 设置/操作日志/系统日志；`backstage-stage4-ops.md` Stage 4 运维（公告/备份/健康/导出/表格偏好）；`openapi/platform-core.openapi.json` OpenAPI 构建期产物） |
 | `docs/dev-workflow.md` | 协作与 CI/CD 流程（Git 分支模型、版本与发布、CI 门禁、开发环境、机密管理、分工建议） |
 
 ## apps（部署单元与前端）
 
 | 路径 | 用途 |
 | --- | --- |
-| `apps/platform-core/` | platform-core 部署单元（base + backstage 逻辑模块；Prisma multi-schema 见 `prisma/`；base 认证链路见 `src/modules/base/`：auth/dingtalk/session/security-log/settings/login-protection/portal/me/approval-proxy；backstage 见 `src/modules/backstage/`：permission-catalog 权限目录启动对账、permission 员工授权 CRUD 与权限组（含授权校验基础：授权查询服务/函数权限守卫）、user-admin 用户管理（CRUD/邀请/重置/解锁 + 批量注销/恢复与账号生命周期编排 + 超管任免）、system-structure 系统与业务结构管理）） |
+| `apps/platform-core/` | platform-core 部署单元（base + backstage；`src/modules/base/table-prefs` 表格偏好；backstage `content` 公告/更新日志、`backup` 备份恢复、`health-status` 健康状态、`operation-log`/`system-log` 日志查询等） |
 | `apps/asset/` | 资产系统部署单元 |
 | `apps/hr/` | 人事系统部署单元 |
 | `apps/fin/` | 财务系统部署单元 |
 | `apps/web/` | 前端（Vite + React + Ant Design；认证与门户页面见 `src/pages/`，统一请求层见 `src/request/`） |
-| `apps/worker/` | BullMQ Worker 部署单元 |
+| `apps/worker/` | BullMQ Worker 部署单元（Outbox 调度 + 统一后台任务消费；`src/outbox-scheduler.ts`、`src/background-task-worker.ts`、`src/processors/`） |
 | `apps/recovery-executor/` | 数据库恢复执行器部署单元 |
 | `apps/migration-runner/` | Migration Runner（按部署单元顺序执行迁移与视图脚本） |
 
@@ -39,8 +39,8 @@
 | `packages/server/` | NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器、Redis、健康探针、内部 REST、会话/CSRF（含提权旋转标记与透明轮换） |
 | `packages/approval/` | 统一审批内核（T5 实现） |
 | `packages/logging/` | 操作日志模板与集中日志受限语句（T4 实现） |
-| `packages/tasks/` | 统一后台任务受限接口（T4 实现） |
-| `packages/files/` | 文件存储与 OSS 约定（T4 实现） |
+| `packages/tasks/` | 统一后台任务受限接口：任务类型常量、稳定 UUID、Outbox SQL、状态条件更新（T4-2） |
+| `packages/files/` | 文件存储与 OSS 约定（`presignImageUpload` / `finalizeImage` / `presignBackupUpload`；T4-10） |
 
 ## scripts（工程脚本）
 

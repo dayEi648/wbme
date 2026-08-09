@@ -403,6 +403,27 @@ export const USER_MANAGE_FUNCTION_CODE = 'user_manage';
  */
 export const SYSTEM_STRUCTURE_MANAGE_FUNCTION_CODE = 'system_structure_manage';
 
+/** backstage「操作日志」功能编码（backstage PRD §1 权限板块） */
+export const OPERATION_LOG_VIEW_FUNCTION_CODE = 'operation_log_view';
+
+/** backstage「系统设置」功能编码（backstage PRD §1 系统板块） */
+export const SYSTEM_SETTINGS_FUNCTION_CODE = 'system_settings';
+
+/** backstage「系统日志」功能编码（backstage PRD §1 系统板块） */
+export const SYSTEM_LOG_VIEW_FUNCTION_CODE = 'system_log_view';
+
+/** backstage「数据备份」功能编码（backstage PRD §1 系统板块） */
+export const DATA_BACKUP_FUNCTION_CODE = 'data_backup';
+
+/** backstage「健康状态」功能编码（backstage PRD §1 系统板块） */
+export const HEALTH_STATUS_FUNCTION_CODE = 'health_status';
+
+/** backstage「更新日志查看」功能编码（backstage PRD §1 内容板块） */
+export const RELEASE_LOG_VIEW_FUNCTION_CODE = 'release_log_view';
+
+/** backstage「系统公告管理」功能编码（backstage PRD §1 内容板块） */
+export const ANNOUNCEMENT_MANAGE_FUNCTION_CODE = 'announcement_manage';
+
 /** 扁平化的目录功能条目：对账与守卫读取用（排序 = 各层数组下标） */
 export interface CatalogFunctionEntry {
   /** 所属系统编码 */

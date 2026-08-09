@@ -1,12 +1,28 @@
 import { NestFactory } from '@nestjs/core';
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
+import cookieParser from 'cookie-parser';
 import { RecoveryExecutorModule } from './recovery-executor.module';
 
-/**
- * 恢复执行器入口（backstage PRD §10）。
- * 本期仅占位：不承载普通业务页面或 API；恢复控制路由与外部清单逻辑 T10-3 实现。
- */
-async function bootstrap(): Promise<void> {
-  await NestFactory.createApplicationContext(RecoveryExecutorModule);
+try {
+  loadEnvFile(resolve(__dirname, '../../../.env'));
+} catch {
+  // 生产由部署注入
 }
 
-void bootstrap();
+/**
+ * 恢复执行器入口（backstage PRD §10；T4-8）。
+ * 不依赖 Redis 启动；承载 /recovery 内部控制路由。
+ */
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create(RecoveryExecutorModule);
+  app.use(cookieParser());
+  const port = Number(process.env.RECOVERY_EXECUTOR_PORT ?? 3010);
+  await app.listen(port);
+  console.log(`recovery-executor listening on http://localhost:${port}`);
+}
+
+void bootstrap().catch((error: unknown) => {
+  console.error('recovery-executor 启动失败：', error instanceof Error ? error.message : error);
+  process.exit(1);
+});
