@@ -21,6 +21,12 @@ export * from './errors/domains/backup';
 export * from './errors/domains/integration';
 export * from './dto/base.dto';
 export * from './dto/approval.dto';
+export * from './dto/org.dto';
+export * from './dto/overtime.dto';
+export * from './dto/position-application.dto';
+export * from './dto/hr-setting.dto';
+export * from './dto/lifecycle.dto';
+export * from './dto/table-prefs.dto';
 export * from './enums/common';
 export * from './permission/catalog';
 

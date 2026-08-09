@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { DataScope, UserStatus } from '@wbme/contracts';
+import { BusinessException, frameworkErrors, type DataScope, type UserStatus } from '@wbme/contracts';
 import type { SessionUser, SessionUserLoader } from '@wbme/server';
 import { PrismaService } from '../prisma.service';
 
@@ -38,7 +38,8 @@ export function widestScope(scopes: readonly DataScope[]): DataScope | null {
 }
 
 /**
- * 从 base.users 加载会话用户（跨 schema 只读）。
+ * 从 backstage.user_accounts 只读视图加载会话用户（T6-8 整改：替代直连 base.users；
+ * 视图含全部用户（含软删，恢复兼容性需读注销用户），软删由本函数过滤）。
  *
  * @param prisma Prisma 客户端
  * @param userId 账号 id
@@ -47,16 +48,16 @@ export function widestScope(scopes: readonly DataScope[]): DataScope | null {
 export async function loadSessionUser(prisma: RawPrisma, userId: number): Promise<SessionUser | null> {
   const rows = await prisma.$queryRaw<
     Array<{
-      id: number;
+      user_id: number;
       status: UserStatus;
       session_version: number;
       is_super_admin: boolean;
       deleted_at: Date | null;
     }>
   >`
-    SELECT id, status, session_version, is_super_admin, deleted_at
-    FROM base.users
-    WHERE id = ${userId}
+    SELECT user_id, status, session_version, is_super_admin, deleted_at
+    FROM backstage.user_accounts
+    WHERE user_id = ${userId}
     LIMIT 1
   `;
   const user = rows[0];
@@ -64,7 +65,7 @@ export async function loadSessionUser(prisma: RawPrisma, userId: number): Promis
     return null;
   }
   return {
-    id: user.id,
+    id: user.user_id,
     status: user.status,
     sessionVersion: user.session_version,
     isSuperAdmin: user.is_super_admin,
@@ -72,7 +73,7 @@ export async function loadSessionUser(prisma: RawPrisma, userId: number): Promis
 }
 
 /**
- * 查询 base.users 显示名（审批动作流水用）。
+ * 查询 backstage.user_accounts 显示名（审批动作流水用）。
  *
  * @param prisma Prisma 客户端
  * @param userId 账号 id
@@ -80,13 +81,16 @@ export async function loadSessionUser(prisma: RawPrisma, userId: number): Promis
  */
 export async function loadUserName(prisma: RawPrisma, userId: number): Promise<string> {
   const rows = await prisma.$queryRaw<Array<{ name: string }>>`
-    SELECT name FROM base.users WHERE id = ${userId} LIMIT 1
+    SELECT name FROM backstage.user_accounts WHERE user_id = ${userId} LIMIT 1
   `;
   return rows[0]?.name ?? '';
 }
 
 /**
  * 功能访问上下文（跨 schema 镜像 AuthorizationService.getFunctionAccess）。
+ *
+ * T6-8 整改：功能注册与员工授权分别经 backstage.function_registry /
+ * backstage.function_grants 只读视图读取（拥有模块 backstage），不再直连业务表。
  *
  * @param prisma Prisma 客户端
  * @param userId 员工账号 id
@@ -106,13 +110,9 @@ export async function getFunctionAccess(
       product_status: string;
     }>
   >`
-    SELECT f.code,
-           s.code AS system_code,
-           s.name AS system_name,
-           s.product_status::text AS product_status
-    FROM backstage.functions f
-    INNER JOIN backstage.systems s ON s.id = f.system_id
-    WHERE f.code = ${functionCode}
+    SELECT code, system_code, system_name, product_status
+    FROM backstage.function_registry
+    WHERE code = ${functionCode}
     LIMIT 1
   `;
   const fn = fnRows[0];
@@ -133,11 +133,10 @@ export async function getFunctionAccess(
     return { ...base, allowed: true, dataScope: null };
   }
   const grantRows = await prisma.$queryRaw<Array<{ data_scope: DataScope }>>`
-    SELECT eg.data_scope
-    FROM backstage.employee_grants eg
-    INNER JOIN backstage.functions f ON f.code = eg.function_code
-    WHERE eg.user_id = ${userId}
-      AND eg.function_code = ${functionCode}
+    SELECT data_scope
+    FROM backstage.function_grants
+    WHERE user_id = ${userId}
+      AND function_code = ${functionCode}
   `;
   if (grantRows.length === 0) {
     return { ...base, allowed: false, dataScope: null };
@@ -150,7 +149,27 @@ export async function getFunctionAccess(
 }
 
 /**
- * hr 会话用户加载器：经 `$queryRaw` 读 base.users（主 PRD §9.6）。
+ * 功能授权统一断言（业务控制器权限入口）：
+ * 未注册/未授权 → 404（范围外资源不泄露存在性）；系统未开放 → SYSTEM_NOT_OPEN(503)。
+ *
+ * @param prisma Prisma 客户端
+ * @param userId 当前用户
+ * @param functionCode 稳定功能编码
+ * @returns 功能访问上下文（放行保证）
+ */
+export async function assertFunctionAccess(prisma: RawPrisma, userId: number, functionCode: string): Promise<FunctionAccess> {
+  const access = await getFunctionAccess(prisma, userId, functionCode);
+  if (!access.registered || !access.allowed) {
+    throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+  }
+  if (!access.systemOpen) {
+    throw new BusinessException(frameworkErrors.SYSTEM_NOT_OPEN, { system: access.systemName });
+  }
+  return access;
+}
+
+/**
+ * hr 会话用户加载器：经 backstage.user_accounts 视图（T6-8 整改，替代直连 base.users）。
  */
 @Injectable()
 export class CrossSchemaSessionLoader implements SessionUserLoader {

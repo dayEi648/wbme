@@ -15,7 +15,7 @@
 | `docs/for-frontend/` | 前端设计规范（Ant Design 主题与设计文档） |
 | `docs/database-design/` | 数据库表结构设计（`00-baseline.md` 公共基线 + `base.md`/`backstage.md`/`hr.md`/`asset.md`/`fin.md` 各模块表设计） |
 | `docs/references/` | 参考资料（利润分析 Excel 模板等） |
-| `docs/api-documentations/` | API 文档（`README.md` 目录约定；`base-auth.md` 认证链路；`approval-center.md` 统一审批中心（T5）；`backstage-permission.md` 权限管理；`backstage-users.md` 用户管理/超管任免与 hr 生命周期内部契约；`backstage-systems.md` 系统与业务结构管理；`backstage-stage4-infra.md` Stage 4 设置/操作日志/系统日志；`backstage-stage4-ops.md` Stage 4 运维（公告/备份/健康/导出/表格偏好）；`openapi/platform-core.openapi.json` OpenAPI 构建期产物） |
+| `docs/api-documentations/` | API 文档（`README.md` 目录约定；`base-auth.md` 认证链路；`approval-center.md` 统一审批中心（T5，T6 接入 hr 部门闭包与批准副作用）；`backstage-permission.md` 权限管理；`backstage-users.md` 用户管理/超管任免与 hr 生命周期内部契约；`backstage-systems.md` 系统与业务结构管理；`backstage-stage4-infra.md` Stage 4 设置/操作日志/系统日志；`backstage-stage4-ops.md` Stage 4 运维（公告/备份/健康/导出/表格偏好）；`hr.md` hr 服务 API（T6：组织/部门/岗位/职称/节假日/加班/岗位申请/人事配置/生命周期内部接口）；`openapi/platform-core.openapi.json` OpenAPI 构建期产物） |
 | `docs/dev-workflow.md` | 协作与 CI/CD 流程（Git 分支模型、版本与发布、CI 门禁、开发环境、机密管理、分工建议） |
 
 ## apps（部署单元与前端）
@@ -24,7 +24,7 @@
 | --- | --- |
 | `apps/platform-core/` | platform-core 部署单元（base + backstage；`src/modules/base/table-prefs` 表格偏好；backstage `content` 公告/更新日志、`backup` 备份恢复、`health-status` 健康状态、`operation-log`/`system-log` 日志查询等） |
 | `apps/asset/` | 资产系统部署单元（T5 审批中心头接入：`src/modules/approval/`） |
-| `apps/hr/` | 人事系统部署单元（T5 审批中心头接入：`src/modules/approval/`） |
+| `apps/hr/` | 人事系统部署单元（T6 全功能：`src/modules/` 下 approval 审批中心（含部门闭包与批准副作用）、org 组织/部门/岗位/岗位申请（含内部接口）、title 职称、holiday 节假日适配器、overtime 加班、settings 人事配置与字典、lifecycle 账号生命周期内部接口、base/table-prefs 表格偏好） |
 | `apps/fin/` | 财务系统部署单元 |
 | `apps/web/` | 前端（Vite + React + Ant Design；认证与门户页面见 `src/pages/`，统一请求层见 `src/request/`） |
 | `apps/worker/` | BullMQ Worker 部署单元（Outbox 调度 + 统一后台任务消费；`src/outbox-scheduler.ts`、`src/background-task-worker.ts`、`src/processors/`） |

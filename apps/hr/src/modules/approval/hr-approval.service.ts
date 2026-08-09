@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   APPLICATION_NO_PREFIX_OVERTIME,
   APPLICATION_NO_PREFIX_POSITION_CHANGE,
@@ -8,7 +8,10 @@ import {
   generateApplicationNo,
   resolveProcessTransition,
   throwIfTransitionLost,
+  toApproverScope,
+  assertScopeCoversAll,
   withPendingLimitMapping,
+  extractDepartmentIdFromSnapshot,
 } from '@wbme/approval';
 import {
   BusinessException,
@@ -21,10 +24,23 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
+import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
+import { APPROVAL_SIDE_EFFECT, type ApprovalSideEffect } from './approval-side-effect';
 
 /** hr 审批申请类型 */
 export type HrRequestType = 'OVERTIME' | 'POSITION_CHANGE';
+
+/** 审批头创建入参（overtime/position-application 共用） */
+export interface CreateRequestHeadInput {
+  requestType: HrRequestType;
+  applicantId: number;
+  applicantName: string;
+  /** 申请人部门快照 [{id, name}]（提交时） */
+  applicantDepartmentSnapshot: Prisma.InputJsonValue;
+  proxyId?: number;
+  proxyName?: string;
+}
 
 /** 列表项 */
 export interface HrApprovalListItem {
@@ -59,17 +75,72 @@ const FUNCTION_TO_TYPES: Readonly<Record<string, readonly HrRequestType[]>> = {
   [ORG_STRUCTURE_FUNCTION_CODE]: ['POSITION_CHANGE'],
 };
 
+/** 可见类型条目（携带数据范围档位：DEPARTMENT 档须按部门闭包过滤） */
+interface VisibleTypeEntry {
+  requestType: HrRequestType;
+  dataScope: DataScope | null;
+}
+
 /**
- * hr 审批头服务（主 PRD §3.2 / T5-3）。
+ * hr 审批头服务（主 PRD §3.2 / T5-3，T6 接入部门闭包与业务副作用）。
  *
- * - 加班/岗位变更审批头创建、处理、取消、列表与待办统计；
- * - 批准/驳回业务副作用本期为 no-op（T6 接入组织生效等）；
- * - T5 数据范围简化：DEPARTMENT 档对 hr 类型按公司可视（不裁剪部门），
- *   T6 再接入真实部门闭包过滤。
+ * - 加班/岗位变更审批头创建、处理、取消、列表、导出与待办统计；
+ * - T6：DEPARTMENT 档按部门闭包过滤（hr.department_closure 视图）；
+ *   批准业务副作用经 APPROVAL_SIDE_EFFECT 注入（POSITION_CHANGE 由岗位申请服务注册，
+ *   OVERTIME 无副作用）；T5 的"按公司可视/副作用 no-op"简化已移除。
  */
 @Injectable()
 export class HrApprovalService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly closure: DepartmentClosureService,
+    @Optional() @Inject(APPROVAL_SIDE_EFFECT) private readonly sideEffect: ApprovalSideEffect | null = null,
+  ) {}
+
+  /**
+   * 在调用方事务内创建审批头 + SUBMIT 动作（明细由调用方创建）。
+   * 岗位变更单待审批冲突经条件唯一索引映射为 PENDING_LIMIT_REACHED。
+   *
+   * @param tx 事务客户端
+   * @param input 审批头内容
+   * @returns 审批头（含 id/applicationNo）
+   * @throws PENDING_LIMIT_REACHED 岗位变更单待审批冲突
+   */
+  async createRequestHead(
+    tx: Prisma.TransactionClient,
+    input: CreateRequestHeadInput,
+  ): Promise<{ id: number; applicationNo: string }> {
+    const prefix =
+      input.requestType === 'OVERTIME'
+        ? APPLICATION_NO_PREFIX_OVERTIME
+        : APPLICATION_NO_PREFIX_POSITION_CHANGE;
+    const applicationNo = generateApplicationNo(prefix);
+    return withPendingLimitMapping(async () => {
+      const head = await tx.hrApprovalRequest.create({
+        data: {
+          applicationNo,
+          requestType: input.requestType,
+          applicantId: input.applicantId,
+          applicantName: input.applicantName,
+          applicantDepartmentSnapshot: input.applicantDepartmentSnapshot,
+          proxyId: input.proxyId ?? null,
+          proxyName: input.proxyName ?? null,
+          status: 'PENDING',
+          submittedAt: new Date(),
+          createdBy: input.applicantId,
+        },
+      });
+      await tx.hrApprovalAction.create({
+        data: {
+          requestId: head.id,
+          action: 'SUBMIT',
+          actorId: input.applicantId,
+          actorName: input.applicantName,
+        },
+      });
+      return { id: head.id, applicationNo };
+    });
+  }
 
   /**
    * 测试/内部：创建 PENDING 审批头 + SUBMIT 动作（及类型明细）。
@@ -79,80 +150,58 @@ export class HrApprovalService {
    * @throws PENDING_LIMIT_REACHED 岗位变更单待审批冲突
    */
   async submitTestHeader(input: SubmitTestHeaderInput): Promise<{ requestId: number }> {
-    const prefix =
-      input.requestType === 'OVERTIME'
-        ? APPLICATION_NO_PREFIX_OVERTIME
-        : APPLICATION_NO_PREFIX_POSITION_CHANGE;
-    const applicationNo = generateApplicationNo(prefix);
     const now = new Date();
     const deptSnapshot = (input.applicantDepartmentSnapshot ?? { id: 1, name: '占位部门' }) as Prisma.InputJsonValue;
 
-    return withPendingLimitMapping(async () => {
-      const request = await this.prisma.client.$transaction(async (tx) => {
-        const head = await tx.hrApprovalRequest.create({
-          data: {
-            applicationNo,
-            requestType: input.requestType,
-            applicantId: input.applicantId,
-            applicantName: input.applicantName,
-            applicantDepartmentSnapshot: deptSnapshot,
-            proxyId: input.proxyId ?? null,
-            proxyName: input.proxyName ?? null,
-            status: 'PENDING',
-            submittedAt: now,
-            createdBy: input.applicantId,
-          },
-        });
-        if (input.requestType === 'POSITION_CHANGE') {
-          await tx.positionChangeRequest.create({
-            data: {
-              requestId: head.id,
-              userId: input.applicantId,
-              userName: input.applicantName,
-              departmentSnapshot: deptSnapshot,
-              targetDepartmentId: 1,
-              targetDepartmentName: '占位部门',
-              targetPositionId: 1,
-              targetPositionName: '占位岗位',
-            },
-          });
-        } else {
-          await tx.overtimeItem.create({
-            data: {
-              requestId: head.id,
-              userId: input.applicantId,
-              userName: input.applicantName,
-              departmentSnapshot: deptSnapshot,
-              overtimeDate: new Date(now.toISOString().slice(0, 10)),
-              startMinute: 18 * 60,
-              endMinute: 20 * 60,
-              reason: 'T5 测试加班',
-              holidaySnapshot: { dateType: 'WORKDAY', weekday: now.getUTCDay() } as Prisma.InputJsonValue,
-            },
-          });
-        }
-        await tx.hrApprovalAction.create({
+    return this.prisma.client.$transaction(async (tx) => {
+      const head = await this.createRequestHead(tx, {
+        requestType: input.requestType,
+        applicantId: input.applicantId,
+        applicantName: input.applicantName,
+        applicantDepartmentSnapshot: deptSnapshot,
+        proxyId: input.proxyId,
+        proxyName: input.proxyName,
+      });
+      if (input.requestType === 'POSITION_CHANGE') {
+        await tx.positionChangeRequest.create({
           data: {
             requestId: head.id,
-            action: 'SUBMIT',
-            actorId: input.applicantId,
-            actorName: input.applicantName,
+            userId: input.applicantId,
+            userName: input.applicantName,
+            departmentSnapshot: deptSnapshot,
+            targetDepartmentId: 1,
+            targetDepartmentName: '占位部门',
+            targetPositionId: 1,
+            targetPositionName: '占位岗位',
           },
         });
-        return head;
-      });
-      return { requestId: request.id };
+      } else {
+        await tx.overtimeItem.create({
+          data: {
+            requestId: head.id,
+            userId: input.applicantId,
+            userName: input.applicantName,
+            departmentSnapshot: deptSnapshot,
+            overtimeDate: new Date(now.toISOString().slice(0, 10)),
+            startMinute: 18 * 60,
+            endMinute: 20 * 60,
+            reason: 'T5 测试加班',
+            holidaySnapshot: { dateType: 'WORKDAY', weekday: now.getUTCDay() } as Prisma.InputJsonValue,
+          },
+        });
+      }
+      return { requestId: head.id };
     });
   }
 
   /**
-   * 审批处理（内核状态迁移；业务副作用 T5 为 no-op）。
+   * 审批处理（内核状态迁移 + 批准业务副作用 + DEPARTMENT 闭包范围断言）。
    *
    * @param id 审批头 id
    * @param action APPROVE | REJECT
    * @param processorId 处理人
    * @param opinion 意见（驳回必填）
-   * @throws RESOURCE_NOT_FOUND 无权/不存在；STATUS_CONFLICT 并发冲突
+   * @throws RESOURCE_NOT_FOUND 无权/不存在；STATUS_CONFLICT 并发冲突；SCOPE_NOT_COVERED 范围未覆盖
    */
   async process(
     id: number,
@@ -168,11 +217,16 @@ export class HrApprovalService {
       if (!head) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
       }
-      await this.assertCanAccessType(processorId, head.requestType);
+      const access = await this.assertCanAccessType(processorId, head.requestType);
       if (head.status !== 'PENDING') {
         throw new BusinessException(approvalErrors.STATUS_CONFLICT);
       }
       assertTransitionAllowed(head.status, transition.status);
+
+      // T6：DEPARTMENT 档须覆盖批次全部申请对象（加班明细部门快照/岗位申请部门快照）
+      if (action === 'APPROVE') {
+        await this.assertScopeCovers(tx, head, access, processorId);
+      }
 
       const processorName = await loadUserName(tx, processorId);
       const now = new Date();
@@ -189,7 +243,12 @@ export class HrApprovalService {
       });
       throwIfTransitionLost(updated.count);
 
-      // T5：批准/驳回无业务副作用（T6 接入岗位生效、加班台账等）
+      // T6：批准业务副作用（POSITION_CHANGE 组织生效；OVERTIME 无副作用）。
+      // 副作用校验抛错 → 事务回滚 → 申请保持待审批（主 PRD §3.2 批准前重校验）。
+      if (action === 'APPROVE' && this.sideEffect) {
+        await this.sideEffect.apply(tx, head, processorId);
+      }
+
       await tx.hrApprovalAction.create({
         data: {
           requestId: id,
@@ -247,7 +306,7 @@ export class HrApprovalService {
   }
 
   /**
-   * 分页列表（按授予功能过滤可见类型）。
+   * 分页列表（按授予功能过滤可见类型；DEPARTMENT 档按部门闭包过滤）。
    *
    * @param userId 当前用户
    * @param query 筛选与分页
@@ -258,7 +317,7 @@ export class HrApprovalService {
     if (visibleTypes.length === 0) {
       return { items: [], total: 0 };
     }
-    const where = this.buildWhere(query, visibleTypes);
+    const where = await this.buildWhere(query, visibleTypes, userId);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
@@ -312,7 +371,8 @@ export class HrApprovalService {
     if (!head) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
-    await this.assertCanAccessType(userId, head.requestType);
+    const access = await this.assertCanAccessType(userId, head.requestType);
+    await this.assertHeadCovered(userId, head, access);
     return {
       request: {
         ...this.toListItem(head),
@@ -338,10 +398,10 @@ export class HrApprovalService {
   }
 
   /**
-   * 可见待审批数量（按类型 breakdown）。
+   * 可见待审批数量（按类型 breakdown；DEPARTMENT 档按闭包裁剪）。
    *
    * @param userId 用户 id
-   * @param isSuperAdmin 是否超管（可省略，将从 base.users 读取）
+   * @param isSuperAdmin 是否超管（可省略，将从视图读取）
    * @returns total + byType
    */
   async pendingCount(
@@ -357,9 +417,10 @@ export class HrApprovalService {
     if (visibleTypes.length === 0) {
       return { total: 0, byType: {} };
     }
+    const where = await this.buildWhere({}, visibleTypes, userId);
     const groups = await this.prisma.client.hrApprovalRequest.groupBy({
       by: ['requestType'],
-      where: { status: 'PENDING', requestType: { in: [...visibleTypes] } },
+      where: { ...where, status: 'PENDING' },
       _count: { _all: true },
     });
     const byType: Record<string, number> = {};
@@ -372,34 +433,34 @@ export class HrApprovalService {
   }
 
   /**
-   * 解析用户可见的申请类型集合。
+   * 解析用户可见的申请类型集合（携带数据范围档位）。
    *
-   * T5：DEPARTMENT 档不裁剪部门（等同该类型全量可见）；T6 接入部门闭包。
+   * 超管/公司档全量可见；DEPARTMENT 档按部门闭包过滤（T6 接入，
+   * 替代 T5 的"DEPARTMENT 按公司可视"简化）。
    *
    * @param userId 用户
    * @param isSuperAdminHint 可选超管提示
-   * @returns 可见类型
+   * @returns 可见类型（含档位）
    */
   private async resolveVisibleTypes(
     userId: number,
     isSuperAdminHint?: boolean,
-  ): Promise<HrRequestType[]> {
+  ): Promise<VisibleTypeEntry[]> {
     const user = isSuperAdminHint === undefined ? await loadSessionUser(this.prisma.client, userId) : null;
     const isSuperAdmin = isSuperAdminHint ?? user?.isSuperAdmin ?? false;
-    const types = new Set<HrRequestType>();
+    const types: VisibleTypeEntry[] = [];
     for (const [functionCode, requestTypes] of Object.entries(FUNCTION_TO_TYPES)) {
       const access = await getFunctionAccess(this.prisma.client, userId, functionCode);
       if (!access.registered || !access.systemOpen) {
         continue;
       }
       if (isSuperAdmin || access.allowed) {
-        // T5：dataScope 为 DEPARTMENT 时仍列出该 requestType 全部（无部门闭包）；T6 再过滤
         for (const requestType of requestTypes) {
-          types.add(requestType);
+          types.push({ requestType, dataScope: isSuperAdmin ? null : access.dataScope });
         }
       }
     }
-    return [...types];
+    return types;
   }
 
   /**
@@ -407,6 +468,7 @@ export class HrApprovalService {
    *
    * @param userId 用户
    * @param requestType 申请类型
+   * @returns 数据范围档位
    */
   private async assertCanAccessType(userId: number, requestType: string): Promise<DataScope | null> {
     const functionCode =
@@ -428,20 +490,88 @@ export class HrApprovalService {
     if (!access.allowed) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
-    // T5：DEPARTMENT 按公司可视，不校验部门快照；T6 再 assertScopeCoversAll
     return access.dataScope;
   }
 
-  /** 构造列表 where */
-  private buildWhere(
-    query: ApprovalListQueryDto,
-    visibleTypes: readonly HrRequestType[],
-  ): Prisma.HrApprovalRequestWhereInput {
+  /**
+   * 断言当前审批人 DEPARTMENT 档范围覆盖批次全部申请对象（T6 部门闭包）。
+   * 对象部门 = 加班明细部门快照（多部门员工全部部门）/ 岗位申请申请人部门快照；
+   * 无部门（空快照）仅公司范围可覆盖。范围未覆盖抛 SCOPE_NOT_COVERED。
+   *
+   * @param tx 事务客户端
+   * @param head 审批头
+   * @param dataScope 审批人档位
+   * @param userId 审批人
+   */
+  private async assertScopeCovers(
+    tx: Prisma.TransactionClient,
+    head: { id: number; requestType: string },
+    dataScope: DataScope | null,
+    userId: number,
+  ): Promise<void> {
+    const closure = await this.closure.closureOfUser(userId);
+    const scope = toApproverScope(dataScope, closure);
+    const objectDepartmentIds = await this.resolveObjectDepartmentIds(tx, head);
+    assertScopeCoversAll(scope, objectDepartmentIds, head.requestType);
+  }
+
+  /**
+   * 列表/详情/待办：DEPARTMENT 档裁剪为闭包覆盖的记录（不存在的记录表现为 404/不可见）。
+   *
+   * @param userId 当前用户
+   * @param head 审批头（含明细）
+   * @param dataScope 档位
+   */
+  private async assertHeadCovered(
+    userId: number,
+    head: { id: number; requestType: string; overtimeItems: Array<{ departmentSnapshot: Prisma.JsonValue }> },
+    dataScope: DataScope | null,
+  ): Promise<void> {
+    if (dataScope === null || dataScope === 'COMPANY') {
+      return;
+    }
+    const closure = await this.closure.closureOfUser(userId);
+    const scope = toApproverScope(dataScope, closure);
+    const ids = head.overtimeItems.map((item) =>
+      extractDepartmentIdFromSnapshot(item.departmentSnapshot as unknown),
+    );
+    assertScopeCoversAll(scope, ids, head.requestType);
+  }
+
+  /** 从审批头解析申请对象部门 id 列表（多对象批次展平；空 → 仅公司范围可覆盖） */
+  private async resolveObjectDepartmentIds(
+    tx: Prisma.TransactionClient,
+    head: { id: number; requestType: string },
+  ): Promise<Array<number | null>> {
+    if (head.requestType === 'OVERTIME') {
+      const items = await tx.overtimeItem.findMany({ where: { requestId: head.id } });
+      return items.map((item) => extractDepartmentIdFromSnapshot(item.departmentSnapshot as unknown));
+    }
+    const detail = await tx.positionChangeRequest.findUnique({ where: { requestId: head.id } });
+    if (!detail) {
+      return [];
+    }
+    return (detail.departmentSnapshot as unknown as Array<{ id: number }> | null)?.map((item) => item.id) ?? [];
+  }
+
+  /**
+   * 构造列表 where（DEPARTMENT 档追加闭包覆盖记录过滤）。
+   *
+   * @param query 筛选条件
+   * @param visibleTypes 可见类型（含档位）
+   * @param userId 当前用户（闭包计算）
+   */
+  private async buildWhere(
+    query: Partial<ApprovalListQueryDto>,
+    visibleTypes: readonly VisibleTypeEntry[],
+    userId: number,
+  ): Promise<Prisma.HrApprovalRequestWhereInput> {
     const where: Prisma.HrApprovalRequestWhereInput = {
-      requestType: { in: [...visibleTypes] },
+      requestType: { in: visibleTypes.map((entry) => entry.requestType) },
     };
     if (query.requestType !== undefined) {
-      if (!(visibleTypes as readonly string[]).includes(query.requestType)) {
+      const known = visibleTypes.some((entry) => entry.requestType === query.requestType);
+      if (!known) {
         where.id = -1;
       } else {
         where.requestType = query.requestType as HrRequestType;
@@ -472,7 +602,54 @@ export class HrApprovalService {
         { processorName: { contains: query.keyword } },
       ];
     }
+    // T6：DEPARTMENT 档加班记录按闭包裁剪（快照部门全部 ∈ 审批人闭包）
+    const departmentScopedOvertime = visibleTypes.some(
+      (entry) => entry.requestType === 'OVERTIME' && entry.dataScope === 'DEPARTMENT',
+    );
+    const departmentScopedPosition = visibleTypes.some(
+      (entry) => entry.requestType === 'POSITION_CHANGE' && entry.dataScope === 'DEPARTMENT',
+    );
+    if (departmentScopedOvertime || departmentScopedPosition) {
+      const closure = await this.closure.closureOfUser(userId);
+      const coveredIds = await this.findCoveredRequestIds(closure, {
+        overtime: departmentScopedOvertime,
+        position: departmentScopedPosition,
+      });
+      where.id = { in: coveredIds };
+    }
     return where;
+  }
+
+  /** 闭包覆盖的审批头 id 集合（明细部门快照全部 ∈ 闭包；空快照不覆盖） */
+  private async findCoveredRequestIds(
+    closure: ReadonlySet<number>,
+    scoped: { overtime: boolean; position: boolean },
+  ): Promise<number[]> {
+    const closureIds = [...closure];
+    const ids = new Set<number>();
+    if (scoped.overtime) {
+      const rows = await this.prisma.client.$queryRaw<Array<{ id: number }>>`
+        SELECT DISTINCT oi.request_id AS id FROM hr.overtime_items oi
+        WHERE jsonb_array_length(oi.department_snapshot) > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements(oi.department_snapshot) el
+            WHERE (el->>'id')::int <> ALL(${closureIds})
+          )
+      `;
+      rows.forEach((row) => ids.add(row.id));
+    }
+    if (scoped.position) {
+      const rows = await this.prisma.client.$queryRaw<Array<{ id: number }>>`
+        SELECT DISTINCT pcr.request_id AS id FROM hr.position_change_requests pcr
+        WHERE jsonb_array_length(pcr.department_snapshot) > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements(pcr.department_snapshot) el
+            WHERE (el->>'id')::int <> ALL(${closureIds})
+          )
+      `;
+      rows.forEach((row) => ids.add(row.id));
+    }
+    return [...ids];
   }
 
   private toListItem(row: {

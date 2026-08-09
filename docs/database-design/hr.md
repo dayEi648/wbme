@@ -112,6 +112,8 @@
 | `updated_at` | `timestamptz` | NOT NULL | |
 
 变更事务递增 `user_org_version`。
+> T6 实现登记：恢复兼容性清理岗位置空（`position_id=null`）时保留原 `assigned_by` 值
+> （系统清理不改写编排者审计；`assigned_by` NOT NULL 约束下置空仅改岗位字段）。
 
 ## H-9 `org_compat_records` 恢复兼容性处理记录（只追加）
 

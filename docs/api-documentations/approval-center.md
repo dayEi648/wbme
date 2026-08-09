@@ -78,17 +78,23 @@
 | 类型 | 待审批限制 |
 | --- | --- |
 | `POSITION_CHANGE` | 同一 `applicant_id` 最多一条 PENDING |
-| `OVERTIME` | 允许多条；时段重叠校验见 T6-5 |
+| `OVERTIME` | 允许多条；时段重叠校验见 hr.md |
 
-- 批准/驳回业务副作用（组织变更、加班落账）本期为 no-op，T6-5/T6-6 接入
-- 部门范围闭包过滤本期简化（T6 补齐）；公司范围与类型授权过滤已生效
+- 数据范围：`overtime_approval` DEPARTMENT 档按审批人部门闭包（hr.department_closure 视图，
+  含下级、多部门并集）过滤可见待办/详情/统计；批次对象=加班明细提交时部门快照，快照中
+  任一部门不在闭包内则该批次不可见；处理接口范围未覆盖 → `SCOPE_NOT_COVERED`(422)。
+- 批准副作用：`POSITION_CHANGE` 批准时事务内重校验（员工仍无/单部门、目标部门有效、
+  目标岗位有效且允许自助申请且适用）→ 组织生效 + `user_org_version++`；任一条件不成立
+  → `POSITION_APPLY_STALE`(422) 保持待审批；`OVERTIME` 批准无副作用。
+- 审批中心导出：`GET /api/v1/approval-requests/export`（runExport 流式；行数上限=平台设置
+  export.max.rows；导出完成写 EXPORT 操作日志）。
 
 ### 内部接口
 
 `GET /internal/v1/approval-requests/pending-count?userId=`
 
 - 调用方：`platform-core`（内部令牌 + 白名单）
-- 响应：`{ total, byType }`，口径与审批中心一致
+- 响应：`{ total, byType }`，口径与审批中心一致（DEPARTMENT 档按闭包裁剪）
 
 ---
 

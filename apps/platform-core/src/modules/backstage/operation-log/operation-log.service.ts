@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
-import { getGrantedFunction, RedisService, runExport } from '@wbme/server';
+import { getGrantedFunction, getRequestContext, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
@@ -76,7 +76,7 @@ export class OperationLogService {
     data: OperationLogListItem[];
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
-    const { whereSql, params } = this.buildWhereClause(query, false);
+    const { whereSql, params } = await this.buildWhereClause(query, false);
     const offset = (query.page - 1) * query.pageSize;
     const listParams = [...params, query.pageSize, offset];
     const countParams = [...params];
@@ -132,7 +132,7 @@ export class OperationLogService {
    */
   async export(userId: number, query: Omit<OperationLogQuery, 'page' | 'pageSize'>, res: Response): Promise<void> {
     const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
-    const { whereSql, params } = this.buildWhereClause({ ...query, page: 1, pageSize: 1 }, false);
+    const { whereSql, params } = await this.buildWhereClause({ ...query, page: 1, pageSize: 1 }, false);
     await runExport<OperationLogRow>({
       userId,
       redis: this.redis.redis,
@@ -189,11 +189,11 @@ export class OperationLogService {
     );
   }
 
-  /** 构建 WHERE 子句与参数（含数据范围过滤） */
-  private buildWhereClause(
+  /** 构建 WHERE 子句与参数（含数据范围过滤；DEPARTMENT 档按 hr 部门闭包过滤） */
+  private async buildWhereClause(
     query: OperationLogQuery,
     mineOnly: boolean,
-  ): { whereSql: string; params: unknown[] } {
+  ): Promise<{ whereSql: string; params: unknown[] }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     const add = (sql: string, value: unknown) => {
@@ -219,7 +219,7 @@ export class OperationLogService {
       add('created_at <= ?', query.to);
     }
     if (!mineOnly) {
-      const scopeFilter = this.buildDataScopeFilter(params);
+      const scopeFilter = await this.buildDataScopeFilter(params);
       if (scopeFilter) {
         conditions.push(scopeFilter);
       }
@@ -229,18 +229,37 @@ export class OperationLogService {
   }
 
   /**
-   * 数据范围行级过滤（主 PRD §3.1）。
-   * DEPARTMENT 档待 hr 组织视图接入后按 operator_departments 交集过滤；
-   * 本期 hr 未就绪时 DEPARTMENT 与 COMPANY 行为相同（TODO）。
+   * 数据范围行级过滤（主 PRD §3.1，T6-6 接入）：
+   * DEPARTMENT 档按当前用户部门闭包（hr.department_closure 视图，含下级、多部门并集）
+   * 与日志 operator_departments JSON 数组求交集——日志中任一部门 ∈ 闭包即可见。
+   * 经只读视图读取（hr 容器停止不使既有数据范围读取失效，主 PRD §9.4）。
    */
-  private buildDataScopeFilter(_params: unknown[]): string | null {
+  private async buildDataScopeFilter(params: unknown[]): Promise<string | null> {
     const granted = getGrantedFunction();
     if (!granted || granted.dataScope === null || granted.dataScope === 'COMPANY') {
       return null;
     }
     if (granted.dataScope === 'DEPARTMENT') {
-      // TODO(T6-6): hr 组织数据就绪后，按当前用户部门与 operator_departments JSON 数组求交集过滤
-      return null;
+      const context = getRequestContext();
+      if (!context?.userId) {
+        return null;
+      }
+      const rows = await this.prisma.client.$queryRaw<Array<{ descendant_id: number }>>`
+        SELECT DISTINCT c.descendant_id
+        FROM hr.department_closure c
+        INNER JOIN hr.user_org uo ON uo.department_id = c.ancestor_id
+        WHERE uo.user_id = ${context.userId}
+      `;
+      if (rows.length === 0) {
+        // 无部门员工：部门档无可见日志（与主 PRD §3.1 部门档语义一致）
+        return '1 = 0';
+      }
+      const closureIds = rows.map((row) => row.descendant_id);
+      params.push(closureIds);
+      return `EXISTS (
+        SELECT 1 FROM jsonb_array_elements(operator_departments) od
+        WHERE (od->>'id')::int = ANY($${params.length}::int[])
+      )`;
     }
     return null;
   }

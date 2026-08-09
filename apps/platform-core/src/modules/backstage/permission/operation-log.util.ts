@@ -18,6 +18,8 @@ export interface OperationLogOperator {
   id: number;
   name: string;
   isSuperAdmin: boolean;
+  /** 操作时归属部门快照 [{id, name}]（T6-6 经 hr.user_org 视图填充；多部门并列） */
+  departments?: Array<{ id: number; name: string }>;
 }
 
 /** 幂等执行的业务产物：业务结果 + 操作日志内容 */
@@ -50,7 +52,21 @@ export async function loadOperationLogOperator(prisma: PrismaClient, operatorId:
   if (!operator || operator.deletedAt !== null) {
     throw new BusinessException(frameworkErrors.UNAUTHORIZED);
   }
-  return operator;
+  // T6-6：经 hr.user_org 只读视图取操作时部门快照（hr 停机不使快照读取失效，主 PRD §9.4）
+  let departments: Array<{ id: number; name: string }> | undefined;
+  try {
+    const rows = await prisma.$queryRaw<Array<{ department_id: number; department_name: string }>>`
+      SELECT DISTINCT department_id, department_name
+      FROM hr.user_org
+      WHERE user_id = ${operatorId}
+      ORDER BY department_id
+    `;
+    departments = rows.map((row) => ({ id: row.department_id, name: row.department_name }));
+  } catch {
+    // 视图不可用（hr schema 未迁移/连接异常）：日志回退为不填部门快照，不阻断写操作
+    departments = undefined;
+  }
+  return { ...operator, departments };
 }
 
 /**
@@ -83,7 +99,8 @@ export function fingerprintPayload(payload: unknown): string {
 
 /**
  * 写入 backstage 操作日志（只追加）。
- * operator_departments 待 hr 组织视图接入后填充快照；requestId 取当前请求上下文。
+ * operator_departments 经 loadOperationLogOperator 填充（T6-6，hr.user_org 视图快照）；
+ * requestId 取当前请求上下文。
  *
  * @param tx 事务客户端（与业务写入同事务，业务回滚日志同步回滚）
  * @param entry 日志内容（feature = 目录中的功能编码）；携带幂等字段时该行同时充当幂等记录
@@ -106,6 +123,7 @@ export async function writeBackstageOperationLog(
     data: {
       operatorId: entry.operator.id,
       operatorName: entry.operator.name,
+      operatorDepartments: (entry.operator.departments ?? []) as Prisma.InputJsonValue,
       system: 'BACKSTAGE',
       feature: entry.feature,
       actionType: entry.actionType,

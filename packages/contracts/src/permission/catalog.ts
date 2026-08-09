@@ -424,11 +424,32 @@ export const RELEASE_LOG_VIEW_FUNCTION_CODE = 'release_log_view';
 /** backstage「系统公告管理」功能编码（backstage PRD §1 内容板块） */
 export const ANNOUNCEMENT_MANAGE_FUNCTION_CODE = 'announcement_manage';
 
+/** hr「加班申请」功能编码（hr PRD §1 / §3：本人档，名单固定本人） */
+export const OVERTIME_APPLY_FUNCTION_CODE = 'overtime_apply';
+
+/** hr「代交加班」功能编码（hr PRD §1 / §3：部门/公司档） */
+export const PROXY_OVERTIME_FUNCTION_CODE = 'proxy_overtime';
+
 /** hr「加班审批」功能编码（hr PRD §1 / §4） */
 export const OVERTIME_APPROVAL_FUNCTION_CODE = 'overtime_approval';
 
+/** hr「加班历史记录」功能编码（hr PRD §1 / §3：部门/公司档管理视图） */
+export const OVERTIME_HISTORY_FUNCTION_CODE = 'overtime_history';
+
 /** hr「组织架构」功能编码（含岗位申请审批权，hr PRD §1 / §5） */
 export const ORG_STRUCTURE_FUNCTION_CODE = 'org_structure';
+
+/** hr「部门管理」功能编码（hr PRD §1 / §6） */
+export const DEPARTMENT_MANAGE_FUNCTION_CODE = 'department_manage';
+
+/** hr「岗位管理」功能编码（hr PRD §1 / §7） */
+export const POSITION_MANAGE_FUNCTION_CODE = 'position_manage';
+
+/** hr「职称管理」功能编码（hr PRD §1 / §8） */
+export const TITLE_MANAGE_FUNCTION_CODE = 'title_manage';
+
+/** hr「人事配置」功能编码（hr PRD §1 / §9） */
+export const HR_CONFIG_FUNCTION_CODE = 'hr_config';
 
 /** asset「消耗品审批」功能编码（asset PRD §1 / §9 六类审批） */
 export const CONSUMABLE_APPROVAL_FUNCTION_CODE = 'consumable_approval';

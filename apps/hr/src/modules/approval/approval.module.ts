@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { InternalRestModule } from '@wbme/server';
+import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { ApprovalController } from './approval.controller';
 import { HrApprovalService } from './hr-approval.service';
 import { InternalApprovalController } from './internal-approval.controller';
 
 /**
- * hr 审批模块（T5-3：审批头 + 审批中心 API + 内部 pending-count）。
+ * hr 审批模块（T5-3 审批头 + 审批中心 API + 内部 pending-count；
+ * T6 接入部门闭包过滤与批准副作用钩子）。
  */
 @Module({
   imports: [
@@ -14,7 +16,7 @@ import { InternalApprovalController } from './internal-approval.controller';
     }),
   ],
   controllers: [ApprovalController, InternalApprovalController],
-  providers: [HrApprovalService],
+  providers: [HrApprovalService, DepartmentClosureService],
   exports: [HrApprovalService],
 })
 export class ApprovalModule {}

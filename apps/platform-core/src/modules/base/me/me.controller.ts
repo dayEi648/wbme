@@ -1,11 +1,19 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Inject, Post, Put, Query } from '@nestjs/common';
-import { BusinessException, accountErrors, frameworkErrors, IdempotentDto, maskPhone, PaginationQueryDto } from '@wbme/contracts';
+import {
+  BusinessException,
+  frameworkErrors,
+  IdempotentDto,
+  maskPhone,
+  PaginationQueryDto,
+  PositionApplicationSubmitDto,
+} from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PrismaService } from '../../../prisma.service';
 import { ProfileChangeService } from '../approval-proxy/profile-change.service';
 import { OperationLogService } from '../../backstage/operation-log/operation-log.service';
+import { HrOrgClient } from './hr-org.client';
 
 /** P3 资料修改（至少一项；超管直改，员工提交审批；幂等键防重复提交建单） */
 class UpdateProfileDto extends IdempotentDto {
@@ -20,9 +28,9 @@ class UpdateProfileDto extends IdempotentDto {
 }
 
 /**
- * 个人中心（base PRD §6，T2-7）：
- * P2 当前身份、P3 资料修改（超管直改/员工审批）、P4/P5 岗位申请契约、
- * P6 我的操作日志契约（T4-1 落地后接通）。
+ * 个人中心（base PRD §6，T2-7 / T6-6 岗位申请接通）：
+ * P2 当前身份（部门/岗位经 hr 内部接口）、P3 资料修改（超管直改/员工审批）、
+ * P4 岗位变更申请（hr 侧校验）、P5 我的岗位申请记录、P6 我的操作日志。
  */
 @ApiTags('个人中心')
 @Controller('me')
@@ -31,9 +39,10 @@ export class MeController {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     private readonly profileChange: ProfileChangeService,
     private readonly operationLog: OperationLogService,
+    private readonly hrOrg: HrOrgClient,
   ) {}
 
-  /** P2 当前身份信息（部门/岗位由 hr 提供，T6 填充；手机号只读） */
+  /** P2 当前身份信息（部门/岗位由 hr 提供；hr 不可用时降级为空结构，手机号只读） */
   @Get()
   async me(@CurrentUser() userId: number): Promise<unknown> {
     const user = await this.prisma.client.user.findUnique({
@@ -43,10 +52,13 @@ export class MeController {
     if (!user) {
       throw new BusinessException(frameworkErrors.SESSION_EXPIRED);
     }
-    const pendingProfileChange = await this.prisma.client.approvalRequest.findFirst({
-      where: { applicantId: userId, requestType: 'PROFILE_CHANGE', status: 'PENDING' },
-      select: { id: true },
-    });
+    const [pendingProfileChange, org] = await Promise.all([
+      this.prisma.client.approvalRequest.findFirst({
+        where: { applicantId: userId, requestType: 'PROFILE_CHANGE', status: 'PENDING' },
+        select: { id: true },
+      }),
+      this.hrOrg.getMyOrg(userId),
+    ]);
     return {
       user: {
         id: user.id,
@@ -57,10 +69,9 @@ export class MeController {
         isSuperAdmin: user.isSuperAdmin,
         createdAt: user.createdAt,
       },
-      // 部门/岗位由 hr 服务提供（T6-6 接通；本期空）
-      departments: [],
-      positions: [],
-      canApplyPositionChange: false, // 依赖 hr 组织数据（T6-6）
+      departments: org.departmentNames.map((name, index) => ({ id: org.departmentIds[index] ?? null, name })),
+      positions: org.positionName ? [{ id: org.positionId, name: org.positionName }] : [],
+      canApplyPositionChange: org.canApplyPositionChange,
       pendingProfileChange: pendingProfileChange !== null,
     };
   }
@@ -76,16 +87,26 @@ export class MeController {
     return { applied: result.applied, requestId: result.requestId };
   }
 
-  /** P4 岗位变更申请（契约先行：hr 侧校验 T6-6 落地；本期返回不可用） */
+  /** P4 岗位变更申请（hr 侧校验：多部门不可申请/目标部门岗位条件；hr 不可用 → 503） */
   @Post('position-applications')
-  async createPositionApplication(): Promise<never> {
-    throw new BusinessException(accountErrors.POSITION_APPLICATION_INELIGIBLE);
+  async createPositionApplication(
+    @CurrentUser() userId: number,
+    @Body() dto: PositionApplicationSubmitDto,
+  ): Promise<{ requestId: number; applicationNo: string }> {
+    return this.hrOrg.submitPositionApplication(userId, {
+      targetDepartmentId: dto.targetDepartmentId,
+      targetPositionId: dto.targetPositionId,
+      idempotencyKey: dto.idempotencyKey,
+    });
   }
 
-  /** P5 我的岗位申请记录（契约先行：本期空分页，T6-6 接通） */
+  /** P5 我的岗位申请记录（经 hr 内部接口；hr 不可用返回空分页） */
   @Get('position-applications')
-  async listPositionApplications(@Query() _query: PaginationQueryDto): Promise<unknown> {
-    return { data: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 } };
+  async listPositionApplications(
+    @CurrentUser() userId: number,
+    @Query() query: PaginationQueryDto,
+  ): Promise<unknown> {
+    return this.hrOrg.listPositionApplications(userId, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** P6 我的操作日志（全员可用，仅本人记录） */

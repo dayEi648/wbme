@@ -8,8 +8,9 @@ import { ProfileChangeService } from '../approval-proxy/profile-change.service';
 import { ApprovalCenterService } from '../approval-proxy/approval-center.service';
 import { ApprovalController } from '../approval-proxy/approval.controller';
 import { PendingBadgeClient } from './pending-badge.client';
+import { HrOrgClient } from '../me/hr-org.client';
 
-/** 门户与个人中心模块（base PRD §5/§6，T2-6/T2-7 / T5） */
+/** 门户与个人中心模块（base PRD §5/§6，T2-6/T2-7 / T5 / T6-6 岗位申请接通） */
 @Module({
   imports: [PermissionModule, OperationLogModule],
   providers: [
@@ -17,6 +18,7 @@ import { PendingBadgeClient } from './pending-badge.client';
     ProfileChangeService,
     ApprovalCenterService,
     { provide: PendingBadgeClient, useFactory: () => PendingBadgeClient.fromEnv() },
+    { provide: HrOrgClient, useFactory: () => HrOrgClient.fromEnv() },
   ],
   controllers: [PortalController, MeController, ApprovalController],
   exports: [ProfileChangeService, ApprovalCenterService],

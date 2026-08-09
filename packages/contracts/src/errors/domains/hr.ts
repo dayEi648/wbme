@@ -66,4 +66,37 @@ export const hrErrors = {
     httpStatus: 409,
     message: '组织架构已变化，请刷新后重试',
   },
+  /** 加班批次存在校验未通过的人员，整批不提交（hr PRD §3 全有或全无） */
+  OVERTIME_BATCH_REJECTED: {
+    code: 'OVERTIME_BATCH_REJECTED',
+    type: 'BUSINESS',
+    domain: 'HR',
+    httpStatus: 422,
+    message: '加班批次存在校验未通过的人员',
+    detailsFields: ['failures'],
+  },
+  /** 加班员工账号状态异常（非"在职"），逐人失败原因（hr PRD §3） */
+  OVERTIME_EMPLOYEE_NOT_ACTIVE: {
+    code: 'OVERTIME_EMPLOYEE_NOT_ACTIVE',
+    type: 'BUSINESS',
+    domain: 'HR',
+    httpStatus: 422,
+    message: '加班员工账号状态异常',
+  },
+  /** 岗位申请的目标部门或岗位当前不可申请（hr PRD §5：停用/不允许自助申请/不适用于目标部门） */
+  POSITION_APPLY_TARGET_UNAVAILABLE: {
+    code: 'POSITION_APPLY_TARGET_UNAVAILABLE',
+    type: 'BUSINESS',
+    domain: 'HR',
+    httpStatus: 422,
+    message: '目标部门或岗位当前不可申请',
+  },
+  /** 恢复目标已变化（幂等记录与目标集不符/生命周期版本不符），须重新预览（backstage PRD §3） */
+  RESTORE_TARGET_STALE: {
+    code: 'RESTORE_TARGET_STALE',
+    type: 'CONFLICT',
+    domain: 'HR',
+    httpStatus: 409,
+    message: '恢复目标已变化，请重新预览',
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

@@ -60,7 +60,10 @@ hit AS (
             ORDER BY matched_count DESC, sort ASC, rule_id ASC
         ) AS rn
     FROM matches
-    WHERE conditions_count > 0 AND matched_count = conditions_count
+    -- 全空条件（conditions_count = 0）的通用规则同样命中：一条规则中填写的
+    -- 全部非空条件须同时成立，空条件集恒成立（hr PRD §8"可只填写部分匹配条件"）；
+    -- 排序按"非空条件数多 → sort 小 → ID 小"，通用规则 matched_count=0 自然排后。
+    WHERE matched_count = conditions_count
 )
 SELECT
     u.user_id,

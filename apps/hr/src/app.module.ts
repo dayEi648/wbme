@@ -15,6 +15,13 @@ import {
   type Redis,
 } from '@wbme/server';
 import { ApprovalModule } from './modules/approval/approval.module';
+import { HolidayModule } from './modules/holiday/holiday.module';
+import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
+import { OrgModule } from './modules/org/org.module';
+import { OvertimeModule } from './modules/overtime/overtime.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { TablePrefsModule } from './modules/base/table-prefs/table-prefs.module';
+import { TitleModule } from './modules/title/title.module';
 import { CrossSchemaSessionLoader } from './shared/cross-schema-auth';
 import { SharedModule } from './shared.module';
 
@@ -35,6 +42,13 @@ export class AppModule {
         HealthModule,
         SessionModule.forRoot(),
         SharedModule,
+        SettingsModule,
+        HolidayModule,
+        OrgModule,
+        TitleModule,
+        OvertimeModule,
+        LifecycleModule,
+        TablePrefsModule,
         ApprovalModule,
       ],
       providers: [

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
-import type { ColumnSettingDto, FilterPresetDto, RenameFilterPresetDto } from './table-prefs.dto';
+import type { ColumnSettingDto, FilterPresetDto, RenameFilterPresetDto } from '@wbme/contracts';
 
 /**
  * 用户表格偏好服务（物理删除；不写操作日志）。
