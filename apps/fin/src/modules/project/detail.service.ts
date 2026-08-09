@@ -146,17 +146,16 @@ export class DetailService {
       }
       const next = parseDetailItem(dto.item);
       const before = detailSnapshot(existing);
-      const after = {
-        id: existing.id,
-        amount: dto.item.amount,
-        occurredDate: dto.item.occurredDate ?? null,
-        remark: dto.item.remark ?? null,
-      };
+      // after 快照走与 before 相同的规范化路径（金额 toFixed(2)、日期日历串），
+      // 避免提交 "10" 与库中 "10.00" 判为有差异而记录无实际变化的操作
+      const after = detailSnapshot({ id: existing.id, amount: next.amount, occurredDate: next.occurredDate, remark: next.remark ?? null });
       if (JSON.stringify(before) === JSON.stringify(after)) {
         return {
           result: { id: detailId },
           actionType: 'UPDATE' as const,
           summary: `在财务数据维护中修改了项目 ${row.name} 的${DETAIL_KIND_NAMES[kind]}记录`,
+          // 无实际差异：不递增 dataRevision（fin PRD §4「每次成功变更递增」）
+          changed: false,
         };
       }
       const updated = await detailOps(tx, kind).update({
@@ -226,6 +225,8 @@ export class DetailService {
       result: T;
       actionType: 'CREATE' | 'UPDATE' | 'DELETE';
       summary: string;
+      /** 无实际差异的提交（changed: false）不递增 dataRevision */
+      changed?: boolean;
     }>,
   ): Promise<T> {
     return executeIdempotentOperation(this.prisma.client, {
@@ -240,11 +241,13 @@ export class DetailService {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
         const outcome = await run(tx, project);
-        // 每次成功变更递增项目 dataRevision（fin PRD §4）
-        await tx.project.update({
-          where: { id: projectId },
-          data: { dataRevision: { increment: 1 }, updatedBy: operator.id },
-        });
+        // 每次成功变更递增项目 dataRevision（fin PRD §4）；无实际差异不递增
+        if (outcome.changed !== false) {
+          await tx.project.update({
+            where: { id: projectId },
+            data: { dataRevision: { increment: 1 }, updatedBy: operator.id },
+          });
+        }
         return outcome;
       },
     });

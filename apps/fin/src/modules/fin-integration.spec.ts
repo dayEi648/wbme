@@ -17,7 +17,7 @@ import { ImportService } from './excel/import.service';
 import { XlsxWorkerPool } from './excel/xlsx-worker-pool';
 import { buildExportBuffer, type ExportProjectRow } from './excel/export-builder';
 import { loadTemplateWorkbook } from './excel/export-builder';
-import { WORKBOOK_SHEET_NAME } from './excel/xlsx-template';
+import { COL, WORKBOOK_SHEET_NAME } from './excel/xlsx-template';
 
 // 加载仓库根 .env（集成测试使用真实本地 PostgreSQL/Redis）
 try {
@@ -188,6 +188,25 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     expect(before.amount).toBe('600.00');
   });
 
+  it('明细 update 提交规范化等价金额（"600" vs 库中 "600.00"）→ 无实际差异不记录', async () => {
+    const detailId = await details.create(OPERATOR, projectA, 'receipt', { item: { amount: '600.00' } });
+    await prisma.client.$executeRaw`UPDATE fin.receipts SET id = ${BASE + 21} WHERE id = ${detailId.id}`;
+    const beforeRevision = (await prisma.client.project.findUnique({ where: { id: projectA } }))?.dataRevision;
+    const beforeOps = await prisma.client.projectOperation.count({ where: { projectId: projectA } });
+
+    // 提交 "600"（两位小数内与 "600.00" 等价）→ 无实际差异：不记录、dataRevision 不递增
+    await details.update(OPERATOR, projectA, 'receipt', BASE + 21, { item: { amount: '600' } });
+    const afterRevision = (await prisma.client.project.findUnique({ where: { id: projectA } }))?.dataRevision;
+    const afterOps = await prisma.client.projectOperation.count({ where: { projectId: projectA } });
+    expect(afterRevision).toBe(beforeRevision);
+    expect(afterOps).toBe(beforeOps);
+
+    // 真实差异仍正常记录
+    await details.update(OPERATOR, projectA, 'receipt', BASE + 21, { item: { amount: '700.00' } });
+    const changedOps = await prisma.client.projectOperation.count({ where: { projectId: projectA } });
+    expect(changedOps).toBe(afterOps + 1);
+  });
+
   it('利润分析 cellSave：单字段只写目标字段 + 自动字段重算 + dataRevision 递增', async () => {
     const before = await prisma.client.project.findUnique({ where: { id: projectA } });
     const saved = await profit.cellSave(OPERATOR, { projectId: projectA, field: 'tentativeAuditedAmount', value: '80000.00' });
@@ -198,6 +217,23 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     await expect(
       profit.cellSave(OPERATOR, { projectId: projectA, field: 'totalInvoiced', value: '1' }),
     ).rejects.toMatchObject({ entry: { code: 'CELL_FIELD_NOT_ALLOWED' } });
+  });
+
+  it('cellSave 修改 year 撞另一项目同名同目标年度 → PROJECT_KEY_CONFLICT（而非 500）', async () => {
+    // 同名跨年度项目（业务键 = 规范化名称 + 年度，合法）
+    const a = await projects.create(OPERATOR, { name: '冲突项目甲', year: 2024 });
+    await prisma.client.$executeRaw`UPDATE fin.projects SET id = ${BASE + 40} WHERE id = ${a.id}`;
+    const b = await projects.create(OPERATOR, { name: '冲突项目甲', year: 2025 });
+    await prisma.client.$executeRaw`UPDATE fin.projects SET id = ${BASE + 41} WHERE id = ${b.id}`;
+
+    // 甲改 year → 2025：新业务键（冲突项目甲, 2025）已被乙占用，必须返回业务冲突而非数据库约束错误
+    await expect(
+      profit.cellSave(OPERATOR, { projectId: BASE + 40, field: 'year', value: 2025 }),
+    ).rejects.toMatchObject({ entry: { code: 'PROJECT_KEY_CONFLICT' } });
+
+    // 失败后未被错误写入
+    const row = await prisma.client.project.findUnique({ where: { id: BASE + 40 } });
+    expect(row?.year).toBe(2024);
   });
 
   it('字典：进度语义被引用后不可修改；被引用项删除整批拒绝；未分类保留名拒绝', async () => {
@@ -276,7 +312,7 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     const preview = await imports.preview(OPERATOR, exported);
     expect(preview.summary.pendingChoice).toBe(1);
     expect(preview.pendingChoice[0]?.projectId).toBe(projectA);
-    expect(preview.pendingChoice[0]?.dataLossWarning).toBe(true); // 有明细被覆盖
+    expect(preview.pendingChoice[0]?.dataLossWarning).toBe(false); // 覆盖前项目明细已在前序测试删除，无日期/备注元数据可丢
 
     // 导入确认：覆盖（带 dataRevision 前置条件）
     const choice = preview.pendingChoice[0] as { rowNumber: number; projectId: number; dataRevision: number };
@@ -329,5 +365,78 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     const preview2 = await imports.preview(OPERATOR, Buffer.from(await noYearBuffer));
     expect(preview2.summary.conflict).toBe(1);
     expect(preview2.conflicts[0]?.reason).toContain('年度');
+  });
+
+  it('导入预览 dataLossWarning 仅对存在日期/备注明细的项目为真', async () => {
+    // 目标项目只有纯金额明细（无日期、无单笔备注）→ 覆盖不丢元数据 → 不警告
+    const clean = await projects.create(OPERATOR, { name: '无元数据项目', year: 2020 });
+    await prisma.client.$executeRaw`UPDATE fin.projects SET id = ${BASE + 50} WHERE id = ${clean.id}`;
+    await details.create(OPERATOR, BASE + 50, 'invoice', { item: { amount: '100.00' } });
+
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(3, COL.NAME).value = '无元数据项目';
+    sheet.getCell(3, COL.YEAR).value = 2020;
+    sheet.getCell(3, COL.INVOICES).value = '200.00';
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const preview = await imports.preview(OPERATOR, buffer);
+    expect(preview.summary.pendingChoice).toBe(1);
+    expect(preview.pendingChoice[0]?.dataLossWarning).toBe(false);
+
+    const choice = preview.pendingChoice[0] as { rowNumber: number; projectId: number; dataRevision: number };
+    const confirmed = await imports.confirm(
+      OPERATOR,
+      buffer,
+      [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE', projectId: choice.projectId, dataRevision: choice.dataRevision }],
+      undefined,
+    );
+    expect(confirmed.summary.overwritten).toBe(1);
+  });
+
+  it('导入确认显式选择 SKIP → 逐项目记录 IMPORT_SKIP 审计', async () => {
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(3, COL.NAME).value = '无元数据项目';
+    sheet.getCell(3, COL.YEAR).value = 2020;
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const preview = await imports.preview(OPERATOR, buffer);
+    expect(preview.summary.pendingChoice).toBe(1);
+    const target = preview.pendingChoice[0] as { rowNumber: number; projectId: number; dataRevision: number };
+
+    // 显式选择 SKIP：不写入，且逐项目记录跳过结果（fin PRD §4）
+    const confirmed = await imports.confirm(
+      OPERATOR,
+      buffer,
+      [{ rowNumber: target.rowNumber, decision: 'SKIP', projectId: target.projectId, dataRevision: target.dataRevision }],
+      undefined,
+    );
+    expect(confirmed.summary.skipped).toBe(1);
+
+    const skipAudit = await prisma.client.projectOperation.findFirst({
+      where: { projectId: target.projectId, action: 'IMPORT_SKIP' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(skipAudit).not.toBeNull();
+  });
+
+  it('导入行级错误（超范围年度/非法金额）→ 整行不参与新增选择，确认不写入', async () => {
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(3, COL.NAME).value = '带错误新增项目';
+    sheet.getCell(3, COL.YEAR).value = 0; // 年度 0000 → 行级校验错误
+    sheet.getCell(3, COL.CONTRACT_AMOUNT).value = 'abc'; // 非法金额 → 行级校验错误
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    const preview = await imports.preview(OPERATOR, buffer);
+    expect(preview.summary.created).toBe(0);
+    // summary.error 为错误行数；同一行多个字段错误全部返回（字段级安全错误）
+    expect(preview.summary.error).toBe(1);
+    expect(preview.errors[0]?.fields.length).toBeGreaterThanOrEqual(2);
+
+    // 确认时错误行排除在写入之外（fin PRD §4：任一错误不得产生部分写入）
+    const confirmed = await imports.confirm(OPERATOR, buffer, [], undefined);
+    expect(confirmed.summary.created).toBe(0);
+    const notCreated = await prisma.client.project.findFirst({ where: { name: '带错误新增项目' } });
+    expect(notCreated).toBeNull();
   });
 });

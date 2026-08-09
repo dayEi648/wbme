@@ -236,10 +236,19 @@ export class ProfitService {
           };
         }
         // 只写目标字段：不同字段并发互不覆盖；同字段并发以最后提交为准（无版本前置）
-        const updated = await tx.project.update({
-          where: { id: dto.projectId },
-          data: { ...write, dataRevision: { increment: 1 }, updatedBy: operator.id },
-        });
+        let updated: Project;
+        try {
+          updated = await tx.project.update({
+            where: { id: dto.projectId },
+            data: { ...write, dataRevision: { increment: 1 }, updatedBy: operator.id },
+          });
+        } catch (error) {
+          // 并发窗口（预检后他人占用目标业务键）由数据库唯一约束兜底，映射为业务错误而非 500
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            throw new BusinessException(financeErrors.PROJECT_KEY_CONFLICT);
+          }
+          throw error;
+        }
         await writeProjectChange(tx, {
           projectId: dto.projectId,
           operator,
@@ -292,7 +301,8 @@ export class ProfitService {
         }
         const write: Prisma.ProjectUncheckedUpdateInput = { year };
         write.businessKey = normalizeProjectName(project.name);
-        await this.assertBusinessKeyFree(tx, project, write.businessKey as string);
+        // 业务键 = 规范化名称 + 目标年度：冲突检查必须用新年度（旧年度会漏检/误检）
+        await this.assertBusinessKeyFree(tx, project, write.businessKey as string, year);
         return { write, displayValue: year };
       }
       case 'date': {
@@ -371,9 +381,16 @@ export class ProfitService {
     }
   }
 
-  /** 业务键唯一校验（排除自身；含软删除占键） */
-  private async assertBusinessKeyFree(tx: Prisma.TransactionClient, project: Project, businessKey: string): Promise<void> {
-    const clash = await tx.project.findFirst({ where: { businessKey, year: project.year, id: { not: project.id } } });
+  /**
+   * 业务键唯一校验（排除自身；含软删除占键）。
+   *
+   * @param tx 事务客户端
+   * @param project 当前项目（业务键变化前的行）
+   * @param businessKey 目标规范化业务键
+   * @param targetYear 目标年度（修改 year 字段时传新年度，否则沿用当前年度）
+   */
+  private async assertBusinessKeyFree(tx: Prisma.TransactionClient, project: Project, businessKey: string, targetYear: number = project.year): Promise<void> {
+    const clash = await tx.project.findFirst({ where: { businessKey, year: targetYear, id: { not: project.id } } });
     if (clash) {
       throw new BusinessException(financeErrors.PROJECT_KEY_CONFLICT);
     }

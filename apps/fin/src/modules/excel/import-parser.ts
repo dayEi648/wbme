@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import {
   AMOUNT_COLUMNS,
   AUTO_CALC_COLUMNS,
+  COL,
   COLUMN_COUNT,
   DATE_COLUMNS,
   IMPORTABLE_COLUMNS,
@@ -273,8 +274,20 @@ function validateProjectRow(rowNumber: number, texts: Array<string | null>, form
     if (DATE_COLUMNS.includes(c) && !/^\d{4}-\d{2}-\d{2}$/.test(text)) {
       errors.push({ rowNumber, field: headerName(c), reason: `日期“${text}”不是 YYYY-MM-DD 格式` });
     }
-    if (c === 4 && !/^\d{4}$/.test(text)) {
-      errors.push({ rowNumber, field: headerName(c), reason: `年度“${text}”不是四位公历年` });
+    if (c === COL.YEAR && !/^(?:1000|[1-9]\d{3})$/.test(text)) {
+      errors.push({ rowNumber, field: headerName(c), reason: `年度“${text}”不是 1000～9999 的四位公历年` });
+    }
+    if (c === COL.SUBCONTRACTORS) {
+      // 分包方保留用户文字和顺序；规范化（空白归一）后完全相同的重复项拒绝导入（fin PRD §4）
+      const seen = new Set<string>();
+      for (const part of splitMultiValue(text, true)) {
+        const norm = part.replace(/\s+/g, ' ').trim();
+        if (seen.has(norm)) {
+          errors.push({ rowNumber, field: headerName(c), reason: `分包方“${part}”与同行其他项重复` });
+          break;
+        }
+        seen.add(norm);
+      }
     }
   }
   return errors;

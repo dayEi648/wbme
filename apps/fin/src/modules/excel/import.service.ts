@@ -444,44 +444,81 @@ export class ImportService {
       matched.push({ input, status, target, conflictReason, errors: [], businessKey });
     }
 
-    return this.buildPreview(matched, errors);
+    // 覆盖数据丢失警告判定（fin PRD §4）：仅目标项目存在任何带日期或单笔备注的明细时警告。
+    // 集合化查询三张明细表，避免逐项目 N+1。
+    const choiceTargetIds = [...new Set(matched.filter((m) => m.status === 'CHOICE' && m.target).map((m) => (m.target as Project).id))];
+    const lossyProjectIds = new Set<number>();
+    if (choiceTargetIds.length > 0) {
+      const [inv, rec, pay] = await Promise.all([
+        this.prisma.client.invoice.findMany({
+          where: { projectId: { in: choiceTargetIds }, OR: [{ occurredDate: { not: null } }, { remark: { not: null } }] },
+          select: { projectId: true },
+        }),
+        this.prisma.client.receipt.findMany({
+          where: { projectId: { in: choiceTargetIds }, OR: [{ occurredDate: { not: null } }, { remark: { not: null } }] },
+          select: { projectId: true },
+        }),
+        this.prisma.client.subcontractPayment.findMany({
+          where: { projectId: { in: choiceTargetIds }, OR: [{ occurredDate: { not: null } }, { remark: { not: null } }] },
+          select: { projectId: true },
+        }),
+      ]);
+      for (const row of [...inv, ...rec, ...pay]) {
+        lossyProjectIds.add(row.projectId);
+      }
+    }
+    return this.buildPreview(matched, errors, lossyProjectIds);
   }
 
   /** 组装精简预览响应 */
-  private buildPreview(matched: MatchedRow[], rowErrors: RowError[]): ImportPreviewResult {
+  private buildPreview(matched: MatchedRow[], rowErrors: RowError[], lossyProjectIds: ReadonlySet<number>): ImportPreviewResult {
     const created: PreviewRowItem[] = [];
     const pendingChoice: PendingChoiceItem[] = [];
     const conflicts: ConflictItem[] = [];
     const errors: ErrorItem[] = [];
-    const errorByRow = new Map(rowErrors.map((e) => [e.rowNumber, e]));
+    // 行级错误按行号收集数组：同一行多个字段错误全部返回（fin PRD §4 字段级安全错误）
+    const errorsByRow = new Map<number, RowError[]>();
+    for (const error of rowErrors) {
+      const list = errorsByRow.get(error.rowNumber) ?? [];
+      list.push(error);
+      errorsByRow.set(error.rowNumber, list);
+    }
 
     for (const item of matched) {
       const { input } = item;
       const preview: PreviewRowItem = { rowNumber: input.rowNumber, name: input.name, year: input.year, bizCategory: input.groupName };
-      const rowErrorsHere = item.errors;
-      if (item.status === 'NEW') {
-        created.push(preview);
-      } else if (item.status === 'CHOICE' && item.target) {
-        // 覆盖丢失明细日期/备注警告：目标项目存在任何带日期或备注的明细
-        pendingChoice.push({
-          ...preview,
-          projectId: item.target.id,
-          dataRevision: item.target.dataRevision,
-          dataLossWarning: true,
-        });
-      } else if (item.status === 'DELETED' || item.status === 'AMBIGUOUS' || item.status === 'DUPLICATE' || item.status === 'YEAR_REQUIRED') {
+      // 行级校验错误：整行不参与新增/覆盖选择，只进错误列表（fin PRD §4：任一错误不得产生部分写入）
+      const rowErrorsHere = errorsByRow.get(input.rowNumber) ?? [];
+      if (item.status === 'NEW' || item.status === 'CHOICE') {
+        if (rowErrorsHere.length > 0) {
+          errors.push({ ...preview, fields: rowErrorsHere });
+          continue;
+        }
+        if (item.status === 'NEW') {
+          created.push(preview);
+        } else if (item.target) {
+          // 覆盖丢失明细日期/备注警告：仅目标项目存在任何带日期或备注的明细时警告
+          pendingChoice.push({
+            ...preview,
+            projectId: item.target.id,
+            dataRevision: item.target.dataRevision,
+            dataLossWarning: lossyProjectIds.has(item.target.id),
+          });
+        }
+        continue;
+      }
+      if (item.status === 'DELETED' || item.status === 'AMBIGUOUS' || item.status === 'DUPLICATE' || item.status === 'YEAR_REQUIRED') {
         conflicts.push({
           ...preview,
           status: item.status === 'DELETED' ? 'DELETED' : item.status === 'AMBIGUOUS' ? 'AMBIGUOUS' : 'DUPLICATE',
           reason: item.conflictReason ?? '',
         });
       } else {
-        errors.push({ ...preview, fields: rowErrorsHere });
+        errors.push({ ...preview, fields: item.errors });
       }
-      // 行级解析错误并入 errors（按行号）
-      const parseError = errorByRow.get(input.rowNumber);
-      if (parseError) {
-        errors.push({ ...preview, fields: [parseError] });
+      // 冲突行同时存在行级错误时并入错误列表（整行仍按冲突处理，不参与写入）
+      if (rowErrorsHere.length > 0) {
+        errors.push({ ...preview, fields: rowErrorsHere });
       }
     }
 
@@ -621,7 +658,8 @@ export class ImportService {
     }
     for (const input of inputs) {
       const pending = pendingRows.get(input.rowNumber);
-      if (pending && !choiceByRow.has(input.rowNumber)) {
+      // 跳过结果逐项目记录（fin PRD §4）：显式选择 SKIP 与未提交选择均记录，覆盖行除外
+      if (pending && choiceByRow.get(input.rowNumber)?.decision !== 'OVERWRITE') {
         operations.push({
           projectId: pending.projectId,
           operatorId: operator.id,

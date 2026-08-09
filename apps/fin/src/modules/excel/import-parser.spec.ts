@@ -112,6 +112,26 @@ describe('parseImportBuffer（导入解析）', () => {
     expect(reasons).toContain('日期');
   });
 
+  it('年度 0000～0999 超范围 → 行级错误（fin PRD §3：1000～9999 四位公历年）', async () => {
+    const buffer = await buildTestWorkbook([
+      { A: 1, B: '项目A', D: 0 },
+      { A: 2, B: '项目B', D: 999 },
+    ]);
+    const result = await parseOk(buffer);
+    const yearErrors = result.errors.filter((error) => error.reason.includes('公历年'));
+    expect(yearErrors.length).toBe(2);
+  });
+
+  it('分包方规范化后重复项 → 行级错误（fin PRD §4：保留用户文字与顺序）', async () => {
+    const buffer = await buildTestWorkbook([
+      { A: 1, B: '项目A', J: '分包甲\n分包甲' },
+      { A: 2, B: '项目B', J: '分包 乙\n分包  乙' },
+    ]);
+    const result = await parseOk(buffer);
+    const dupErrors = result.errors.filter((error) => error.reason.includes('重复'));
+    expect(dupErrors.length).toBe(2);
+  });
+
   it('模板签名不匹配（表头漂移）→ SHEET_INVALID', async () => {
     const workbook = await loadTemplateWorkbook();
     const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;

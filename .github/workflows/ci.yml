@@ -99,7 +99,10 @@ jobs:
         run: pnpm build
 
       # OpenAPI 产物防漂移（主 PRD §9.5）：重新生成并与提交文件比对；生成全程离线（不依赖 CI 数据库/Redis）
+      # 四个部署单元全覆盖：platform-core / hr / asset / fin
       - name: Verify OpenAPI artifacts
         run: |
           pnpm --filter @wbme/platform-core openapi:verify
           pnpm --filter @wbme/hr openapi:verify
+          pnpm --filter @wbme/asset openapi:verify
+          pnpm --filter @wbme/fin openapi:verify

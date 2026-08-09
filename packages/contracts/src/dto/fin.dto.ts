@@ -19,8 +19,6 @@ import {
 import { isNonNegativeAmount } from '../money';
 import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from './base.dto';
 
-/** 四位公历年（1000～9999；fin PRD §3） */
-const YEAR_PATTERN = /^(?:[1-9]\d{3})$/;
 /** 自然日（YYYY-MM-DD；主 PRD §9.10 不经时区换算） */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
