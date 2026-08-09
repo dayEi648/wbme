@@ -149,13 +149,26 @@ export async function writeStockFlow(tx: Prisma.TransactionClient, flow: StockFl
 /**
  * 清理空条目：账面与占用均为 0 时物理删除（表设计 A-10 应用层清理；历史流水保留）。
  *
+ * 排除仍存在未结清借还记录（qty > returned + written_off）的条目：借还品出库后
+ * 条目归零但借还尚未结清，归还/结清/处置仍须按原条目回库（PRD §5 归还例外，
+ * §8 借出时部门快照关联），删除会导致归还路径 RESOURCE_NOT_FOUND（H1 修复）。
+ *
  * @param tx 事务客户端
  * @param itemId 条目 id
  */
 export async function cleanupEmptyItem(tx: Prisma.TransactionClient, itemId: number): Promise<void> {
-  await tx.inventoryItem.deleteMany({
-    where: { id: itemId, bookQty: 0, reservedQty: 0 },
-  });
+  // 借还记录对库存条目无外键（跨模块裸字段约定），用 NOT EXISTS 子查询排除未结清引用
+  await tx.$executeRaw`
+    DELETE FROM asset.inventory_items
+    WHERE id = ${itemId}
+      AND book_qty = 0
+      AND reserved_qty = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM asset.borrow_records br
+        WHERE br.inventory_item_id = asset.inventory_items.id
+          AND br.qty > br.returned_qty + br.written_off_qty
+      )
+  `;
 }
 
 /** 加载启用库位（含父链路径快照；停用/不存在返回 null） */

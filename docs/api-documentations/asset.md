@@ -5,7 +5,7 @@
 > 系统未开放 → `SYSTEM_NOT_OPEN`(503)）。
 > 数据范围：`DEPARTMENT` 档按当前用户部门闭包（hr.department_closure 视图：部门及全部下级、
 > 多部门并集）过滤；`COMPANY` 档全量。
-> 数量与额度：物品变动数量一律正整数（整数存储，负数由业务方向表达）；可用库存 = 账面 − 占用。
+> 数量与额度：物品变动数量一律正整数（整数存储，负数由业务方向表达）；提交文本不接受小数、零、负数、科学计数法或非数值文本（`transformPositiveInt` 严格解析）；可用库存 = 账面 − 占用。
 > 金额：REST 传输为最多两位小数的十进制字符串（主 PRD §9.11）。
 
 ## 通用错误码（ASSET / INVENTORY 域）
@@ -51,7 +51,7 @@
 | `GET` | `/asset-settings` | 全部运行参数（扫码入口地址、申领上限重置日） |
 | `PUT` | `/asset-settings` | 更新运行参数（整组提交，缺省字段保持现值；重置日 1～28，变更只影响之后开始的周期） |
 | `GET` | `/categories` | 分类全量列表（顶级 + 一级子分类；状态过滤） |
-| `POST` | `/categories` | 创建一级子分类（幂等；顶级分类为系统内置「固定资产/消耗品」，业务只能维护其下的一级子类） |
+| `POST` | `/categories` | 创建一级子分类（幂等；顶级分类为系统内置「固定资产/消耗品」，业务只能维护其下的一级子类；固定资产只能归入固定资产分类，消耗品只能归入消耗品分类，跨顶级归入拒绝） |
 | `PUT` | `/categories/{id}` | 编辑分类（名称/排序/启停） |
 | `DELETE` | `/categories/batch` | 批量硬删除（任一分类被资产/品种引用整批回滚） |
 | `GET` | `/dict-items` | 业务字典列表（dictType/status 筛选 + 分页） |
@@ -132,7 +132,7 @@
 | `POST` | `/stock-in-requests` | 提交入库申请（幂等；行=品种+供应商/品牌/规格/库位+数量+可选单价；整单可填申请时间；提交不占用库存；批准后按行建批次并增加库存，入库仅增） |
 | `GET` | `/stock-in-requests/mine` | 本人入库申请历史 |
 | `GET` | `/stock-in-requests` | 范围入库申请历史（审批状态/发起时间/发起人姓名筛选） |
-| `POST` | `/stock-change-requests` | 提交库存变更申请（幂等；仅意外扣减，MVP 不支持增加库存；同一库存条目整单一次；提交时锁定条目并原子占用，任一行不足整单不创建；批准后按批次 FIFO 扣减并生成流水，驳回/取消同事务释放占用） |
+| `POST` | `/stock-change-requests` | 提交库存变更申请（幂等；仅意外扣减，MVP 不支持增加库存；变更类型必填（字典 `CHANGE_TYPE`，系统初始化含「其他意外扣减」）；同一库存条目整单一次；提交时锁定条目并原子占用，任一行不足整单不创建；批准后按批次 FIFO 扣减并生成流水，驳回/取消同事务释放占用） |
 | `GET` | `/stock-change-requests/mine` | 本人库存变更申请历史 |
 | `GET` | `/stock-change-requests` | 范围库存变更申请历史 |
 
@@ -224,9 +224,9 @@ TRANSFER_OUT / TRANSFER_IN 成对流水，全部来源减少量之和 = 全部�
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/qr-codes` | 创建二维码（ASSET 目标归 `fixed_asset_maintain`；INVENTORY_ITEM/SCAN_CATALOG 归 `inventory_manage`） |
-| `GET` | `/qr-codes` | 二维码列表（目标类型/状态筛选 + 分页；持有任一管理权限可见） |
-| `POST` | `/qr-codes/{id}/action` | 管理动作（DISABLE/ENABLE/REGENERATE；已作废不可操作） |
-| `POST` | `/qr-codes/parse` | 扫码解析（限流：IP 60 次/分 + 用户 120 次/分；解析后按当前用户功能权限/数据范围/目标状态/库存状态校验；无权限/目标已删除/二维码无效/条目不可申领统一 404 不泄露目标详情） |
+| `GET` | `/qr-codes` | 二维码列表（目标类型/状态筛选 + 分页；按用户管理权限过滤目标类型：`fixed_asset_maintain` 仅见 ASSET，`inventory_manage` 仅见 INVENTORY_ITEM/SCAN_CATALOG） |
+| `POST` | `/qr-codes/{id}/action` | 管理动作（DISABLE/ENABLE/REGENERATE；按目标类型归属权限——ASSET 归 `fixed_asset_maintain`，其余归 `inventory_manage`；已作废不可操作） |
+| `POST` | `/qr-codes/parse` | 扫码解析（限流：IP 60 次/分 + 用户 120 次/分；解析后按当前用户功能权限/数据范围/目标状态/库存状态校验——INVENTORY_ITEM 需持 `consumable_apply`；无权限/目标已删除/二维码无效/条目不可申领统一 404 不泄露目标详情） |
 
 ## 表格偏好（主 PRD §10.2 / T4-12）
 

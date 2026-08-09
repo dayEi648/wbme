@@ -64,11 +64,16 @@ export class AgentSettlementService {
             AND (qty - returned_qty - written_off_qty) > 0
           ORDER BY id ASC
         `;
+        const openIds = new Set(openRecords.map((row) => row.id));
+        if (openRecords.length === 0 || dto.items.some((item) => !openIds.has(item.borrowRecordId))) {
+          // 夹带非本清单的借还记录：整单拒绝且不泄露外部记录存在性（M1 修复）
+          throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+        }
         const claimedByRecord = new Map<number, number>();
         for (const item of dto.items) {
           claimedByRecord.set(item.borrowRecordId, (claimedByRecord.get(item.borrowRecordId) ?? 0) + item.qty);
         }
-        if (openRecords.length === 0 || openRecords.some((row) => claimedByRecord.get(row.id) !== Number(row.open_qty))) {
+        if (openRecords.some((row) => claimedByRecord.get(row.id) !== Number(row.open_qty))) {
           throw new BusinessException(inventoryErrors.SETTLEMENT_COVERAGE_INCOMPLETE);
         }
         const head = await this.approval.createRequestHead(tx, {

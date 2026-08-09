@@ -9,7 +9,7 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
-import { allocateFifoBatches, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
+import { allocateFifoBatches, cleanupEmptyItem, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -76,15 +76,16 @@ export class StockChangeService {
           if (row.bookQty - row.reservedQty < item.qty) {
             throw new BusinessException(inventoryErrors.INSUFFICIENT_STOCK);
           }
-          const changeType = item.changeTypeId !== undefined ? await this.loadDictName(tx, item.changeTypeId, 'CHANGE_TYPE') : null;
+          // 变更类型必填（asset PRD §6；loadDictName 校验字典项存在，② 修复）
+          const changeType = await this.loadDictName(tx, item.changeTypeId, 'CHANGE_TYPE');
           lines.push({
             inventoryItemId: item.inventoryItemId,
             consumableName: row.consumableName,
             spec: row.spec,
             warehouseName: row.warehouseName,
             warehousePath: row.warehousePath,
-            changeTypeId: changeType?.id ?? null,
-            changeTypeName: changeType?.name ?? null,
+            changeTypeId: changeType.id,
+            changeTypeName: changeType.name,
             reason: item.reason,
             qty: item.qty,
           });
@@ -173,7 +174,7 @@ export class StockChangeService {
         before = after;
       }
       // 空条目清理（条件删除：账面与占用均为 0 才删）
-      await tx.inventoryItem.deleteMany({ where: { id: line.inventoryItemId, bookQty: 0, reservedQty: 0 } });
+      await cleanupEmptyItem(tx, line.inventoryItemId);
     }
   }
 
@@ -258,7 +259,7 @@ export class StockChangeService {
     tx: Prisma.TransactionClient,
     dictId: number,
     dictType: string,
-  ): Promise<{ id: number; name: string } | null> {
+  ): Promise<{ id: number; name: string }> {
     const row = await tx.assetDictItem.findFirst({
       where: { id: dictId, dictType: dictType as Prisma.AssetDictItemWhereInput['dictType'] },
       select: { id: true, name: true },

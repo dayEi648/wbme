@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { transformPositiveInt } from './strict-number';
 import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { IdempotentDto, PaginationQueryDto } from './base.dto';
 
@@ -21,7 +22,7 @@ export class InventoryTransferCreateDto extends IdempotentDto {
   toWarehouseId!: number;
 
   @ApiProperty({ description: '调拨数量（正整数）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;

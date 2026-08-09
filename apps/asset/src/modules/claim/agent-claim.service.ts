@@ -9,7 +9,7 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
-import { allocateFifoBatches, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
+import { allocateFifoBatches, cleanupEmptyItem, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -154,7 +154,7 @@ export class AgentClaimService {
    */
   async applyApproved(
     tx: Prisma.TransactionClient,
-    head: { id: number },
+    head: { id: number; applicantDepartmentSnapshot: Prisma.JsonValue | null },
     processorId: number,
   ): Promise<void> {
     const lines = await tx.consumableRequestItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
@@ -194,7 +194,9 @@ export class AgentClaimService {
       // 借还用品：清单级代领借还记录（不设置个人借用人；一次性整单结清）
       const consumable = await tx.consumable.findUnique({ where: { id: row.consumableId }, select: { type: true, returnDays: true } });
       if (consumable?.type === 'REUSABLE') {
-        const dueAt = new Date(Date.now() + (consumable.returnDays ?? 0) * 24 * 60 * 60 * 1000);
+        const borrowedAt = new Date();
+        // 到期时间 = 出库时间 + 归还期限快照（与出库时间同源，避免独立取时偏差）
+        const dueAt = new Date(borrowedAt.getTime() + (consumable.returnDays ?? 0) * 24 * 60 * 60 * 1000);
         await tx.borrowRecord.create({
           data: {
             recordType: 'AGENT',
@@ -208,12 +210,14 @@ export class AgentClaimService {
             warehouseName: line.warehouseName,
             warehousePath: line.warehousePath,
             qty: line.qty,
-            borrowedAt: new Date(),
+            borrowedAt,
             dueAt,
+            // 借出时部门快照：受领人名单部门快照合并（部门档审批/注销处置数据范围数据源）
+            departmentSnapshot: await this.mergeRecipientSnapshots(tx, head.id),
           },
         });
       }
-      await tx.inventoryItem.deleteMany({ where: { id: line.inventoryItemId, bookQty: 0, reservedQty: 0 } });
+      await cleanupEmptyItem(tx, line.inventoryItemId);
     }
   }
 
@@ -231,6 +235,25 @@ export class AgentClaimService {
         data: { reservedQty: { decrement: line.qty } },
       });
     }
+  }
+
+  /**
+   * 合并受领人名单部门快照（借还记录「借出时部门快照」= 全部受领人部门并集；
+   * 受领人无部门时返回 null）。
+   *
+   * @param tx 事务客户端
+   * @param requestId 代领申请 id
+   * @returns 部门快照数组（[{ id, name }] 去重）或 null
+   */
+  private async mergeRecipientSnapshots(tx: Prisma.TransactionClient, requestId: number): Promise<Prisma.InputJsonValue> {
+    const rows = await tx.$queryRaw<Array<{ snapshot: Prisma.JsonValue | null }>>`
+      SELECT jsonb_agg(DISTINCT dept) AS snapshot
+      FROM asset.agent_recipients ar
+      CROSS JOIN LATERAL jsonb_array_elements(ar.department_snapshot) AS dept
+      WHERE ar.request_id = ${requestId}
+    `;
+    // 受领人均无部门时 jsonb_agg 为 NULL → 写 JSON null
+    return (rows[0]?.snapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue;
   }
 
   /**
@@ -314,8 +337,14 @@ export class AgentClaimService {
     let allowedIds = new Set<number>();
     if (access.dataScope === 'DEPARTMENT') {
       const closure = await this.closures.closureOfUser(operator.id);
+      // 在职过滤（③ 修复：与 COMPANY 档一致——PRD §7「在职受领人」；
+      // 注销不删除 user_departments，须显式 JOIN 账号状态）
       const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number }>>`
-        SELECT DISTINCT user_id FROM hr.user_org WHERE department_id = ANY(${[...closure] as number[]})
+        SELECT DISTINCT uo.user_id
+        FROM hr.user_org uo
+        INNER JOIN backstage.user_accounts ua ON ua.user_id = uo.user_id
+          AND ua.status = 'ACTIVE' AND ua.deleted_at IS NULL
+        WHERE uo.department_id = ANY(${[...closure] as number[]})
       `;
       allowedIds = new Set(rows.map((row) => row.user_id));
     } else if (access.dataScope === null || access.dataScope === 'COMPANY') {

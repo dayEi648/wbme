@@ -6,6 +6,8 @@ export interface ApprovalHeadForSideEffect {
   requestType: string;
   applicantId: number;
   applicantName: string;
+  /** 申请人部门快照（提交时快照，借还记录「借出时部门快照」数据源；可能为 null） */
+  applicantDepartmentSnapshot: Prisma.JsonValue | null;
 }
 
 /**

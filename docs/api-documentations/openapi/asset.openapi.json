@@ -1441,6 +1441,7 @@
         },
         "required": [
           "inventoryItemId",
+          "changeTypeId",
           "reason",
           "qty"
         ],
@@ -3658,6 +3659,24 @@
             "required": false,
             "schema": {
               "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理时间范围起（含，ISO 日期时间）",
+            "in": "query",
+            "name": "createdAtFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理时间范围止（含，ISO 日期时间）",
+            "in": "query",
+            "name": "createdAtTo",
+            "required": false,
+            "schema": {
               "type": "string"
             }
           }

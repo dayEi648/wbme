@@ -11,6 +11,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import {
   allocateFifoBatches,
+  cleanupEmptyItem,
   findOrCreateItem,
   loadWarehouseWithPath,
   lockInventoryItems,
@@ -197,10 +198,8 @@ export class TransferService {
           outBefore = outAfter;
           inBefore = inAfter;
         }
-        // 来源条目空则清理（目标条目保留）
-        await tx.inventoryItem.deleteMany({
-          where: { id: sourceItem.id, bookQty: 0, reservedQty: 0 },
-        });
+        // 来源条目空则清理（目标条目保留；存在未结清借还时保留，归还仍按原条目回库）
+        await cleanupEmptyItem(tx, sourceItem.id);
         return {
           result: {
             transferId: transfer.id,

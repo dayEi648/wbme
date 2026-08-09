@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   BusinessException,
+  CONSUMABLE_APPLY_FUNCTION_CODE,
   FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
   FIXED_ASSET_VIEW_FUNCTION_CODE,
   INVENTORY_MANAGE_FUNCTION_CODE,
@@ -94,14 +95,15 @@ export class QrService {
   }
 
   /**
-   * 二维码列表（分页；目标类型/状态筛选）。
+   * 二维码列表（分页；目标类型/状态筛选；仅可见用户拥有管理权限的目标类型——M3 修复）。
    *
    * @param userId 当前用户
    * @param query 筛选
+   * @param allowedTargetTypes 用户可见的目标类型（按管理权限过滤后的白名单）
    * @returns items + total
    */
-  async list(userId: number, query: QrCodeQueryDto): Promise<{ items: unknown[]; total: number }> {
-    const where: Prisma.QrCodeWhereInput = {};
+  async list(userId: number, query: QrCodeQueryDto, allowedTargetTypes: Array<'ASSET' | 'INVENTORY_ITEM' | 'SCAN_CATALOG'>): Promise<{ items: unknown[]; total: number }> {
+    const where: Prisma.QrCodeWhereInput = { targetType: { in: allowedTargetTypes } };
     if (query.targetType) {
       where.targetType = query.targetType;
     }
@@ -135,9 +137,20 @@ export class QrService {
     id: number,
     action: 'DISABLE' | 'ENABLE' | 'REGENERATE',
   ): Promise<{ ok: true; regenerated?: { id: number; publicId: string } }> {
+    // 按目标类型校验管理权限（M3 修复：资产二维码归固定资产维护，库存/目录二维码归
+    // 消耗品库存管理，PRD §11 归属）；权限不足 → 404 不泄露存在性
+    const qrForScope = await this.prisma.client.qrCode.findUnique({ where: { id }, select: { targetType: true } });
+    if (!qrForScope) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const requiredCode = qrForScope.targetType === 'ASSET' ? FIXED_ASSET_MAINTAIN_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE;
+    const access = await getFunctionAccess(this.prisma.client, operator.id, requiredCode);
+    if (!access.registered || !access.allowed) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
     return executeIdempotentOperation<{ ok: true; regenerated?: { id: number; publicId: string } }>(this.prisma.client, {
       operator,
-      feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
+      feature: requiredCode,
       scope: 'asset.qr.action',
       idempotencyKey: undefined,
       fingerprint: fingerprintPayload({ id, action }),
@@ -216,7 +229,12 @@ export class QrService {
       };
     }
     if (qr.targetType === 'INVENTORY_ITEM') {
-      // 库存条目扫码申领入口：目标必须当前可申领（品种启用且有可用库存）
+      // 库存条目扫码申领入口：须持有「消耗品申领」权限（M4 修复：无权限不泄露目标内部详情）
+      const applyAccess = await getFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPLY_FUNCTION_CODE);
+      if (!applyAccess.registered || !applyAccess.systemOpen || !applyAccess.allowed) {
+        throw new BusinessException(assetErrors.QR_INVALID);
+      }
+      // 目标必须当前可申领（品种启用且有可用库存）
       const rows = await this.prisma.client.$queryRaw<
         Array<{ id: number; consumable_name: string; spec: string; warehouse_name: string; available: bigint }>
       >`

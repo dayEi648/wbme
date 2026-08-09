@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { transformPositiveInt } from './strict-number';
 import {
   ArrayMaxSize,
   IsArray,
@@ -22,12 +23,11 @@ export class StockChangeRequestItemDto {
   @Min(1)
   inventoryItemId!: number;
 
-  @ApiProperty({ description: '变更类型（字典项 id；库存变更类型仅表示意外扣减原因）', required: false, minimum: 1 })
-  @IsOptional()
+  @ApiProperty({ description: '变更类型（字典项 id；库存变更类型仅表示意外扣减原因）', minimum: 1 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  changeTypeId?: number;
+  changeTypeId!: number;
 
   @ApiProperty({ description: '具体原因（必填）', maxLength: 500 })
   @IsString()
@@ -35,7 +35,7 @@ export class StockChangeRequestItemDto {
   reason!: string;
 
   @ApiProperty({ description: '扣减数量（正整数）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;

@@ -9,7 +9,7 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
-import { allocateFifoBatches, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
+import { allocateFifoBatches, cleanupEmptyItem, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
 import { acquireQuotaAdvisoryLocks, computeCycleKey } from '../../shared/quota-period';
 import {
   executeIdempotentOperation,
@@ -221,7 +221,7 @@ export class ClaimService {
    */
   async applyApproved(
     tx: Prisma.TransactionClient,
-    head: { id: number; applicantId: number; applicantName: string },
+    head: { id: number; applicantId: number; applicantName: string; applicantDepartmentSnapshot: Prisma.JsonValue | null },
     processorId: number,
   ): Promise<void> {
     const lines = await tx.consumableRequestItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
@@ -262,7 +262,9 @@ export class ClaimService {
       // 借还用品：出库即生成个人借还记录（due_at = 出库时间 + 归还期限快照）
       const consumable = await tx.consumable.findUnique({ where: { id: row.consumableId }, select: { type: true, returnDays: true } });
       if (consumable?.type === 'REUSABLE') {
-        const dueAt = new Date(Date.now() + (consumable.returnDays ?? 0) * 24 * 60 * 60 * 1000);
+        const borrowedAt = new Date();
+        // 到期时间 = 出库时间 + 归还期限快照（与出库时间同源，避免独立取时偏差）
+        const dueAt = new Date(borrowedAt.getTime() + (consumable.returnDays ?? 0) * 24 * 60 * 60 * 1000);
         await tx.borrowRecord.create({
           data: {
             recordType: 'PERSONAL',
@@ -275,12 +277,14 @@ export class ClaimService {
             warehouseName: line.warehouseName,
             warehousePath: line.warehousePath,
             qty: line.qty,
-            borrowedAt: new Date(),
+            borrowedAt,
             dueAt,
+            // 借出时部门快照（申请人提交时快照；部门档审批闭包/注销处置数据范围数据源）
+            departmentSnapshot: head.applicantDepartmentSnapshot ?? Prisma.JsonNull,
           },
         });
       }
-      await tx.inventoryItem.deleteMany({ where: { id: line.inventoryItemId, bookQty: 0, reservedQty: 0 } });
+      await cleanupEmptyItem(tx, line.inventoryItemId);
     }
     // 额度占用 RESERVED → CONSUMED（不按当前额度配置重复计算）
     await tx.quotaOccupation.updateMany({

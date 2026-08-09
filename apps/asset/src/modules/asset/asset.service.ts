@@ -540,15 +540,18 @@ export class AssetService {
         for (const row of rows) {
           await this.assertMaintainScope(userId, row.departmentId);
         }
-        // 业务关联检查：进行中维修单 / 未删除记录存在 → 整批拒绝
+        // 业务关联检查：仍在使用（IN_USE）或存在进行中维修单 → 整批拒绝（asset PRD §4）
         const ids = dto.ids;
-        const activeRepairs = await tx.$queryRaw<Array<{ total: bigint }>>`
-          SELECT COUNT(*) AS total
-          FROM asset.repair_orders
-          WHERE asset_id = ANY(${ids as number[]})
-            AND status IN ('PENDING', 'REPAIRING')
-        `;
-        const referenced = Number(activeRepairs[0]?.total ?? 0);
+        const [inUse, activeRepairs] = await Promise.all([
+          tx.asset.count({ where: { id: { in: ids }, deletedAt: null, usageStatus: 'IN_USE' } }),
+          tx.$queryRaw<Array<{ total: bigint }>>`
+            SELECT COUNT(*) AS total
+            FROM asset.repair_orders
+            WHERE asset_id = ANY(${ids as number[]})
+              AND status IN ('PENDING', 'REPAIRING')
+          `,
+        ]);
+        const referenced = inUse + Number(activeRepairs[0]?.total ?? 0);
         if (referenced > 0) {
           throw new BusinessException(assetErrors.ASSET_REFERENCED, { referenced });
         }
@@ -649,9 +652,20 @@ export class AssetService {
   }> {
     let categoryName: string | null = null;
     if (dto.categoryId !== undefined) {
-      const category = await tx.assetCategory.findUnique({ where: { id: dto.categoryId } });
+      // 固定资产只能归入固定资产顶级分类（M6 修复：与消耗品侧校验对称，asset PRD §3）
+      const rows = await tx.$queryRaw<Array<{ name: string; topName: string }>>`
+        SELECT c.name, COALESCE(p.name, c.name) AS "topName"
+        FROM asset.asset_categories c
+        LEFT JOIN asset.asset_categories p ON p.id = c.parent_id
+        WHERE c.id = ${dto.categoryId}
+        LIMIT 1
+      `;
+      const category = rows[0];
       if (!category) {
         throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '分类不存在' });
+      }
+      if (category.topName !== '固定资产') {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '固定资产只能归入固定资产分类' });
       }
       categoryName = category.name;
     }

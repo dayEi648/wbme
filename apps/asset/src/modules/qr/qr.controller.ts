@@ -36,11 +36,14 @@ export class QrController {
     return this.qr.create(operator, dto);
   }
 
-  /** 二维码列表（持有任一管理权限可见） */
+  /** 二维码列表（按用户管理权限过滤目标类型：资产→固定资产维护，库存/目录→消耗品库存管理） */
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: QrCodeQueryDto): Promise<{ items: unknown[]; total: number }> {
-    await this.assertAnyAccess(userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE, INVENTORY_MANAGE_FUNCTION_CODE);
-    return this.qr.list(userId, query);
+    const allowed = await this.visibleTargetTypes(userId);
+    if (allowed.length === 0) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    return this.qr.list(userId, query, allowed);
   }
 
   /** 二维码管理动作（停用 / 恢复 / 作废并重新生成） */
@@ -76,5 +79,19 @@ export class QrController {
       }
     }
     throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+  }
+
+  /** 用户可见的目标类型白名单（按 PRD §11 管理归属逐类校验权限） */
+  private async visibleTargetTypes(userId: number): Promise<Array<'ASSET' | 'INVENTORY_ITEM' | 'SCAN_CATALOG'>> {
+    const visible: Array<'ASSET' | 'INVENTORY_ITEM' | 'SCAN_CATALOG'> = [];
+    const assetAccess = await getFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
+    if (assetAccess.registered && assetAccess.allowed) {
+      visible.push('ASSET');
+    }
+    const inventoryAccess = await getFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
+    if (inventoryAccess.registered && inventoryAccess.allowed) {
+      visible.push('INVENTORY_ITEM', 'SCAN_CATALOG');
+    }
+    return visible;
   }
 }

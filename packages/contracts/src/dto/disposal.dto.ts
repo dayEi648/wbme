@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { transformPositiveInt } from './strict-number';
 import {
   ArrayMaxSize,
   IsArray,
@@ -12,6 +13,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { IsDateString } from 'class-validator';
 import { IdempotentDto, PaginationQueryDto } from './base.dto';
 
 /** 注销员工借还直接处置明细行（asset PRD §8：不创建申请、不进入待审批；确认成功即最终业务结果） */
@@ -38,7 +40,7 @@ export class DirectDisposalItemDto {
   reason?: string;
 
   @ApiProperty({ description: '处理数量（正整数；不得超过可处理数量）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;
@@ -68,7 +70,7 @@ export class AgentSettleDisposalItemDto {
   reason?: string;
 
   @ApiProperty({ description: '该处理方式数量（正整数）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;
@@ -134,4 +136,14 @@ export class DisposalQueryDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(50)
   userName?: string;
+
+  @ApiProperty({ description: '处理时间范围起（含，ISO 日期时间）', required: false })
+  @IsOptional()
+  @IsDateString()
+  createdAtFrom?: string;
+
+  @ApiProperty({ description: '处理时间范围止（含，ISO 日期时间）', required: false })
+  @IsOptional()
+  @IsDateString()
+  createdAtTo?: string;
 }

@@ -228,7 +228,13 @@ export class AssetApprovalService {
 
       // T7：批准副作用（业务校验失败 → 事务回滚 → 申请保持待审批）；
       // 驳回释放占用（与终态同一事务）
-      const sideHead = { id: head.id, requestType: head.requestType, applicantId: head.applicantId, applicantName: head.applicantName };
+      const sideHead = {
+        id: head.id,
+        requestType: head.requestType,
+        applicantId: head.applicantId,
+        applicantName: head.applicantName,
+        applicantDepartmentSnapshot: head.applicantDepartmentSnapshot,
+      };
       if (action === 'APPROVE') {
         if (this.sideEffect) {
           await this.sideEffect.applyApprove(tx, sideHead, processorId);
@@ -289,6 +295,7 @@ export class AssetApprovalService {
           requestType: head.requestType,
           applicantId: head.applicantId,
           applicantName: head.applicantName,
+          applicantDepartmentSnapshot: head.applicantDepartmentSnapshot,
         });
       }
 
@@ -554,7 +561,10 @@ export class AssetApprovalService {
       requestType: { in: visibleTypes.map((entry) => entry.requestType) },
     };
     if (query.requestType !== undefined) {
-      if (!visibleTypes.some((entry) => entry.requestType === query.requestType)) {
+      if (query.requestType === 'CONSUMABLE_REQUEST') {
+        // 代交申领归入「消耗品申领」筛选（asset PRD §9 六类统一展示；代交同为消耗品审批）
+        where.requestType = { in: ['CONSUMABLE_REQUEST', 'AGENT_REQUEST'] };
+      } else if (!visibleTypes.some((entry) => entry.requestType === query.requestType)) {
         where.id = -1;
       } else {
         where.requestType = query.requestType as AssetRequestType;

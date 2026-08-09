@@ -22,9 +22,28 @@ import {
  * 停用选项时保留原值展示。按主 PRD §2.6 提供批量硬删除，仅未被业务或历史记录引用的
  * 项可删除，任一项不可删除则整批回滚。
  */
+/** 库存变更类型初始字典项（asset PRD §6「MVP 至少提供其他意外扣减」） */
+const DEFAULT_CHANGE_TYPES = ['其他意外扣减'];
+
 @Injectable()
 export class DictService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  /**
+   * 初始化内置字典项（幂等：同类型同名已存在则跳过；读路径惰性调用，② 欠账修复）。
+   */
+  async ensureDefaults(): Promise<void> {
+    for (const [index, name] of DEFAULT_CHANGE_TYPES.entries()) {
+      const existing = await this.prisma.client.assetDictItem.findFirst({
+        where: { dictType: 'CHANGE_TYPE', name },
+      });
+      if (!existing) {
+        await this.prisma.client.assetDictItem.create({
+          data: { dictType: 'CHANGE_TYPE', name, sort: index, createdBy: null },
+        });
+      }
+    }
+  }
 
   /**
    * 字典列表（分页；可按类型/状态筛选）。
@@ -33,6 +52,7 @@ export class DictService {
    * @returns items + total
    */
   async list(query: AssetDictItemQueryDto): Promise<{ items: unknown[]; total: number }> {
+    await this.ensureDefaults();
     const where: Prisma.AssetDictItemWhereInput = {};
     if (query.dictType) {
       where.dictType = query.dictType as Prisma.AssetDictItemWhereInput['dictType'];

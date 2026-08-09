@@ -220,6 +220,10 @@ export class WarehouseService {
           INNER JOIN asset.approval_requests r ON r.id = cri.request_id
           INNER JOIN asset.inventory_items ii ON ii.id = cri.inventory_item_id
           WHERE ii.warehouse_id = ANY(${ids as number[]})
+            AND r.status = 'PENDING') +
+        (SELECT COUNT(*) FROM asset.stock_in_items sii
+          INNER JOIN asset.approval_requests r ON r.id = sii.request_id
+          WHERE sii.warehouse_id = ANY(${ids as number[]})
             AND r.status = 'PENDING')
       ) AS total
     `;

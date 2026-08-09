@@ -36,7 +36,7 @@ export class AssetApprovalSideEffect implements ApprovalSideEffect {
   async applyApprove(tx: Parameters<ApprovalSideEffect['applyApprove']>[0], head: ApprovalHeadForSideEffect, processorId: number): Promise<void> {
     switch (head.requestType) {
       case 'STOCK_IN':
-        await this.stockIn.applyApproved(tx, head);
+        await this.stockIn.applyApproved(tx, head, processorId);
         return;
       case 'STOCK_CHANGE':
         await this.stockChange.applyApproved(tx, head);

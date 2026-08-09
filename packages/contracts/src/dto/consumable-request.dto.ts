@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { transformPositiveInt } from './strict-number';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -22,7 +23,7 @@ export class ConsumableRequestItemDto {
   inventoryItemId!: number;
 
   @ApiProperty({ description: '数量（正整数）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;
@@ -52,7 +53,7 @@ export class AgentRequestItemDto {
   inventoryItemId!: number;
 
   @ApiProperty({ description: '清单总数量（正整数；不按受领人分摊）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;

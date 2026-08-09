@@ -34,6 +34,8 @@ export interface BorrowRecordLockRow {
   qty: number;
   returnedQty: number;
   writtenOffQty: number;
+  /** 借出时部门快照（H2：借还记录创建时写入；处置记录保留快照数据源） */
+  departmentSnapshot: Prisma.JsonValue | null;
 }
 
 /**
@@ -97,7 +99,7 @@ export class BorrowService {
    * @returns 审批头 id + 单号
    */
   async submitReturn(operator: AssetOperationLogOperator, dto: BorrowReturnCreateDto): Promise<{ requestId: number; applicationNo: string }> {
-    return this.submitBorrowAction(operator, 'RETURN', dto.items);
+    return this.submitBorrowAction(operator, 'RETURN', dto.items, dto.idempotencyKey);
   }
 
   /**
@@ -108,7 +110,7 @@ export class BorrowService {
    * @returns 审批头 id + 单号
    */
   async submitWriteOff(operator: AssetOperationLogOperator, dto: BorrowWriteOffCreateDto): Promise<{ requestId: number; applicationNo: string }> {
-    return this.submitBorrowAction(operator, 'WRITE_OFF', dto.items);
+    return this.submitBorrowAction(operator, 'WRITE_OFF', dto.items, dto.idempotencyKey);
   }
 
   /**
@@ -292,12 +294,13 @@ export class BorrowService {
     operator: AssetOperationLogOperator,
     requestType: 'RETURN' | 'WRITE_OFF',
     items: Array<{ borrowRecordId: number; qty: number; writeOffType?: string; reason?: string }>,
+    idempotencyKey?: string,
   ): Promise<{ requestId: number; applicationNo: string }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: MY_BORROW_FUNCTION_CODE,
       scope: `asset.borrow.${requestType.toLowerCase()}.submit`,
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ requestType, items }),
       run: async (tx) => {
         // 同一借还记录整单只能一次（A-24 唯一索引兜底）
@@ -369,7 +372,8 @@ export class BorrowService {
         warehouse_path AS "warehousePath",
         qty,
         returned_qty AS "returnedQty",
-        written_off_qty AS "writtenOffQty"
+        written_off_qty AS "writtenOffQty",
+        department_snapshot AS "departmentSnapshot"
       FROM asset.borrow_records
       WHERE id = ${recordId}
       FOR UPDATE

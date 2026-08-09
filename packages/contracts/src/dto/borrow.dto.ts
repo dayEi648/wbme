@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { transformPositiveInt } from './strict-number';
 import {
   ArrayMaxSize,
   IsArray,
@@ -22,7 +23,7 @@ export class BorrowReturnItemDto {
   borrowRecordId!: number;
 
   @ApiProperty({ description: '归还数量（正整数；不得超过可申请处理数量）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;
@@ -53,7 +54,7 @@ export class BorrowWriteOffItemDto {
   borrowRecordId!: number;
 
   @ApiProperty({ description: '核销数量（正整数）', minimum: 1 })
-  @Type(() => Number)
+  @Transform(transformPositiveInt)
   @IsInt()
   @Min(1)
   qty!: number;

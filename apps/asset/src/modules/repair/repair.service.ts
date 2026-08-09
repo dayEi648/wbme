@@ -11,7 +11,7 @@ import {
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
-import { getFunctionAccess } from '../../shared/cross-schema-auth';
+import { getFunctionAccess, type FunctionAccess } from '../../shared/cross-schema-auth';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -308,8 +308,13 @@ export class RepairService {
    * @returns items + total
    */
   async list(userId: number, query: RepairOrderQueryDto): Promise<{ items: unknown[]; total: number }> {
-    await this.assertMaintainAccess(userId);
+    const access = await this.requireMaintainAccess(userId);
     const where: Prisma.RepairOrderWhereInput = {};
+    // DEPARTMENT 档：按资产所属部门闭包裁剪（M8 修复：与台账列表一致，防闭包外维修单泄露）
+    if (access.dataScope !== null && access.dataScope !== 'COMPANY') {
+      const closure = await this.closures.closureOfUser(userId);
+      where.asset = { departmentId: { in: [...closure] } };
+    }
     if (query.assetId) {
       where.assetId = query.assetId;
     }
@@ -333,6 +338,8 @@ export class RepairService {
       items: rows.map((row) => ({
         ...row,
         actualCost: row.actualCost !== null ? row.actualCost.toFixed(2) : null,
+        // 耗时 = 开始时间与完成时间之差（分钟；仅已完成单，asset PRD §4 自动计算）
+        durationMinutes: computeDurationMinutes(row.startedAt, row.completedAt),
       })),
     };
   }
@@ -345,7 +352,7 @@ export class RepairService {
    * @returns 详情
    */
   async detail(userId: number, id: number): Promise<unknown> {
-    await this.assertMaintainAccess(userId);
+    const access = await this.requireMaintainAccess(userId);
     const order = await this.prisma.client.repairOrder.findUnique({
       where: { id },
       include: {
@@ -356,18 +363,33 @@ export class RepairService {
     if (!order) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
+    // DEPARTMENT 档：资产部门须在授权闭包内（M8 修复：与列表裁剪一致）
+    if (access.dataScope !== null && access.dataScope !== 'COMPANY') {
+      const closure = await this.closures.closureOfUser(userId);
+      if (order.asset.departmentId === null || !closure.has(order.asset.departmentId)) {
+        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+      }
+    }
     return {
       ...order,
       actualCost: order.actualCost !== null ? order.actualCost.toFixed(2) : null,
+      // 耗时 = 开始时间与完成时间之差（分钟；仅已完成单，asset PRD §4 自动计算）
+      durationMinutes: computeDurationMinutes(order.startedAt, order.completedAt),
     };
   }
 
   /** 维护授权断言（未注册/未授权 → 404） */
   private async assertMaintainAccess(userId: number): Promise<void> {
+    await this.requireMaintainAccess(userId);
+  }
+
+  /** 维护授权（未注册/未授权 → 404；返回 access 供数据范围裁剪） */
+  private async requireMaintainAccess(userId: number): Promise<FunctionAccess> {
     const access = await getFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     if (!access.registered || !access.systemOpen || !access.allowed) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
+    return access;
   }
 
   /** 维护范围断言：资产部门在授权闭包内 */
@@ -387,4 +409,12 @@ export class RepairService {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
   }
+}
+
+/** 维修耗时（分钟）= 完成时间 − 开始时间；任一时点缺失（未完成/历史单）返回 null */
+function computeDurationMinutes(startedAt: Date | null, completedAt: Date | null): number | null {
+  if (startedAt === null || completedAt === null || completedAt.getTime() < startedAt.getTime()) {
+    return null;
+  }
+  return Math.round((completedAt.getTime() - startedAt.getTime()) / 60_000);
 }

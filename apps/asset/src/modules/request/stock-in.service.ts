@@ -92,14 +92,11 @@ export class StockInService {
    * @param tx 事务客户端
    * @param head 审批头（含申请人）
    */
-  async applyApproved(tx: Prisma.TransactionClient, head: { id: number; applicantId: number }): Promise<void> {
+  async applyApproved(tx: Prisma.TransactionClient, head: { id: number }, processorId: number): Promise<void> {
     const lines = await tx.stockInItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
     for (const line of lines) {
-      const consumable = await tx.consumable.findUnique({ where: { id: line.consumableId }, select: { status: true } });
-      if (!consumable || consumable.status !== 'ACTIVE') {
-        // 品种停用/删除后批准前重校验：整单回滚保持待审批（asset PRD §5）
-        throw new BusinessException(inventoryErrors.CONSUMABLE_DISABLED);
-      }
+      // 注意：批准时不再校验品种启用状态——停用前已提交的申请仍可批准（asset PRD §5）；
+      // 品种状态只约束新提交（submit 已校验 ACTIVE）
       const item = await findOrCreateItem(tx, {
         consumableId: line.consumableId,
         spec: line.spec,
@@ -148,7 +145,7 @@ export class StockInService {
         bookAfter: item.bookQty + line.qty,
         refType: 'STOCK_IN',
         refId: head.id,
-        operator: { id: head.applicantId ?? 0, name: '审批系统' },
+        operator: { id: processorId, name: '审批系统' },
       });
     }
   }
