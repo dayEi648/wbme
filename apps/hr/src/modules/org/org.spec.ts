@@ -47,6 +47,13 @@ describeDb('组织模块（T6-1/T6-2/T6-3）', () => {
     org = new OrgStructureService(prisma);
     await ensurePermissionCatalog(prisma);
 
+    // 组织版本行初始化（幂等；CI 全新库 org_meta 为空，测试不依赖执行顺序）
+    await prisma.client.orgMeta.upsert({
+      where: { id: 1 },
+      create: { id: 1 },
+      update: {},
+    });
+
     // 打开 HR 系统（测毕还原）
     const statusRows = await prisma.client.$queryRaw<Array<{ product_status: string }>>`
       SELECT product_status::text AS product_status FROM backstage.systems WHERE code = 'HR' LIMIT 1

@@ -52,6 +52,13 @@ describeDb('岗位申请（T6-6）', () => {
     approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), applications);
     applications.bindApprovalService(approval);
     await ensurePermissionCatalog(prisma);
+
+    // 组织版本行初始化（幂等；CI 全新库 org_meta 为空，测试不依赖执行顺序）
+    await prisma.client.orgMeta.upsert({
+      where: { id: 1 },
+      create: { id: 1 },
+      update: {},
+    });
     const statusRows = await prisma.client.$queryRaw<Array<{ product_status: string }>>`
       SELECT product_status::text AS product_status FROM backstage.systems WHERE code = 'HR' LIMIT 1
     `;
