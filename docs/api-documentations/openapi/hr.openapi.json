@@ -1,0 +1,2866 @@
+{
+  "components": {
+    "schemas": {
+      "CancelApprovalDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ColumnSettingDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "description": "列设置内容（列显隐/宽度/顺序等，结构由前端定义）",
+            "type": "object"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "DepartmentCreateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "部门名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "parentId": {
+            "description": "父部门 id（空 = 一级部门）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "DepartmentDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "部门 id 列表（1-100 个，互不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "DepartmentMoveDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "parentId": {
+            "description": "新父部门 id（空 = 移到一级）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "DepartmentUpdateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "部门名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "description": "启停状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EmployeeDepartmentsAssignDto": {
+        "properties": {
+          "departmentIds": {
+            "description": "所属部门 id 列表（1-100 个，互不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "required": [
+          "departmentIds"
+        ],
+        "type": "object"
+      },
+      "EmployeePositionAssignDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "positionId": {
+            "description": "岗位 id",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "positionId"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "description": "机器可读稳定编码（(type, domain) 内唯一；目录见 @wbme/contracts）",
+                "enum": [
+                  "ACCOUNT_ACTIVATED",
+                  "ACCOUNT_DEACTIVATED",
+                  "ACCOUNT_LOCKED",
+                  "ACCOUNT_PENDING_ACTIVATION",
+                  "ALREADY_SUPER_ADMIN",
+                  "APPLICANT_DEACTIVATED",
+                  "ASSET_REFERENCED",
+                  "ASSET_STATUS_INVALID",
+                  "ASSIGNEE_DEPARTMENT_MISMATCH",
+                  "BACKUP_LOCK_BUSY",
+                  "BACKUP_UNVERIFIED",
+                  "BATCH_CORRECTION_FORBIDDEN",
+                  "CONFLICT",
+                  "CONSUMABLE_REFERENCED",
+                  "DATA_REVISION_STALE",
+                  "DEPARTMENT_HAS_CHILDREN",
+                  "DEPENDENCY_UNAVAILABLE",
+                  "DINGTALK_ALREADY_BOUND",
+                  "DINGTALK_CONFIG_MISSING",
+                  "DINGTALK_ORG_MISMATCH",
+                  "DINGTALK_STATE_INVALID",
+                  "DINGTALK_UNAVAILABLE",
+                  "EMERGENCY_BACKUP_FAILED",
+                  "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_TIMEOUT",
+                  "FLOW_SESSION_INVALID",
+                  "FORBIDDEN",
+                  "FUNCTION_NOT_REGISTERED",
+                  "GRANT_BATCH_BLOCKED",
+                  "GRANT_SELF_FORBIDDEN",
+                  "GRANT_VERSION_CONFLICT",
+                  "GROUP_BATCH_BLOCKED",
+                  "GROUP_NAME_CONFLICT",
+                  "HOLIDAY_API_UNAVAILABLE",
+                  "HR_SERVICE_UNAVAILABLE",
+                  "IDEMPOTENCY_KEY_REUSED",
+                  "IMPORT_ALREADY_RUNNING",
+                  "IMPORT_ARCHIVE_LIMIT_EXCEEDED",
+                  "IMPORT_FILE_TOO_LARGE",
+                  "IMPORT_FORMULA_NOT_ALLOWED",
+                  "IMPORT_PREVIEW_STALE",
+                  "IMPORT_PROJECT_DELETED",
+                  "IMPORT_ROW_LIMIT_EXCEEDED",
+                  "IMPORT_TIMEOUT",
+                  "IMPORT_YEAR_AMBIGUOUS",
+                  "IMPORT_YEAR_REQUIRED_FOR_NEW",
+                  "INSUFFICIENT_QUOTA",
+                  "INSUFFICIENT_STOCK",
+                  "INTERNAL_ERROR",
+                  "INVALID_CREDENTIALS",
+                  "INVITATION_INVALID",
+                  "ITEM_DUPLICATED",
+                  "LAST_SUPER_ADMIN",
+                  "LOCATION_HAS_CHILDREN",
+                  "LOCATION_INVALID_TARGET",
+                  "MAINTENANCE_ACTIVE_EXISTS",
+                  "MULTI_DEPARTMENT_APPLY_FORBIDDEN",
+                  "NOT_SUPER_ADMIN",
+                  "OLD_PASSWORD_INCORRECT",
+                  "ORGANIZATION_CYCLE",
+                  "ORGANIZATION_VERSION_CONFLICT",
+                  "OSS_UNAVAILABLE",
+                  "OVERTIME_BATCH_REJECTED",
+                  "OVERTIME_DATE_OUT_OF_WINDOW",
+                  "OVERTIME_EMPLOYEE_NOT_ACTIVE",
+                  "OVERTIME_OVERLAP",
+                  "PASSWORD_CONFIRM_MISMATCH",
+                  "PASSWORD_POLICY_FAILED",
+                  "PAYLOAD_TOO_LARGE",
+                  "PENDING_ACCOUNT_EXISTS",
+                  "PENDING_LIMIT_REACHED",
+                  "PERMISSION_MANAGEMENT_GRANT_FORBIDDEN",
+                  "PHONE_MISSING_FROM_DINGTALK",
+                  "PHONE_TAKEN",
+                  "POSITION_APPLICATION_INELIGIBLE",
+                  "POSITION_APPLY_STALE",
+                  "POSITION_APPLY_TARGET_UNAVAILABLE",
+                  "POSITION_DEPARTMENT_MISMATCH",
+                  "PROFILE_CHANGE_PENDING_EXISTS",
+                  "PROJECT_KEY_CONFLICT",
+                  "QR_INVALID",
+                  "QR_REVOKED",
+                  "RATE_LIMITED",
+                  "REDIS_UNAVAILABLE",
+                  "REJECT_REASON_REQUIRED",
+                  "REQUEST_TIMEOUT",
+                  "RESET_SELF_UNAVAILABLE",
+                  "RESOURCE_NOT_FOUND",
+                  "RESTORE_IN_PROGRESS",
+                  "RESTORE_SUPER_ADMIN_ONLY",
+                  "RESTORE_TARGET_STALE",
+                  "ROW_LIMIT_EXCEEDED",
+                  "SCOPE_NOT_COVERED",
+                  "SCOPE_NOT_SUPPORTED",
+                  "SERVICE_UNAVAILABLE",
+                  "SESSION_EXPIRED",
+                  "STATUS_CONFLICT",
+                  "STATUS_NOT_ALLOWED",
+                  "STOCK_CONFLICT",
+                  "SUPER_ADMIN_TARGET_ONLY",
+                  "SYSTEM_MAINTENANCE",
+                  "SYSTEM_NOT_OPEN",
+                  "SYSTEM_STATUS_NOT_ADJUSTABLE",
+                  "UNAUTHORIZED",
+                  "UNIT_LOCKED",
+                  "USER_BATCH_BLOCKED",
+                  "USER_NOT_ACTIVE",
+                  "USER_NOT_PENDING",
+                  "VALIDATION_FAILED"
+                ],
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": true,
+                "description": "白名单结构化详情",
+                "type": "object"
+              },
+              "domain": {
+                "description": "业务域（仅 BUSINESS 类型必须返回）",
+                "enum": [
+                  "ACCOUNT",
+                  "PERMISSION",
+                  "APPROVAL",
+                  "ASSET",
+                  "INVENTORY",
+                  "HR",
+                  "FINANCE",
+                  "EXPORT",
+                  "BACKUP",
+                  "INTEGRATION"
+                ],
+                "type": "string"
+              },
+              "message": {
+                "description": "服务端控制、可向当前用户展示的文案",
+                "type": "string"
+              },
+              "requestId": {
+                "description": "请求追踪标识",
+                "type": "string"
+              },
+              "type": {
+                "description": "稳定错误大类（主 PRD §9.5）",
+                "enum": [
+                  "BUSINESS",
+                  "VALIDATION",
+                  "AUTHENTICATION",
+                  "AUTHORIZATION",
+                  "CONFLICT",
+                  "RATE_LIMIT",
+                  "TIMEOUT",
+                  "DEPENDENCY",
+                  "SYSTEM"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "code",
+              "message",
+              "requestId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "FilterPresetDto": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "description": "筛选条件内容（结构由前端定义）",
+            "type": "object"
+          },
+          "name": {
+            "description": "预设名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ],
+        "type": "object"
+      },
+      "HrCancelPositionApplicationsDto": {
+        "properties": {
+          "deactivatedAt": {
+            "description": "注销时间（RFC 3339/ISO 8601）",
+            "type": "string"
+          },
+          "userId": {
+            "description": "用户 id",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "userId",
+          "deactivatedAt"
+        ],
+        "type": "object"
+      },
+      "HrDictCreateDto": {
+        "properties": {
+          "dictType": {
+            "description": "字典类型编码",
+            "maxLength": 50,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "字典项名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "dictType",
+          "name"
+        ],
+        "type": "object"
+      },
+      "HrDictDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "字典项 id 列表（1-100 个，互不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "HrDictUpdateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "字典项名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "description": "启停状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HrRestoreApplyDto": {
+        "properties": {
+          "restoreRequestId": {
+            "description": "恢复请求 id（uuid）",
+            "type": "string"
+          },
+          "targets": {
+            "description": "恢复目标列表",
+            "items": {
+              "$ref": "HrRestoreTargetDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "restoreRequestId",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "HrRestorePreviewDto": {
+        "properties": {
+          "restoreRequestId": {
+            "description": "恢复请求 id（uuid）",
+            "type": "string"
+          },
+          "targets": {
+            "description": "恢复目标列表",
+            "items": {
+              "$ref": "HrRestoreTargetDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "restoreRequestId",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "HrSettingUpdateDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "value": {
+            "description": "设置值（字符串表达；按 value_type 校验，本期全部为数值）",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "InternalPositionApplicationSubmitDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "targetDepartmentId": {
+            "description": "目标部门 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "targetPositionId": {
+            "description": "目标岗位 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "userId": {
+            "description": "实际操作者用户 id（platform-core 代传）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "userId",
+          "targetDepartmentId",
+          "targetPositionId"
+        ],
+        "type": "object"
+      },
+      "OvertimeSubmitDto": {
+        "properties": {
+          "endMinute": {
+            "description": "结束分钟（当日第 N 分钟，1-1440；`24:00`=1440 仅作当日结束边界）",
+            "maximum": 1440,
+            "minimum": 1,
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "overtimeDate": {
+            "description": "加班日期（YYYY-MM-DD）",
+            "example": "2026-08-09",
+            "type": "string"
+          },
+          "reason": {
+            "description": "加班事由",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "startMinute": {
+            "description": "开始分钟（当日第 N 分钟，0-1439；必须早于结束分钟）",
+            "maximum": 1439,
+            "minimum": 0,
+            "type": "number"
+          },
+          "userIds": {
+            "description": "加班员工名单（含本人；\"加班申请\"本人档时服务端强制为 [本人]）",
+            "items": {
+              "minimum": 1,
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "overtimeDate",
+          "startMinute",
+          "endMinute",
+          "reason",
+          "userIds"
+        ],
+        "type": "object"
+      },
+      "PositionCreateDto": {
+        "properties": {
+          "allowSelfApply": {
+            "description": "是否允许员工自助申请该岗位",
+            "type": "boolean"
+          },
+          "departmentIds": {
+            "description": "适用部门 id 列表（可空：创建时暂不指定）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "description": {
+            "description": "岗位说明",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "岗位名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "description": "启停状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "PositionDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "岗位 id 列表（1-100 个，互不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "PositionDepartmentsUpdateDto": {
+        "properties": {
+          "departmentIds": {
+            "description": "适用部门 id 列表（1-100 个，互不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "required": [
+          "departmentIds"
+        ],
+        "type": "object"
+      },
+      "PositionUpdateDto": {
+        "properties": {
+          "allowSelfApply": {
+            "description": "是否允许员工自助申请该岗位",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "岗位说明",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "岗位名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "description": "启停状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ProcessApprovalDto": {
+        "properties": {
+          "action": {
+            "description": "处理动作：APPROVE=批准 / REJECT=驳回",
+            "enum": [
+              "APPROVE",
+              "REJECT"
+            ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "opinion": {
+            "description": "处理意见",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "RenameFilterPresetDto": {
+        "properties": {
+          "name": {
+            "description": "预设新名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "TitleRuleCreateDto": {
+        "properties": {
+          "departmentId": {
+            "description": "条件：所属部门 id（空 = 不限定）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "positionId": {
+            "description": "条件：岗位 id（空 = 不限定）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "roleCondition": {
+            "description": "条件：站点角色（空 = 不限定）",
+            "enum": [
+              "SUPER_ADMIN",
+              "EMPLOYEE"
+            ],
+            "type": "string"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "description": "启停状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          },
+          "titleName": {
+            "description": "职称名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "required": [
+          "titleName"
+        ],
+        "type": "object"
+      },
+      "TitleRuleDeleteDto": {
+        "properties": {
+          "ids": {
+            "description": "职称规则 id 列表（1-100 个，互不重复）",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "TitleRuleUpdateDto": {
+        "properties": {
+          "departmentId": {
+            "description": "条件：所属部门 id（空 = 不限定）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "positionId": {
+            "description": "条件：岗位 id（空 = 不限定）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "roleCondition": {
+            "description": "条件：站点角色（空 = 不限定）",
+            "enum": [
+              "SUPER_ADMIN",
+              "EMPLOYEE"
+            ],
+            "type": "string"
+          },
+          "sort": {
+            "description": "同级排序（越小越靠前）",
+            "maximum": 9999,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "description": "启停状态",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ],
+            "type": "string"
+          },
+          "titleName": {
+            "description": "职称名称",
+            "maxLength": 100,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "csrfHeader": {
+        "description": "CSRF 双提交头（状态变更请求必须与 wbme_csrf Cookie 一致）",
+        "in": "header",
+        "name": "X-WBME-CSRF-Token",
+        "type": "apiKey"
+      },
+      "sessionCookie": {
+        "description": "服务端会话 Cookie（HttpOnly；登录/激活成功后下发）",
+        "in": "cookie",
+        "name": "wbme_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "hr 部署单元（人事系统）OpenAPI 契约。构建期生成（主 PRD §9.5）：统一错误结构见 components.schemas.ErrorResponse；默认会话 Cookie + CSRF 头认证，公开路由无 security。",
+    "title": "WBME hr API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/approval-requests": {
+      "get": {
+        "operationId": "ApprovalController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型（取值由各模块声明）",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "PENDING=待处理；PROCESSED=已处理（批准/驳回/取消）；或具体状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "PROCESSED",
+                "DRAFT",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（单号/申请人等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "申请人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理人姓名",
+            "in": "query",
+            "name": "processorName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "审批列表。",
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}": {
+      "get": {
+        "operationId": "ApprovalController_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "审批详情。",
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}/cancel": {
+      "post": {
+        "operationId": "ApprovalController_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelApprovalDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "申请人/代交人取消待审批。",
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/{id}/process": {
+      "post": {
+        "operationId": "ApprovalController_process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessApprovalDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "处理审批（APPROVE / REJECT；业务副作用 T5 no-op）。",
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/export": {
+      "get": {
+        "operationId": "ApprovalController_exportList",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型（取值由各模块声明）",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "PENDING=待处理；PROCESSED=已处理（批准/驳回/取消）；或具体状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "PROCESSED",
+                "DRAFT",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（单号/申请人等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "申请人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理人姓名",
+            "in": "query",
+            "name": "processorName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "审批列表导出（hr PRD §4「支持导出」；可见性与数据范围与列表一致）。",
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/pending-count": {
+      "get": {
+        "operationId": "ApprovalController_pendingCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "待审批数量。",
+        "tags": [
+          "Approval"
+        ]
+      }
+    },
+    "/api/v1/departments": {
+      "post": {
+        "operationId": "DepartmentController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "创建部门（幂等；停用部门不能作为新建下级目标）",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
+    "/api/v1/departments/{id}": {
+      "put": {
+        "operationId": "DepartmentController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新部门（名称/排序/启停；停用后不可作为新选择目标）",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
+    "/api/v1/departments/{id}/move": {
+      "put": {
+        "operationId": "DepartmentController_move",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentMoveDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "移动部门节点（换父级；页面展示受影响子树并二次确认）",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
+    "/api/v1/departments/delete": {
+      "delete": {
+        "operationId": "DepartmentController_deleteBatch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "批量硬删除部门（有未删除下级时整批不变更）",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
+    "/api/v1/departments/delete-preview": {
+      "get": {
+        "operationId": "DepartmentController_deletePreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "删除前引用确认（在职员工数/资产数/待审批数/职称规则引用数）",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
+    "/api/v1/departments/tree": {
+      "get": {
+        "operationId": "DepartmentController_tree",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "部门树（组织架构与部门管理功能任一可见；含负责人与状态）",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
+    "/api/v1/dicts": {
+      "get": {
+        "operationId": "DictController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "字典类型过滤",
+            "in": "query",
+            "name": "dictType",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "启停状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "字典列表（分页）",
+        "tags": [
+          "Dict"
+        ]
+      },
+      "post": {
+        "operationId": "DictController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrDictCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "新增字典项（幂等）",
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/dicts/{id}": {
+      "put": {
+        "operationId": "DictController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrDictUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新字典项（名称/排序/启停）",
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/dicts/delete": {
+      "delete": {
+        "operationId": "DictController_deleteBatch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrDictDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "批量硬删除字典项（未被引用；任一目标不存在/被引用整批不变更）",
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/hr-settings": {
+      "get": {
+        "operationId": "SettingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "读取全部人事设置",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/v1/hr-settings/{key}": {
+      "put": {
+        "operationId": "SettingsController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrSettingUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新单条人事设置（写操作日志，变更可追溯操作者）",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/column-setting": {
+      "get": {
+        "operationId": "TablePrefsController_getColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_upsertColumnSetting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnSettingDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/{pageKey}/filter-presets": {
+      "get": {
+        "operationId": "TablePrefsController_listFilterPresets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "post": {
+        "operationId": "TablePrefsController_createFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pageKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}": {
+      "delete": {
+        "operationId": "TablePrefsController_deleteFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      },
+      "put": {
+        "operationId": "TablePrefsController_updateFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/me/table-prefs/filter-presets/{id}/name": {
+      "put": {
+        "operationId": "TablePrefsController_renameFilterPreset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameFilterPresetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/org/employees": {
+      "get": {
+        "operationId": "OrgController_employees",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "关键字（姓名/工号等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "按部门过滤",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "按岗位过滤",
+            "in": "query",
+            "name": "positionId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "ACTIVE=在职（默认） / DEACTIVATED=已注销（组织编排只看在职）",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DEACTIVATED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "全体员工列表（含部门/岗位/职称派生；关键字/部门/岗位筛选）",
+        "tags": [
+          "Org"
+        ]
+      }
+    },
+    "/api/v1/org/employees/{userId}/departments": {
+      "put": {
+        "operationId": "OrgController_assignDepartments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeDepartmentsAssignDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "调整员工所属部门（多部门并列；岗位须适用于全部新部门）",
+        "tags": [
+          "Org"
+        ]
+      }
+    },
+    "/api/v1/org/employees/{userId}/position": {
+      "put": {
+        "operationId": "OrgController_assignPosition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeePositionAssignDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "调整员工岗位（单岗位；须适用于其全部当前部门）",
+        "tags": [
+          "Org"
+        ]
+      }
+    },
+    "/api/v1/overtime/applications": {
+      "post": {
+        "operationId": "OvertimeController_submit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OvertimeSubmitDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "提交加班批次（全有或全无；提交前展示日期类型/时长由前端先查节假日）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/applications/{id}/cancel": {
+      "post": {
+        "operationId": "OvertimeController_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "取消本人/代提的待审批批次（批准或驳回后不能取消）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/date-type": {
+      "get": {
+        "operationId": "OvertimeController_dateType",
+        "parameters": [
+          {
+            "description": "查询日期（YYYY-MM-DD）",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "example": "2026-08-09",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "日期类型查询（hr PRD §3：提交前展示日期类型、时长与补交提示；统一经后端节假日适配器，不让前端直连第三方）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/mine": {
+      "get": {
+        "operationId": "OvertimeController_mine",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "月份（YYYY-MM）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "个人视图：本人已批准加班记录（隐含本人历史；分页）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/mine/summary": {
+      "get": {
+        "operationId": "OvertimeController_summaryMine",
+        "parameters": [
+          {
+            "description": "月份（YYYY-MM；空 = 当月）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "个人月度汇总（分钟精度；小时两位小数）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/records": {
+      "get": {
+        "operationId": "OvertimeController_records",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "月份（YYYY-MM）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（姓名等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "按部门过滤",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "管理视图：员工列表 + 月度统计（加班历史记录功能，DEPARTMENT 闭包/COMPANY）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/records/export": {
+      "get": {
+        "operationId": "OvertimeController_exportRecords",
+        "parameters": [
+          {
+            "description": "月份（YYYY-MM；空 = 当月）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          },
+          {
+            "description": "按部门过滤",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "管理视图导出（runExport 流式；导出完成写 EXPORT 操作日志）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/records/summary": {
+      "get": {
+        "operationId": "OvertimeController_recordsSummary",
+        "parameters": [
+          {
+            "description": "月份（YYYY-MM；空 = 当月）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          },
+          {
+            "description": "按部门过滤",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "管理月度汇总（全体范围内员工合计）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/positions": {
+      "get": {
+        "operationId": "PositionController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "includeDisabled",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "岗位列表（默认只含启用；含适用部门）",
+        "tags": [
+          "Position"
+        ]
+      },
+      "post": {
+        "operationId": "PositionController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "创建岗位（幂等；岗位名唯一）",
+        "tags": [
+          "Position"
+        ]
+      }
+    },
+    "/api/v1/positions/{id}": {
+      "put": {
+        "operationId": "PositionController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新岗位（名称/说明/启停/排序/是否允许自助申请）",
+        "tags": [
+          "Position"
+        ]
+      }
+    },
+    "/api/v1/positions/{id}/departments": {
+      "put": {
+        "operationId": "PositionController_updateDepartments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionDepartmentsUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新岗位适用部门（修改前校验全部在岗员工兼容性，不兼容整次拒绝并返回受影响员工）",
+        "tags": [
+          "Position"
+        ]
+      }
+    },
+    "/api/v1/positions/delete": {
+      "delete": {
+        "operationId": "PositionController_deleteBatch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "批量硬删除岗位（在岗员工岗位置空；待审批岗位申请保留但批准时失败）",
+        "tags": [
+          "Position"
+        ]
+      }
+    },
+    "/api/v1/positions/delete-preview": {
+      "get": {
+        "operationId": "PositionController_deletePreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "删除前引用确认（在岗员工数/待审批岗位申请数/职称规则引用数）",
+        "tags": [
+          "Position"
+        ]
+      }
+    },
+    "/api/v1/title-rules": {
+      "get": {
+        "operationId": "TitleController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "关键字（职称名称模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "启停状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "规则列表（分页）",
+        "tags": [
+          "Title"
+        ]
+      },
+      "post": {
+        "operationId": "TitleController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TitleRuleCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "创建规则（幂等；条件目标须存在）",
+        "tags": [
+          "Title"
+        ]
+      }
+    },
+    "/api/v1/title-rules/{id}": {
+      "put": {
+        "operationId": "TitleController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TitleRuleUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新规则",
+        "tags": [
+          "Title"
+        ]
+      }
+    },
+    "/api/v1/title-rules/delete": {
+      "delete": {
+        "operationId": "TitleController_deleteBatch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TitleRuleDeleteDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "批量软删除规则（软删不参与匹配；不提供硬删除）",
+        "tags": [
+          "Title"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "HealthController_liveness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    },
+    "/internal/v1/approval-requests/pending-count": {
+      "get": {
+        "operationId": "InternalApprovalController_pendingCount",
+        "parameters": [
+          {
+            "description": "用户 id",
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "按用户统计可见待审批数（门户角标）。",
+        "tags": [
+          "InternalApproval"
+        ]
+      }
+    },
+    "/internal/v1/lifecycle/cancel-position-applications": {
+      "post": {
+        "operationId": "LifecycleController_cancelPositionApplications",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrCancelPositionApplicationsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "幂等取消\"注销前已提交且仍待审批\"的岗位申请（worker 生命周期任务消费）",
+        "tags": [
+          "Lifecycle"
+        ]
+      }
+    },
+    "/internal/v1/lifecycle/restore-apply": {
+      "post": {
+        "operationId": "LifecycleController_restoreApply",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrRestoreApplyDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "恢复应用（单事务整批；restoreRequestId 幂等；4xx 由调用方映射 CONFLICT 重新预览）",
+        "tags": [
+          "Lifecycle"
+        ]
+      }
+    },
+    "/internal/v1/lifecycle/restore-preview": {
+      "post": {
+        "operationId": "LifecycleController_restorePreview",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrRestorePreviewDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "恢复预览（只读兼容性检查；不写数据）",
+        "tags": [
+          "Lifecycle"
+        ]
+      }
+    },
+    "/internal/v1/position-applications": {
+      "get": {
+        "operationId": "InternalPositionApplicationController_list",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "用户 id",
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "P5 我的岗位申请记录（分页；用户不存在返回空分页）",
+        "tags": [
+          "InternalPositionApplication"
+        ]
+      },
+      "post": {
+        "operationId": "InternalPositionApplicationController_submit",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalPositionApplicationSubmitDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "P4 提交岗位变更申请（携带实际操作者 userId；幂等键透传）",
+        "tags": [
+          "InternalPositionApplication"
+        ]
+      }
+    },
+    "/internal/v1/users/{userId}/org": {
+      "get": {
+        "operationId": "InternalPositionApplicationController_getOrg",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "用户 id",
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "P2 用户组织身份（部门/岗位/可否自助申请；用户不存在返回空结构供前端降级）",
+        "tags": [
+          "InternalPositionApplication"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "HealthController_readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [],
+        "tags": [
+          "健康探针"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "csrfHeader": [],
+      "sessionCookie": []
+    }
+  ],
+  "servers": [],
+  "tags": []
+}

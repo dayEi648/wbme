@@ -3,6 +3,11 @@
     "schemas": {
       "BatchDeactivateDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "userIds": {
             "description": "目标用户标识（最多 100 个互不重复，主 PRD §9.5 固定上限）",
             "items": {
@@ -20,6 +25,11 @@
       },
       "BatchDeleteAnnouncementsDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "ids": {
             "items": {
               "type": "number"
@@ -42,6 +52,11 @@
             "minItems": 1,
             "type": "array",
             "uniqueItems": true
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
           }
         },
         "required": [
@@ -66,6 +81,11 @@
             "type": "array",
             "uniqueItems": true
           },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "userIds": {
             "description": "目标员工标识（最多 100 个互不重复，主 PRD §9.5 固定上限）",
             "items": {
@@ -84,6 +104,11 @@
       },
       "BatchRevokeDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "userIds": {
             "description": "目标员工标识（最多 100 个互不重复，主 PRD §9.5 固定上限）",
             "items": {
@@ -100,7 +125,13 @@
         "type": "object"
       },
       "CancelApprovalDto": {
-        "properties": {},
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ChangePasswordDto": {
@@ -114,6 +145,11 @@
           "currentPassword": {
             "maxLength": 32,
             "minLength": 8,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
             "type": "string"
           },
           "newPassword": {
@@ -133,6 +169,7 @@
         "properties": {
           "content": {
             "additionalProperties": true,
+            "description": "列设置内容（列显隐/宽度/顺序等，结构由前端定义）",
             "type": "object"
           }
         },
@@ -154,6 +191,11 @@
               "MALE",
               "FEMALE"
             ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
             "type": "string"
           },
           "name": {
@@ -179,6 +221,11 @@
           "description": {
             "description": "组描述",
             "maxLength": 500,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
             "type": "string"
           },
           "items": {
@@ -210,6 +257,11 @@
             ],
             "type": "string"
           },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "name": {
             "description": "姓名",
             "maxLength": 50,
@@ -229,7 +281,24 @@
         "type": "object"
       },
       "DisposeErrorLogDto": {
-        "properties": {},
+        "properties": {
+          "remark": {
+            "description": "处置备注",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "status": {
+            "description": "处置动作：HANDLED=已处理 / IGNORED=已忽略",
+            "enum": [
+              "HANDLED",
+              "IGNORED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
         "type": "object"
       },
       "ErrorResponse": {
@@ -301,7 +370,9 @@
                   "ORGANIZATION_CYCLE",
                   "ORGANIZATION_VERSION_CONFLICT",
                   "OSS_UNAVAILABLE",
+                  "OVERTIME_BATCH_REJECTED",
                   "OVERTIME_DATE_OUT_OF_WINDOW",
+                  "OVERTIME_EMPLOYEE_NOT_ACTIVE",
                   "OVERTIME_OVERLAP",
                   "PASSWORD_CONFIRM_MISMATCH",
                   "PASSWORD_POLICY_FAILED",
@@ -313,6 +384,7 @@
                   "PHONE_TAKEN",
                   "POSITION_APPLICATION_INELIGIBLE",
                   "POSITION_APPLY_STALE",
+                  "POSITION_APPLY_TARGET_UNAVAILABLE",
                   "POSITION_DEPARTMENT_MISMATCH",
                   "PROFILE_CHANGE_PENDING_EXISTS",
                   "PROJECT_KEY_CONFLICT",
@@ -326,6 +398,7 @@
                   "RESOURCE_NOT_FOUND",
                   "RESTORE_IN_PROGRESS",
                   "RESTORE_SUPER_ADMIN_ONLY",
+                  "RESTORE_TARGET_STALE",
                   "ROW_LIMIT_EXCEEDED",
                   "SCOPE_NOT_COVERED",
                   "SCOPE_NOT_SUPPORTED",
@@ -410,9 +483,11 @@
         "properties": {
           "content": {
             "additionalProperties": true,
+            "description": "筛选条件内容（结构由前端定义）",
             "type": "object"
           },
           "name": {
+            "description": "预设名称",
             "maxLength": 100,
             "type": "string"
           }
@@ -447,15 +522,32 @@
         "type": "object"
       },
       "IdempotentDto": {
-        "properties": {},
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ImmediateBackupDto": {
-        "properties": {},
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "LoginPasswordDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "password": {
             "description": "平台密码（8~32 字符）",
             "maxLength": 32,
@@ -478,12 +570,64 @@
         ],
         "type": "object"
       },
+      "PositionApplicationSubmitDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "targetDepartmentId": {
+            "description": "目标部门 id",
+            "minimum": 1,
+            "type": "number"
+          },
+          "targetPositionId": {
+            "description": "目标岗位 id",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "targetDepartmentId",
+          "targetPositionId"
+        ],
+        "type": "object"
+      },
       "ProcessApprovalDto": {
-        "properties": {},
+        "properties": {
+          "action": {
+            "description": "处理动作：APPROVE=批准 / REJECT=驳回",
+            "enum": [
+              "APPROVE",
+              "REJECT"
+            ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "opinion": {
+            "description": "处理意见",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
         "type": "object"
       },
       "PublishAnnouncementDto": {
-        "properties": {},
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "RedeemTokenDto": {
@@ -503,6 +647,7 @@
       "RenameFilterPresetDto": {
         "properties": {
           "name": {
+            "description": "预设新名称",
             "maxLength": 100,
             "type": "string"
           }
@@ -514,6 +659,11 @@
       },
       "ResetInitiateDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "phone": {
             "description": "平台手机号（登录前统一规范化，国家/地区码 + 号码）",
             "maxLength": 32,
@@ -533,6 +683,11 @@
             "minLength": 8,
             "type": "string"
           },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "newPassword": {
             "maxLength": 32,
             "minLength": 8,
@@ -549,6 +704,11 @@
         "properties": {
           "backupId": {
             "type": "number"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
           },
           "note": {
             "maxLength": 500,
@@ -612,7 +772,13 @@
         "type": "object"
       },
       "RevokeAnnouncementDto": {
-        "properties": {},
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "SaveEmployeeGrantsDto": {
@@ -623,6 +789,11 @@
               "$ref": "#/components/schemas/GrantItemDto"
             },
             "type": "array"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
           },
           "permissionVersion": {
             "description": "打开页面时取得的目标员工授权版本（乐观并发控制，事务内条件更新）",
@@ -637,7 +808,21 @@
         "type": "object"
       },
       "UpdateDescriptionDto": {
-        "properties": {},
+        "properties": {
+          "description": {
+            "description": "业务说明（≤500；空白字符串清除为 NULL）",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
         "type": "object"
       },
       "UpdatePermissionGroupDto": {
@@ -645,6 +830,11 @@
           "description": {
             "description": "组描述",
             "maxLength": 500,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
             "type": "string"
           },
           "items": {
@@ -667,15 +857,67 @@
         "type": "object"
       },
       "UpdatePlatformSettingsDto": {
-        "properties": {},
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "patches": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "键值补丁（仅允许 PLATFORM 组键）",
+            "type": "object"
+          }
+        },
+        "required": [
+          "patches"
+        ],
         "type": "object"
       },
       "UpdateProfileDto": {
-        "properties": {},
+        "properties": {
+          "gender": {
+            "description": "性别",
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "name": {
+            "description": "姓名（至少一项时必填其一）",
+            "maxLength": 50,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "UpdateSystemStatusDto": {
-        "properties": {},
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "productStatus": {
+            "description": "目标开放状态（asset/hr/fin 可调；backstage 恒开放）",
+            "enum": [
+              "OPEN",
+              "COMING_SOON"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "productStatus"
+        ],
         "type": "object"
       },
       "UpdateUserDto": {
@@ -686,6 +928,11 @@
               "MALE",
               "FEMALE"
             ],
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
             "type": "string"
           },
           "name": {
@@ -704,6 +951,11 @@
         "properties": {
           "content": {
             "maxLength": 10000,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
             "type": "string"
           },
           "title": {
@@ -744,6 +996,29 @@
       "get": {
         "operationId": "AnnouncementController_list",
         "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
           {
             "in": "query",
             "name": "status",
@@ -958,7 +1233,88 @@
     "/api/v1/approval-requests": {
       "get": {
         "operationId": "ApprovalController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "申请类型（取值由各模块声明）",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "PENDING=待处理；PROCESSED=已处理（批准/驳回/取消）；或具体状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "PROCESSED",
+                "DRAFT",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（单号/申请人等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "申请人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理人姓名",
+            "in": "query",
+            "name": "processorName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1446,7 +1802,31 @@
     "/api/v1/backups": {
       "get": {
         "operationId": "BackupController_listBackups",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1532,7 +1912,7 @@
             "description": ""
           }
         },
-        "summary": "P2 当前身份信息（部门/岗位由 hr 提供，T6 填充；手机号只读）",
+        "summary": "P2 当前身份信息（部门/岗位由 hr 提供；hr 不可用时降级为空结构，手机号只读）",
         "tags": [
           "个人中心"
         ]
@@ -1541,7 +1921,31 @@
     "/api/v1/me/operation-logs": {
       "get": {
         "operationId": "MeController_listMyOperationLogs",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1563,7 +1967,31 @@
     "/api/v1/me/position-applications": {
       "get": {
         "operationId": "MeController_listPositionApplications",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1576,7 +2004,7 @@
             "description": ""
           }
         },
-        "summary": "P5 我的岗位申请记录（契约先行：本期空分页，T6-6 接通）",
+        "summary": "P5 我的岗位申请记录（经 hr 内部接口；hr 不可用返回空分页）",
         "tags": [
           "个人中心"
         ]
@@ -1584,12 +2012,22 @@
       "post": {
         "operationId": "MeController_createPositionApplication",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionApplicationSubmitDto"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": ""
           }
         },
-        "summary": "P4 岗位变更申请（契约先行：hr 侧校验 T6-6 落地；本期返回不可用）",
+        "summary": "P4 岗位变更申请（hr 侧校验：多部门不可申请/目标部门岗位条件；hr 不可用 → 503）",
         "tags": [
           "个人中心"
         ]
@@ -1874,7 +2312,96 @@
     "/api/v1/operation-logs": {
       "get": {
         "operationId": "OperationLogController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "系统（base/backstage/asset/hr/fin）",
+            "in": "query",
+            "name": "system",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "功能模块",
+            "in": "query",
+            "name": "feature",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "操作者用户 id",
+            "in": "query",
+            "name": "operatorId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "动作类型",
+            "in": "query",
+            "name": "actionType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "CREATE",
+                "UPDATE",
+                "DELETE",
+                "EXPORT"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "开始时间（含）",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束时间（含）",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1896,7 +2423,96 @@
     "/api/v1/operation-logs/export": {
       "post": {
         "operationId": "OperationLogController_export",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "系统（base/backstage/asset/hr/fin）",
+            "in": "query",
+            "name": "system",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "功能模块",
+            "in": "query",
+            "name": "feature",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "操作者用户 id",
+            "in": "query",
+            "name": "operatorId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "动作类型",
+            "in": "query",
+            "name": "actionType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "CREATE",
+                "UPDATE",
+                "DELETE",
+                "EXPORT"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "开始时间（含）",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束时间（含）",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -1912,6 +2528,29 @@
       "get": {
         "operationId": "PermissionController_searchEmployees",
         "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
           {
             "description": "检索词：姓名模糊匹配（不区分大小写）；含数字时同时匹配手机号片段",
             "in": "query",
@@ -2046,7 +2685,31 @@
     "/api/v1/permission/groups": {
       "get": {
         "operationId": "PermissionGroupController_listGroups",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2254,7 +2917,31 @@
     "/api/v1/release-logs": {
       "get": {
         "operationId": "ReleaseLogController_listForViewer",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2275,7 +2962,31 @@
     "/api/v1/release-logs/for-announcement": {
       "get": {
         "operationId": "ReleaseLogController_listForAnnouncement",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2297,7 +3008,31 @@
     "/api/v1/restores": {
       "get": {
         "operationId": "BackupController_listRestores",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2377,10 +3112,132 @@
         ]
       }
     },
+    "/api/v1/restores/session": {
+      "post": {
+        "operationId": "BackupController_issueRecoverySession",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10 T4-8 接线）。\nCookie 透传设置（path=/recovery；生产 Nginx 同域代理 /recovery/* → 恢复执行器）。",
+        "tags": [
+          "数据备份"
+        ]
+      }
+    },
     "/api/v1/system-logs/errors": {
       "get": {
         "operationId": "SystemLogController_listErrors",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "日志级别",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "服务名",
+            "in": "query",
+            "name": "service",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "来源模块",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "错误分类",
+            "in": "query",
+            "name": "errorCategory",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "指纹（聚合键）",
+            "in": "query",
+            "name": "fingerprint",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "HANDLED",
+                "IGNORED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "开始时间（含）",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束时间（含）",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2474,7 +3331,114 @@
     "/api/v1/system-logs/errors/export": {
       "post": {
         "operationId": "SystemLogController_exportErrors",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "日志级别",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "服务名",
+            "in": "query",
+            "name": "service",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "来源模块",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "错误分类",
+            "in": "query",
+            "name": "errorCategory",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "指纹（聚合键）",
+            "in": "query",
+            "name": "fingerprint",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "HANDLED",
+                "IGNORED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "开始时间（含）",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束时间（含）",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -2489,7 +3453,93 @@
     "/api/v1/system-logs/security": {
       "get": {
         "operationId": "SystemLogController_listSecurity",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "事件类型",
+            "in": "query",
+            "name": "eventType",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "操作者用户 id",
+            "in": "query",
+            "name": "actorId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "目标用户 id",
+            "in": "query",
+            "name": "targetUserId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结果",
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "enum": [
+                "SUCCESS",
+                "FAILURE"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "开始时间（含）",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束时间（含）",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2511,7 +3561,93 @@
     "/api/v1/system-logs/security/export": {
       "post": {
         "operationId": "SystemLogController_exportSecurity",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "事件类型",
+            "in": "query",
+            "name": "eventType",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "操作者用户 id",
+            "in": "query",
+            "name": "actorId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "目标用户 id",
+            "in": "query",
+            "name": "targetUserId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结果",
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "enum": [
+                "SUCCESS",
+                "FAILURE"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "开始时间（含）",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束时间（含）",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -2732,6 +3868,29 @@
       "get": {
         "operationId": "UserAdminController_listUsers",
         "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
           {
             "description": "状态筛选：PENDING_ACTIVATION 待激活 / ACTIVE 正常 / DEACTIVATED 已注销；缺省 = 未注销全部",
             "in": "query",

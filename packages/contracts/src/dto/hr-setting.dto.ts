@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -21,6 +22,10 @@ import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from './base.dto';
 
 /** 更新单条人事设置（值按 value_type 校验：本期全部为数值） */
 export class HrSettingUpdateDto extends IdempotentDto {
+  @ApiProperty({
+    description: '设置值（字符串表达；按 value_type 校验，本期全部为数值）',
+    maxLength: 100,
+  })
   @IsString()
   @MaxLength(100)
   value!: string;
@@ -28,14 +33,28 @@ export class HrSettingUpdateDto extends IdempotentDto {
 
 /** 创建字典项 */
 export class HrDictCreateDto extends IdempotentDto {
+  @ApiProperty({
+    description: '字典类型编码',
+    maxLength: 50,
+  })
   @IsString()
   @MaxLength(50)
   dictType!: string;
 
+  @ApiProperty({
+    description: '字典项名称',
+    maxLength: 100,
+  })
   @IsString()
   @MaxLength(100)
   name!: string;
 
+  @ApiProperty({
+    description: '同级排序（越小越靠前）',
+    required: false,
+    minimum: 0,
+    maximum: 9999,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -46,11 +65,22 @@ export class HrDictCreateDto extends IdempotentDto {
 
 /** 更新字典项（名称/排序/启停） */
 export class HrDictUpdateDto extends IdempotentDto {
+  @ApiProperty({
+    description: '字典项名称',
+    required: false,
+    maxLength: 100,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   name?: string;
 
+  @ApiProperty({
+    description: '同级排序（越小越靠前）',
+    required: false,
+    minimum: 0,
+    maximum: 9999,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -58,6 +88,11 @@ export class HrDictUpdateDto extends IdempotentDto {
   @Max(9999)
   sort?: number;
 
+  @ApiProperty({
+    description: '启停状态',
+    required: false,
+    enum: ['ACTIVE', 'DISABLED'],
+  })
   @IsOptional()
   @IsIn(['ACTIVE', 'DISABLED'])
   status?: 'ACTIVE' | 'DISABLED';
@@ -65,11 +100,21 @@ export class HrDictUpdateDto extends IdempotentDto {
 
 /** 字典列表查询 */
 export class HrDictQueryDto extends PaginationQueryDto {
+  @ApiProperty({
+    description: '字典类型过滤',
+    required: false,
+    maxLength: 50,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   dictType?: string;
 
+  @ApiProperty({
+    description: '启停状态',
+    required: false,
+    enum: ['ACTIVE', 'DISABLED'],
+  })
   @IsOptional()
   @IsIn(['ACTIVE', 'DISABLED'])
   status?: 'ACTIVE' | 'DISABLED';
@@ -77,6 +122,11 @@ export class HrDictQueryDto extends PaginationQueryDto {
 
 /** 批量硬删除字典项（未被引用时；任一被引用整批拒绝，hr PRD §9） */
 export class HrDictDeleteDto {
+  @ApiProperty({
+    description: `字典项 id 列表（1-${BATCH_LIMIT} 个，互不重复）`,
+    type: 'array',
+    items: { type: 'number' },
+  })
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(BATCH_LIMIT)
