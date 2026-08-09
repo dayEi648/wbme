@@ -261,6 +261,7 @@
                   "DINGTALK_ORG_MISMATCH",
                   "DINGTALK_STATE_INVALID",
                   "DINGTALK_UNAVAILABLE",
+                  "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
                   "EXPORT_TIMEOUT",
                   "FLOW_SESSION_INVALID",
@@ -552,6 +553,10 @@
           "note": {
             "maxLength": 500,
             "type": "string"
+          },
+          "proceedWithoutEmergency": {
+            "description": "紧急备份失败时是否仍继续恢复（人工明确确认风险后置 true；\nbackstage PRD §10：不得伪装为已有回退副本）。",
+            "type": "boolean"
           }
         },
         "required": [

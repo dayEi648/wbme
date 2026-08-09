@@ -4,6 +4,7 @@ import {
   createPendingTask,
   prismaTaskWriter,
   stableTaskUuid,
+  TASK_TYPE_EMERGENCY_BACKUP,
   TASK_TYPE_IMMEDIATE_BACKUP,
   TASK_TYPE_RESTORE_DELIVERY,
   type ImmediateBackupTaskRef,
@@ -25,6 +26,15 @@ const IDEMPOTENCY_SCOPE = {
 
 /** 未完成恢复状态 */
 const ACTIVE_RESTORE_STATUSES = ['PENDING', 'PRECHECK', 'MAINTENANCE', 'RESTORING'] as const;
+
+/** 紧急备份终态轮询间隔（毫秒） */
+const EMERGENCY_BACKUP_POLL_INTERVAL_MS = 2_000;
+
+/** 紧急备份等待上限（毫秒；超时按失败处理，任务仍在执行时用户可重试继续等待） */
+const EMERGENCY_BACKUP_WAIT_MS = 300_000;
+
+/** 复用本流程紧急备份的时间窗口（重试/幂等场景识别；backstage PRD §10 同一恢复流程只创建一个回退副本） */
+const EMERGENCY_BACKUP_RECENT_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 /**
  * 备份与恢复编排（创建任务行 + backups/restores 事实；实际 pg_dump 由 Worker 执行）。
@@ -121,9 +131,28 @@ export class BackupService {
     };
   }
 
-  /** 恢复确认：创建 restore 行 + RESTORE_DELIVERY 任务 */
+  /**
+   * 恢复确认：先完成恢复前紧急备份并验证，再创建 restore 行 + RESTORE_DELIVERY 任务。
+   *
+   * 紧急备份失败且未人工确认风险（proceedWithoutEmergency）时拒绝进入恢复，
+   * 不得伪装为已有回退副本（backstage PRD §10）。
+   */
   async confirmRestore(operatorId: number, dto: RestoreConfirmDto): Promise<unknown> {
     await this.assertSuperAdmin(operatorId);
+    // 目标备份校验与互斥前置（避免无谓创建紧急备份任务）
+    const target = await this.prisma.client.backup.findUnique({ where: { id: dto.backupId } });
+    if (!target || target.status !== 'SUCCEEDED') {
+      throw new BusinessException(backupErrors.BACKUP_UNVERIFIED);
+    }
+    await this.assertNoActiveRestore();
+    // 恢复前紧急备份：创建（或复用窗口内进行中的）并等待终态
+    const emergencyBackupId = await this.ensureEmergencyBackup(operatorId);
+    const emergencySucceeded = await this.waitForEmergencyBackup(emergencyBackupId);
+    if (!emergencySucceeded && !dto.proceedWithoutEmergency) {
+      throw new BusinessException(backupErrors.EMERGENCY_BACKUP_FAILED, {
+        emergencyBackupId,
+      });
+    }
     const operator = await loadOperationLogOperator(this.prisma.client, operatorId);
     const fingerprint = fingerprintPayload({ backupId: dto.backupId });
     return executeIdempotentOperation(this.prisma.client, {
@@ -171,6 +200,82 @@ export class BackupService {
         };
       },
     });
+  }
+
+  /**
+   * 创建恢复前紧急备份（backstage PRD §10 回退副本）。
+   *
+   * 重试/幂等场景下复用窗口内进行中或已成功的紧急备份，不重复创建；
+   * 失败或过期记录不阻塞新建。
+   *
+   * @param operatorId 发起人（超管）id
+   * @returns 紧急备份记录 id
+   */
+  private async ensureEmergencyBackup(operatorId: number): Promise<number> {
+    const since = new Date(Date.now() - EMERGENCY_BACKUP_RECENT_WINDOW_MS);
+    const existing = await this.prisma.client.backup.findFirst({
+      where: {
+        taskType: 'EMERGENCY',
+        status: { in: ['RUNNING', 'SUCCEEDED'] },
+        createdAt: { gte: since },
+      },
+      orderBy: { id: 'desc' },
+    });
+    if (existing) {
+      return existing.id;
+    }
+    const emergency = await this.prisma.client.backup.create({
+      data: {
+        taskType: 'EMERGENCY',
+        status: 'RUNNING',
+        backupTime: new Date(),
+        startedAt: new Date(),
+        createdBy: operatorId,
+      },
+    });
+    const businessKey = `EMERGENCY_BACKUP:${emergency.id}`;
+    const taskUuid = stableTaskUuid(businessKey);
+    const ref: ImmediateBackupTaskRef = { backupId: emergency.id };
+    await this.prisma.client.backup.update({
+      where: { id: emergency.id },
+      data: { taskUuid },
+    });
+    await createPendingTask(prismaTaskWriter(this.prisma.client), {
+      taskUuid,
+      taskType: TASK_TYPE_EMERGENCY_BACKUP,
+      module: 'backstage',
+      initiatorId: operatorId,
+      initiatorType: 'USER',
+      ref,
+    });
+    return emergency.id;
+  }
+
+  /**
+   * 轮询等待紧急备份达到终态。
+   *
+   * @param backupId 紧急备份记录 id
+   * @returns true=成功；false=失败或超时（任务仍在执行时用户可重试继续等待）
+   */
+  private async waitForEmergencyBackup(backupId: number): Promise<boolean> {
+    const deadline = Date.now() + EMERGENCY_BACKUP_WAIT_MS;
+    while (Date.now() < deadline) {
+      const row = await this.prisma.client.backup.findUnique({
+        where: { id: backupId },
+        select: { status: true },
+      });
+      if (!row) {
+        return false;
+      }
+      if (row.status === 'SUCCEEDED') {
+        return true;
+      }
+      if (row.status === 'FAILED') {
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, EMERGENCY_BACKUP_POLL_INTERVAL_MS));
+    }
+    return false;
   }
 
   private async assertNoActiveRestore(): Promise<void> {

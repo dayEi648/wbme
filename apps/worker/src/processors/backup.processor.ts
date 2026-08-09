@@ -28,13 +28,21 @@ export interface BackupProcessorDeps {
   deleteOldBackups: (before: Date) => Promise<void>;
 }
 
+/** 备份任务类型（清单记录与 backups.task_type 一致） */
+export type BackupTaskType = 'SCHEDULED' | 'IMMEDIATE' | 'EMERGENCY';
+
 /**
- * 执行立即/定时备份：pg_dump → 校验 → 上传 OSS backups/ 前缀。
+ * 执行备份（定时/立即/恢复前紧急共用）：pg_dump → 校验 → 上传 OSS backups/ 前缀。
  *
  * @param ref 任务 ref
  * @param deps 数据库与状态回调
+ * @param taskType 备份类型（写入最小清单，恢复后按此补回目录）
  */
-export async function runImmediateBackup(ref: ImmediateBackupTaskRef, deps: BackupProcessorDeps): Promise<void> {
+export async function runImmediateBackup(
+  ref: ImmediateBackupTaskRef,
+  deps: BackupProcessorDeps,
+  taskType: BackupTaskType,
+): Promise<void> {
   const dryRun = process.env.BACKUP_DRY_RUN === '1';
   // 动态导入避免单元测试加载 ali-oss（其模块初始化会探测网卡）
   const { createFileStorage } = await import('@wbme/files');
@@ -42,6 +50,16 @@ export async function runImmediateBackup(ref: ImmediateBackupTaskRef, deps: Back
   const workDir = await mkdtemp(join(tmpdir(), 'wbme-backup-'));
   const dumpPath = join(workDir, 'dump.fc');
   try {
+    if (!ref.backupId) {
+      throw new Error('备份任务缺少 backupId');
+    }
+    let pgVersion: string | null = null;
+    try {
+      const { stdout } = await execFileAsync(PSQL_PATH, [deps.databaseUrl, '-tAc', 'SHOW server_version;']);
+      pgVersion = stdout.trim() || null;
+    } catch {
+      pgVersion = null;
+    }
     if (!dryRun) {
       await execFileAsync(PG_DUMP_PATH, ['-Fc', '-f', dumpPath, deps.databaseUrl], { env: process.env });
       await execFileAsync(PG_RESTORE_PATH, ['--list', dumpPath]);
@@ -50,17 +68,12 @@ export async function runImmediateBackup(ref: ImmediateBackupTaskRef, deps: Back
     }
     const body = await readFile(dumpPath);
     const checksum = createHash('sha256').update(body).digest('hex');
-    const { objectKey, manifestKey } = await storage.presignBackupUpload(ref.backupId!, body);
-    let pgVersion: string | null = null;
-    try {
-      const { stdout } = await execFileAsync(PSQL_PATH, [deps.databaseUrl, '-tAc', 'SHOW server_version;']);
-      pgVersion = stdout.trim() || null;
-    } catch {
-      pgVersion = null;
-    }
-    if (!ref.backupId) {
-      throw new Error('立即备份任务缺少 backupId');
-    }
+    const { objectKey, manifestKey } = await storage.presignBackupUpload(ref.backupId, body, {
+      taskType,
+      backupTime: new Date().toISOString(),
+      pgVersion,
+      checksum,
+    });
     await deps.updateBackupSucceeded(ref.backupId, {
       checksum,
       fileSize: BigInt(body.length),

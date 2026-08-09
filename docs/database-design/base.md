@@ -30,6 +30,7 @@
 
 **约束与索引**
 - 部分唯一索引：`(phone) WHERE status IN ('PENDING_ACTIVATION','ACTIVE') AND deleted_at IS NULL`——手机号唯一仅限"待激活+正常"，注销手机号转为历史快照
+- 普通索引：`(phone)`、`(status, deleted_at)`——手机号查找与注销过滤（`base.prisma` 中 `@@index` 声明）
 - CHECK：`status <> 'ACTIVE' OR password_hash IS NOT NULL`——正常账号必有密码
 - 最后一名超级管理员保护由应用层事务内校验，数据库不表达
 

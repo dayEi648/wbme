@@ -108,7 +108,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const mapped = this.mapException(exception);
     const requestId = getRequestContext()?.requestId ?? randomUUID();
 
-    this.maybeWriteErrorLog(exception, mapped.entry, requestId);
+    this.maybeWriteErrorLog(exception, mapped.entry, requestId, host);
 
     const body: ErrorResponseBody = {
       error: {
@@ -125,9 +125,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   /**
    * 系统/依赖未知异常 fire-and-forget 写入集中错误日志（T4-3）。
-   * 不阻塞 HTTP 响应。
+   * 不阻塞 HTTP 响应。source 取规范化路由模板（backstage PRD §8）。
    */
-  private maybeWriteErrorLog(exception: unknown, entry: ErrorEntry, requestId: string): void {
+  private maybeWriteErrorLog(
+    exception: unknown,
+    entry: ErrorEntry,
+    requestId: string,
+    host: ArgumentsHost,
+  ): void {
     if (!this.errorLogWriter) {
       return;
     }
@@ -147,12 +152,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = getRequestContext();
     const errorCategory = isDependency ? 'DEPENDENCY' : 'SYSTEM';
     try {
+      const request = host.switchToHttp().getRequest<{ method?: string; route?: { path?: string }; path?: string }>();
+      const method = request?.method ?? 'HTTP';
+      // 路由模板优先（/api/v1/users/:id），未匹配路由时退化为实际路径；不落 query 参数
+      const path = request?.route?.path ?? request?.path ?? '';
       this.errorLogWriter.write({
         errorCategory,
         exception,
         requestId,
         service: ctx?.service ?? 'unknown',
-        source: 'HTTP',
+        source: `${method} ${path}`.trim(),
         deployCommit: process.env.DEPLOY_COMMIT ?? 'unknown',
         occurredAt: new Date(),
       });

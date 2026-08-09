@@ -66,6 +66,7 @@ export interface TaskRefByType {
   SCHEDULED_BACKUP: ScheduledBackupTaskRef;
   IMMEDIATE_BACKUP: ImmediateBackupTaskRef;
   RESTORE_DELIVERY: RestoreDeliveryTaskRef;
+  EMERGENCY_BACKUP: ImmediateBackupTaskRef;
   UNASSOCIATED_IMAGE_CLEANUP: UnassociatedImageCleanupTaskRef;
   APPROVAL_TIMEOUT_SCAN: ApprovalTimeoutScanTaskRef;
 }

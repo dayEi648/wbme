@@ -128,20 +128,29 @@ export class AnnouncementService {
           where: { status: 'PUBLISHING', deletedAt: null, id: { not: id } },
           data: { status: 'REVOKED', updatedBy: operatorId },
         });
-        const row = await tx.announcement.update({
-          where: { id },
-          data: {
-            status: 'PUBLISHING',
-            publishedAt: new Date(),
-            publisherId: operatorId,
-            updatedBy: operatorId,
-          },
-        });
-        return {
-          result: { id: row.id, status: row.status },
-          actionType: 'UPDATE',
-          summary: `发布公告「${row.title}」`,
-        };
+        try {
+          const row = await tx.announcement.update({
+            where: { id },
+            data: {
+              status: 'PUBLISHING',
+              publishedAt: new Date(),
+              publisherId: operatorId,
+              updatedBy: operatorId,
+            },
+          });
+          return {
+            result: { id: row.id, status: row.status },
+            actionType: 'UPDATE',
+            summary: `发布公告「${row.title}」`,
+          };
+        } catch (error) {
+          // 并发发布两条不同公告时后者撞「单条展示」部分唯一索引（PUBLISHING 唯一）；
+          // 非本请求幂等冲突（回查幂等表无记录），映射为明确的 409 而非透传 500
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            throw new BusinessException(frameworkErrors.CONFLICT);
+          }
+          throw error;
+        }
       },
     });
   }

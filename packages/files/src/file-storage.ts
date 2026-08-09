@@ -25,6 +25,18 @@ export interface FinalizeImageResult {
   size: number;
 }
 
+/** 备份最小清单元数据（backstage PRD §10：清单须含类型/完成时间/库版本/大小/对象标识/SHA-256 校验和） */
+export interface BackupManifestMeta {
+  /** 备份类型（写入清单；整库恢复后按此补回目录记录） */
+  taskType: 'SCHEDULED' | 'IMMEDIATE' | 'EMERGENCY';
+  /** 完成时间（ISO 字符串；恢复端回填 backups.backup_time） */
+  backupTime: string;
+  /** PostgreSQL 版本（回填 backups.pg_version） */
+  pgVersion: string | null;
+  /** dump.fc 的 SHA-256 校验和（恢复端校验完整性） */
+  checksum: string;
+}
+
 /**
  * 统一文件存储门面：OSS 或本地替身。
  */
@@ -77,18 +89,29 @@ export class FileStorageService {
   /**
    * 备份文件服务端上传（Worker 使用 PUT，非浏览器预签名）。
    *
+   * 上传成功的同时写入不可变最小清单（backstage PRD §10）：不含凭证或业务内容；
+   * 整库恢复后恢复执行器以清单为唯一依据补回被旧快照覆盖的备份目录记录。
+   *
    * @param backupId 备份记录 id
    * @param body 备份文件内容
+   * @param meta 清单元数据（类型/完成时间/库版本/校验和）
    */
-  async presignBackupUpload(backupId: number, body: Buffer): Promise<{ objectKey: string; manifestKey: string }> {
+  async presignBackupUpload(
+    backupId: number,
+    body: Buffer,
+    meta: BackupManifestMeta,
+  ): Promise<{ objectKey: string; manifestKey: string }> {
     const objectKey = `${OSS_PREFIX_BACKUPS}${backupId}/dump.fc`;
     const manifestKey = `${OSS_PREFIX_BACKUPS}${backupId}/manifest.json`;
     await this.putObjectBytes(objectKey, body, 'application/octet-stream');
     const manifest = JSON.stringify({
       backupId,
-      objectKey,
+      taskType: meta.taskType,
+      backupTime: meta.backupTime,
       size: body.length,
-      uploadedAt: new Date().toISOString(),
+      checksum: meta.checksum,
+      pgVersion: meta.pgVersion,
+      objectKey,
     });
     await this.putObjectBytes(manifestKey, Buffer.from(manifest, 'utf8'), 'application/json');
     return { objectKey, manifestKey };

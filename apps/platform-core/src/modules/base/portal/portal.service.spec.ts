@@ -92,13 +92,24 @@ describe.skipIf(!DATABASE_URL)('门户入口推导（T3-4 真实授权核对）'
     const ghost = await portal.getPortal(user.id, false);
     expect(ghost.systems.every((system) => !system.hasPermission)).toBe(true);
 
-    // 授予 ASSET 功能：仅 ASSET 入口可见，productStatus 透传（COMING_SOON 不可进入由前端/守卫处理）
+    // 授予 ASSET 功能：仅 ASSET 入口可见，productStatus 透传数据库当前值
+    // （入口可见 ≠ 可进入，未开放系统由前端展示状态、守卫拦截；不绑定具体状态值，
+    //   避免与并发修改系统状态的集成测试互相踩踏）
     await prisma.client.employeeGrant.create({
       data: { userId: user.id, functionCode: 'my_assets', dataScope: 'SELF', grantedBy: operator.id },
     });
+    const assetStatusRows = await prisma.client.$queryRaw<Array<{ product_status: string }>>`
+      SELECT product_status::text AS product_status
+      FROM backstage.systems
+      WHERE code = 'ASSET'
+      LIMIT 1
+    `;
     const granted = await portal.getPortal(user.id, false);
     const asset = granted.systems.find((system) => system.code === 'ASSET');
-    expect(asset).toMatchObject({ hasPermission: true, productStatus: 'COMING_SOON' });
+    expect(asset).toMatchObject({
+      hasPermission: true,
+      productStatus: assetStatusRows[0]?.product_status ?? 'COMING_SOON',
+    });
     expect(granted.systems.find((system) => system.code === 'HR')?.hasPermission).toBe(false);
     expect(granted.systems.find((system) => system.code === 'BACKSTAGE')?.hasPermission).toBe(false);
 

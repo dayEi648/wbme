@@ -54,7 +54,9 @@ export async function runExport<T>(options: RunExportOptions<T>): Promise<void> 
   const lockKey = redisKey(REDIS_NAMESPACE.LOCK, 'export', options.userId);
   // 锁值 = 本请求随机令牌：超时/异常的旧请求在 finally 释放时只删自己的锁（主 PRD §10.3 安全释放）
   const lockToken = randomUUID();
-  const acquired = await options.redis.set(lockKey, lockToken, 'EX', Math.ceil(EXPORT_TIMEOUT_MS / 1000), 'NX');
+  // 锁 TTL 比超时上限多 30s：避免极端时序下任务仍在执行但锁已提前过期（并发 429 语义失效）
+  const lockTtlSeconds = Math.ceil(EXPORT_TIMEOUT_MS / 1000) + 30;
+  const acquired = await options.redis.set(lockKey, lockToken, 'EX', lockTtlSeconds, 'NX');
   if (acquired !== 'OK') {
     throw new BusinessException(exportErrors.EXPORT_ALREADY_RUNNING);
   }

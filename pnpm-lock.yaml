@@ -50,6 +50,9 @@ importers:
       '@wbme/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@wbme/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@wbme/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -151,6 +154,9 @@ importers:
       '@wbme/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@wbme/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@wbme/server':
         specifier: workspace:*
         version: link:../../packages/server

@@ -10,7 +10,7 @@ import {
 } from '@wbme/server';
 import { AppModule } from './app.module';
 
-/** fin 应用入口 */
+/** fin 应用入口（T8 业务模块落地时接入集中错误日志：RawSqlErrorLogWriter.from(PrismaService)） */
 async function bootstrap(): Promise<void> {
   // Redis 启动强依赖（主 PRD §9.8）：探测失败以非零状态退出，不监听业务端口
   const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';

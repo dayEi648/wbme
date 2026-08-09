@@ -1,10 +1,10 @@
 import type { ImmediateBackupTaskRef, ScheduledBackupTaskRef, SqlClient } from '@wbme/tasks';
-import { TASK_TYPE_SCHEDULED_BACKUP } from '@wbme/tasks';
-import { runImmediateBackup, type BackupProcessorDeps } from './backup.processor';
+import { TASK_TYPE_EMERGENCY_BACKUP, TASK_TYPE_SCHEDULED_BACKUP } from '@wbme/tasks';
+import { runImmediateBackup, type BackupProcessorDeps, type BackupTaskType } from './backup.processor';
 import type { TaskProcessor } from './types';
 
 /**
- * 将备份执行器适配为统一 TaskProcessor（定时/立即备份共用；主 PRD §9.1 / T4-7）。
+ * 将备份执行器适配为统一 TaskProcessor（定时/立即/紧急备份共用；主 PRD §9.1 / T4-7）。
  *
  * @param task 任务行
  * @param ctx 处理器上下文（含 SQL）
@@ -14,16 +14,27 @@ export const processBackupTask: TaskProcessor = async (task, ctx) => {
   if (!ref.backupId) {
     ref.backupId = await ensureBackupRow(ctx.sql, {
       taskUuid: task.taskUuid,
-      taskType: task.taskType === TASK_TYPE_SCHEDULED_BACKUP ? 'SCHEDULED' : 'IMMEDIATE',
+      taskType: taskTypeOf(task.taskType),
       initiatorId: task.initiatorId,
     });
   }
   const deps = createBackupDeps(ctx.sql);
-  await runImmediateBackup(ref, deps);
+  await runImmediateBackup(ref, deps, taskTypeOf(task.taskType));
 };
 
+/** 任务类型 → 备份记录/清单类型 */
+function taskTypeOf(taskType: string): BackupTaskType {
+  if (taskType === TASK_TYPE_SCHEDULED_BACKUP) {
+    return 'SCHEDULED';
+  }
+  if (taskType === TASK_TYPE_EMERGENCY_BACKUP) {
+    return 'EMERGENCY';
+  }
+  return 'IMMEDIATE';
+}
+
 /**
- * 定时备份任务创建时可能尚未有 backups 行：执行前幂等补齐。
+ * 备份任务创建时可能尚未有 backups 行：执行前幂等补齐。
  *
  * @param sql SQL 客户端
  * @param input 任务关联信息
@@ -31,7 +42,7 @@ export const processBackupTask: TaskProcessor = async (task, ctx) => {
  */
 async function ensureBackupRow(
   sql: SqlClient,
-  input: { taskUuid: string; taskType: 'SCHEDULED' | 'IMMEDIATE'; initiatorId: number | null },
+  input: { taskUuid: string; taskType: 'SCHEDULED' | 'IMMEDIATE' | 'EMERGENCY'; initiatorId: number | null },
 ): Promise<number> {
   const existing = await sql.queryRows<{ id: number }>(
     `SELECT id FROM backstage.backups WHERE task_uuid = $1::uuid LIMIT 1`,
@@ -55,26 +66,37 @@ async function ensureBackupRow(
 }
 
 /**
- * 扫描 backups/ 前缀下的孤儿对象（数据库无对应备份记录），删除并记录日志。
+ * 扫描 backups/ 前缀下的孤儿对象（数据库无对应备份记录且残留超过 24h），删除并记录日志。
  *
  * 对象上传先于备份记录写回成功：若记录写回失败，对象残留且无记录 → 孤儿。
+ * 按 backstage PRD §10 只清理「超 24h 仍缺少合法配对清单或备份对象」的残留；
+ * 恢复进行中（存在未完成恢复）跳过整轮——外部恢复控制清单可能引用该前缀对象
+ * （恢复控制清单存于恢复执行器持久化目录，Worker 不共享时以未完成恢复状态近似判断）。
  *
  * @param sql SQL 客户端
- * @param storage 文件存储实例
+ * @param storage 文件存储实例（需带最后修改时间）
  */
 async function scanOrphanBackupObjects(
   sql: SqlClient,
-  storage: { listPrefix(prefix: string): Promise<string[]>; deleteObject(key: string): Promise<void> },
+  storage: { listPrefixWithMeta(prefix: string): Promise<Array<{ key: string; lastModified: Date | null }>>; deleteObject(key: string): Promise<void> },
 ): Promise<void> {
-  const { OSS_PREFIX_BACKUPS } = await import('@wbme/files');
-  const keys = await storage.listPrefix(OSS_PREFIX_BACKUPS);
-  if (keys.length === 0) {
+  const activeRestore = await sql.queryRows<{ id: number }>(
+    `SELECT id FROM backstage.restores
+     WHERE status IN ('PENDING', 'PRECHECK', 'MAINTENANCE', 'RESTORING') LIMIT 1`,
+  );
+  if (activeRestore.length > 0) {
+    console.log('[backup] 恢复流程进行中，跳过孤儿备份对象清理');
     return;
   }
-  // 对象键形如 backups/{backupId}/dump.fc|manifest.json
+  const { OSS_PREFIX_BACKUPS } = await import('@wbme/files');
+  const items = await storage.listPrefixWithMeta(OSS_PREFIX_BACKUPS);
+  if (items.length === 0) {
+    return;
+  }
+  // 对象键形如 backups/{backupId}/dump.fc|manifest.json；非标准形状不动（防御）
   const backupIds = new Set<number>();
-  for (const key of keys) {
-    const match = /^backups\/(\d+)\//.exec(key);
+  for (const item of items) {
+    const match = /^backups\/(\d+)\//.exec(item.key);
     if (match?.[1]) {
       backupIds.add(Number(match[1]));
     }
@@ -87,10 +109,17 @@ async function scanOrphanBackupObjects(
     [[...backupIds]],
   );
   const known = new Set(rows.map((r) => r.id));
-  const orphanKeys = keys.filter((key) => {
-    const match = /^backups\/(\d+)\//.exec(key);
-    return match?.[1] ? !known.has(Number(match[1])) : true;
-  });
+  const ageCutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const orphanKeys = items
+    .filter((item) => {
+      const match = /^backups\/(\d+)\//.exec(item.key);
+      if (!match?.[1] || known.has(Number(match[1]))) {
+        return false;
+      }
+      const lastModified = item.lastModified?.getTime() ?? 0;
+      return lastModified > 0 && lastModified < ageCutoff;
+    })
+    .map((item) => item.key);
   for (const key of orphanKeys) {
     await storage.deleteObject(key).catch((error: unknown) => {
       console.warn(`[backup] 孤儿对象删除失败 key=${key}: ${error instanceof Error ? error.message : error}`);

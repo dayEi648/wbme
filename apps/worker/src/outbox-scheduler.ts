@@ -42,15 +42,9 @@ export async function ensureDailyScheduledBackup(sql: SqlClient, now: Date = new
   if (lastScheduledBackupCycleDate === cycleDate) {
     return;
   }
-  // 已有运行中备份（立即/定时）时不创建定时任务：备份按创建时间串行（backstage PRD §10）
-  const running = await sql.queryRows<{ id: number }>(
-    `SELECT id FROM backstage.backups WHERE status = 'RUNNING' LIMIT 1`,
-  );
-  if (running.length > 0) {
-    console.log(`[scheduler] 存在运行中备份，跳过当日定时备份创建 cycleDate=${cycleDate}`);
-    lastScheduledBackupCycleDate = cycleDate;
-    return;
-  }
+  // 遇运行中备份（立即/定时）不跳过：保留当日任务记录，由 Worker 按创建时间串行执行
+  // （backstage PRD §10「定时与立即备份相遇时保留各自任务记录并按创建时间串行执行」；
+  // 单实例 Worker 逐条消费任务表，天然串行；立即备份接口侧的互斥见 backup.service）
   const taskUuid = stableTaskUuid(`${TASK_TYPE_SCHEDULED_BACKUP}:${cycleDate}`);
   const result = await insertPendingTaskSql(sql, {
     taskUuid,

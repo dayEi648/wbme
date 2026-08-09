@@ -6,6 +6,8 @@
 
 export type { RawSqlClient } from './raw-sql-client';
 
+export { RawSqlErrorLogWriter, type ErrorLogWriterInput } from './error-log-writer';
+
 export {
   ERROR_LOG_WRITE_TIMEOUT_MS,
   ERROR_LOG_SAMPLE_MAX_LENGTH,

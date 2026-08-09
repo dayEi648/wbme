@@ -34,4 +34,12 @@ export const backupErrors = {
     httpStatus: 422,
     message: '备份文件校验失败，不允许使用',
   },
+  /** 恢复前紧急备份失败：须向操作人明确风险并经人工确认后方可继续（backstage PRD §10） */
+  EMERGENCY_BACKUP_FAILED: {
+    code: 'EMERGENCY_BACKUP_FAILED',
+    type: 'BUSINESS',
+    domain: 'BACKUP',
+    httpStatus: 422,
+    message: '恢复前紧急备份失败，继续恢复将没有回退副本，请确认风险后重试',
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

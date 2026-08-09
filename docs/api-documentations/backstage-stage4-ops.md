@@ -25,9 +25,11 @@
 | POST | `/backups/immediate` | `data_backup` | 立即备份（写 IMMEDIATE_BACKUP 任务） |
 | GET | `/restores` | `data_backup` | 恢复记录 |
 | POST | `/restores/precheck` | `data_backup` + 超管 | 恢复预检 |
-| POST | `/restores/confirm` | `data_backup` + 超管 | 确认恢复（RESTORE_DELIVERY 任务） |
+| POST | `/restores/confirm` | `data_backup` + 超管 | 确认恢复（先创建并等待恢复前紧急备份，成功后才投递 RESTORE_DELIVERY 任务） |
 
-错误码见 contracts `backupErrors`：`RESTORE_IN_PROGRESS`、`BACKUP_LOCK_BUSY` 等。
+`/restores/confirm` 请求体：`backupId`、`idempotencyKey`、可选 `note`、可选 `proceedWithoutEmergency`（紧急备份失败时置 `true` 表示已人工确认风险后继续，backstage PRD §10 不得伪装为已有回退副本）。紧急备份与所选备份互斥（`BACKUP_LOCK_BUSY`）；等待窗口 300s，超时按失败处理、任务仍在执行时可重试继续等待（复用窗口内进行中的紧急备份）。
+
+错误码见 contracts `backupErrors`：`RESTORE_IN_PROGRESS`、`BACKUP_LOCK_BUSY`、`EMERGENCY_BACKUP_FAILED` 等。
 
 Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS 上传。
 

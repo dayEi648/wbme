@@ -1,9 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
 import { getGrantedFunction, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 import { SETTING_KEYS, SettingsService } from '../../base/settings/settings.service';
+import {
+  loadOperationLogOperator,
+  writeBackstageOperationLog,
+} from '../permission/operation-log.util';
 
 /** 操作日志列表项（不含幂等/指纹/结果引用） */
 export interface OperationLogListItem {
@@ -161,13 +166,27 @@ export class OperationLogService {
                  system, feature, action_type, summary, request_id, created_at
           FROM backstage.operation_logs_union
           ${whereSql}
-          ORDER BY created_at DESC
+          ORDER BY created_at DESC, id DESC
           LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
         `;
         return client.$queryRawUnsafe<OperationLogRow[]>(sql, ...listParams);
       },
       res,
     });
+    await this.recordExportLog(userId);
+  }
+
+  /** 导出完成后写 EXPORT 操作日志（主 PRD §3.3：全站导出统一记录，与系统日志导出一致） */
+  private async recordExportLog(operatorId: number): Promise<void> {
+    const operator = await loadOperationLogOperator(this.prisma.client, operatorId);
+    await this.prisma.client.$transaction((tx) =>
+      writeBackstageOperationLog(tx, {
+        operator,
+        feature: OPERATION_LOG_VIEW_FUNCTION_CODE,
+        actionType: 'EXPORT',
+        summary: '导出操作日志',
+      }),
+    );
   }
 
   /** 构建 WHERE 子句与参数（含数据范围过滤） */

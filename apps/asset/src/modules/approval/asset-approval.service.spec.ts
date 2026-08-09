@@ -3,6 +3,7 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../../prisma.service';
+import { ensurePermissionCatalog } from '../../test-support/ensure-permission-catalog';
 import { AssetApprovalService } from './asset-approval.service';
 
 // 加载仓库根 .env（集成测试使用真实本地 PostgreSQL）
@@ -33,6 +34,9 @@ describeDb('asset 审批头（T5-3）', () => {
   beforeAll(async () => {
     prisma = new PrismaService();
     service = new AssetApprovalService(prisma);
+
+    // CI 全新库只跑迁移不跑 seed：先注册权限目录（幂等），保证目录依赖的测试在任意环境一致
+    await ensurePermissionCatalog(prisma);
 
     const statusRows = await prisma.client.$queryRaw<Array<{ product_status: string }>>`
       SELECT product_status::text AS product_status

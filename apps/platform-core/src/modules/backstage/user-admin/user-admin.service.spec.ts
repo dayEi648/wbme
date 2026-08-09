@@ -201,10 +201,17 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
   });
 
   it('守卫切换断言：用户管理域控制器均声明 user_manage 功能要求；守卫 401/403/放行', async () => {
-    // 三个管理控制器的类级功能声明（assertUserManage 最小校验已移除）
+    // 类级功能声明（UserAdminController / AdminAuthController 整类受保护）
     expect(Reflect.getMetadata(REQUIRED_FUNCTION_KEY, UserAdminController)).toBe('user_manage');
     expect(Reflect.getMetadata(REQUIRED_FUNCTION_KEY, AdminAuthController)).toBe('user_manage');
-    expect(Reflect.getMetadata(REQUIRED_FUNCTION_KEY, ApprovalController)).toBe('user_manage');
+    // 审批中心（T5-2）：声明在方法级——管理端点逐个要求 user_manage，cancel 仅需登录（提交人/代交人可取消）
+    const approvalHandlers = ['pendingCount', 'list', 'detail', 'process'];
+    for (const method of approvalHandlers) {
+      expect(Reflect.getMetadata(REQUIRED_FUNCTION_KEY, ApprovalController.prototype[method as keyof ApprovalController])).toBe(
+        'user_manage',
+      );
+    }
+    expect(Reflect.getMetadata(REQUIRED_FUNCTION_KEY, ApprovalController.prototype.cancel)).toBeUndefined();
 
     const handler = (): void => undefined;
     const context = { getHandler: () => handler, getClass: () => class {} } as never;
