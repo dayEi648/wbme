@@ -66,23 +66,23 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     // 清理失败运行残留（先子表后主表；按测试名称与 ID 段）
     await prisma.client.$executeRaw`
       DELETE FROM fin.project_operations
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.invoices
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.receipts
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.subcontract_payments
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.projects
-      WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999}
+      WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999}
     `;
     // 字典种子
     await prisma.client.$executeRaw`
@@ -155,9 +155,11 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     expect(row?.regionName).toBe('前洲');
     expect(row?.progressSemantic).toBe('TENTATIVE');
 
-    // 同名同年度（含空白变体）→ 业务键冲突
+    // 同名同年度（含空白变体：尾随空格归一化后业务键相同）→ 业务键冲突。
+    // 注意：中间单个空格是名称内容（归一化仅折叠连续空白），「城铁 惠山站区工程」
+    // 与「城铁惠山站区工程」是不同业务键，不构成冲突。
     await expect(
-      projects.create(OPERATOR, { name: '城铁 惠山站区工程', year: 2024 }),
+      projects.create(OPERATOR, { name: '城铁惠山站区工程 ', year: 2024 }),
     ).rejects.toMatchObject({ entry: { code: 'PROJECT_KEY_CONFLICT' } });
   });
 
