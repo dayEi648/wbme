@@ -9,6 +9,7 @@ import { OrgStructureService } from './org-structure.service';
 import { PositionApplicationService } from './position-application.service';
 import { PositionController } from './position.controller';
 import { PositionService } from './position.service';
+import { SelfServiceController } from './self-service.controller';
 
 /**
  * 组织模块（T6-1/T6-2/T6-6）：部门树、岗位档案、用户组织编排、
@@ -21,7 +22,7 @@ import { PositionService } from './position.service';
       token: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     }),
   ],
-  controllers: [OrgController, DepartmentController, PositionController, InternalPositionApplicationController],
+  controllers: [OrgController, DepartmentController, PositionController, InternalPositionApplicationController, SelfServiceController],
   providers: [
     OrgStructureService,
     DepartmentService,

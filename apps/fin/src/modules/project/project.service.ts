@@ -11,6 +11,7 @@ import { Prisma, type FinanceDictItem, type Project } from '../../generated/pris
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
 import { normalizeProjectName } from '../../shared/name-normalize';
+import { buildProjectTableQuery } from '../../shared/project-table-query';
 import { calcProjectAutoFields, type ProjectCalcResult } from '../../shared/project-calc';
 
 /** 项目字段可比较值（用于变更 diff 与操作记录快照；金额转字符串、日期转日历串） */
@@ -301,13 +302,17 @@ export class ProjectService {
     if (query.progressId !== undefined) {
       where.progressId = query.progressId;
     }
+    const tableQuery = buildProjectTableQuery(query);
+    const effectiveWhere: Prisma.ProjectWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ProjectWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.project.count({ where }),
+      this.prisma.client.project.count({ where: effectiveWhere }),
       this.prisma.client.project.findMany({
-        where,
-        orderBy: [{ year: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ProjectOrderByWithRelationInput[] | undefined) ?? [{ year: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

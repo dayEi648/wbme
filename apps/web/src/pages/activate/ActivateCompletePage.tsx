@@ -1,7 +1,8 @@
-import { App as AntApp, Button, Card, Form, Input, Radio, Space, Typography } from 'antd';
+import { Button, Card, Form, Input, Radio, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
+import { useFeedback } from '../../request/feedback';
 import { useSession } from '../../request/session';
 
 interface ActivatePayload {
@@ -16,14 +17,14 @@ interface ActivatePayload {
  * 提交后单事务完成激活并自动登录进入门户。
  */
 export default function ActivateCompletePage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const navigate = useNavigate();
   const { refresh } = useSession();
   const [submitting, setSubmitting] = useState(false);
 
   async function onFinish(values: ActivatePayload) {
     if (values.password !== values.confirmPassword) {
-      message.error('两次输入的密码不一致');
+      feedback.error(new Error('两次输入的密码不一致'), '两次输入的密码不一致');
       return;
     }
     setSubmitting(true);
@@ -35,11 +36,11 @@ export default function ActivateCompletePage() {
         confirmPassword: values.confirmPassword,
       });
       await refresh();
-      message.success('账号已激活，欢迎使用');
+      feedback.success('账号已激活，欢迎使用');
       navigate('/portal', { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     } finally {
       setSubmitting(false);

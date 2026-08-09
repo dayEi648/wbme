@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import {
   BusinessException,
+  financeErrors,
   frameworkErrors,
   type BusinessDomain,
   type ErrorEntry,
@@ -202,12 +203,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return { entry: frameworkErrors.DEPENDENCY_UNAVAILABLE };
     }
 
-    // 7. 其它 HttpException：按 HTTP 状态映射为稳定类型（未知消息不得透传）
+    // 7. 上传文件大小超限（MulterError LIMIT_FILE_SIZE → 413；当前 multer 上传仅 fin Excel 导入，
+    //    与 PRD fin §4 约定的错误码一致；鸭子类型识别避免共享包依赖 multer 运行时）
+    if (isMulterFileSizeError(exception)) {
+      return { entry: financeErrors.IMPORT_FILE_TOO_LARGE };
+    }
+
+    // 8. 其它 HttpException：按 HTTP 状态映射为稳定类型（未知消息不得透传）
     if (exception instanceof HttpException) {
       return this.mapHttpException(exception);
     }
 
-    // 8. 未知异常：SYSTEM 500 通用安全文案（T4-3 起在此追加集中系统日志）
+    // 9. 未知异常：SYSTEM 500 通用安全文案（T4-3 起在此追加集中系统日志）
     return { entry: frameworkErrors.INTERNAL_ERROR };
   }
 
@@ -249,6 +256,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
  * 兼容两种形式：class-validator 结构化 ValidationError（属性校验失败），
  * 以及 forbidNonWhitelisted 的 "property <prop> should not exist" 字符串消息。
  */
+/**
+ * 识别 Multer 上传文件大小超限（MulterError LIMIT_FILE_SIZE）。
+ *
+ * 鸭子类型判断（共享包不依赖 multer 运行时）；LIMIT_FILE_SIZE 是 multer 稳定错误码，
+ * 对应 PRD 约定的 413 上传超限。
+ *
+ * @param exception 待识别异常
+ * @returns 是否文件大小超限
+ */
+function isMulterFileSizeError(exception: unknown): boolean {
+  return (
+    exception instanceof Error &&
+    'code' in exception &&
+    (exception as { code?: unknown }).code === 'LIMIT_FILE_SIZE'
+  );
+}
+
 function extractFieldErrors(messages: unknown[]): FieldError[] {
   const fields: FieldError[] = [];
   for (const item of messages) {

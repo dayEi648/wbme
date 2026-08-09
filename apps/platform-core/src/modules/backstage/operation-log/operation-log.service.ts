@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
-import { getGrantedFunction, getRequestContext, RedisService, runExport } from '@wbme/server';
+import { buildTableSqlQuery, getGrantedFunction, getRequestContext, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
@@ -32,6 +32,8 @@ export interface OperationLogQuery {
   actionType?: string;
   from?: Date;
   to?: Date;
+  filters?: string;
+  sorts?: string;
   page: number;
   pageSize: number;
 }
@@ -77,21 +79,24 @@ export class OperationLogService {
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
     const { whereSql, params } = await this.buildWhereClause(query, false);
+    const tableQuery = buildTableSqlQuery(query, OPERATION_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
+    const effectiveParams = [...params, ...tableQuery.params];
     const offset = (query.page - 1) * query.pageSize;
-    const listParams = [...params, query.pageSize, offset];
-    const countParams = [...params];
+    const listParams = [...effectiveParams, query.pageSize, offset];
+    const countParams = [...effectiveParams];
     const baseSql = `
       SELECT id, operator_id, operator_name, operator_departments,
              system, feature, action_type, summary, request_id, created_at
       FROM backstage.operation_logs_union
-      ${whereSql}
-      ORDER BY created_at DESC
+      ${effectiveWhereSql}
+      ORDER BY ${tableQuery.orderBySql ?? 'created_at DESC, id DESC'}
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
     `;
     const countSql = `
       SELECT COUNT(*)::bigint AS total
       FROM backstage.operation_logs_union
-      ${whereSql}
+      ${effectiveWhereSql}
     `;
     const rows = await this.prisma.client.$queryRawUnsafe<OperationLogRow[]>(baseSql, ...listParams);
     const countResult = await this.prisma.client.$queryRawUnsafe<CountRow[]>(countSql, ...countParams);
@@ -115,7 +120,7 @@ export class OperationLogService {
    */
   async listMine(
     operatorId: number,
-    query: Pick<OperationLogQuery, 'page' | 'pageSize'>,
+    query: Pick<OperationLogQuery, 'page' | 'pageSize' | 'filters' | 'sorts'>,
   ): Promise<{
     data: OperationLogListItem[];
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
@@ -132,7 +137,11 @@ export class OperationLogService {
    */
   async export(userId: number, query: Omit<OperationLogQuery, 'page' | 'pageSize'>, res: Response): Promise<void> {
     const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
-    const { whereSql, params } = await this.buildWhereClause({ ...query, page: 1, pageSize: 1 }, false);
+    const exportQuery = { ...query, page: 1, pageSize: 1 };
+    const { whereSql, params } = await this.buildWhereClause(exportQuery, false);
+    const tableQuery = buildTableSqlQuery(exportQuery, OPERATION_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
+    const effectiveParams = [...params, ...tableQuery.params];
     await runExport<OperationLogRow>({
       userId,
       redis: this.redis.redis,
@@ -154,19 +163,19 @@ export class OperationLogService {
         }),
       fetchCount: async (tx) => {
         const client = tx as PrismaService['client'];
-        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.operation_logs_union ${whereSql}`;
-        const result = await client.$queryRawUnsafe<CountRow[]>(countSql, ...params);
+        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.operation_logs_union ${effectiveWhereSql}`;
+        const result = await client.$queryRawUnsafe<CountRow[]>(countSql, ...effectiveParams);
         return Number(result[0]?.total ?? 0);
       },
       fetchRows: async (tx, offset, limit) => {
         const client = tx as PrismaService['client'];
-        const listParams = [...params, limit, offset];
+        const listParams = [...effectiveParams, limit, offset];
         const sql = `
           SELECT id, operator_id, operator_name, operator_departments,
                  system, feature, action_type, summary, request_id, created_at
           FROM backstage.operation_logs_union
-          ${whereSql}
-          ORDER BY created_at DESC, id DESC
+          ${effectiveWhereSql}
+          ORDER BY ${tableQuery.orderBySql ?? 'created_at DESC, id DESC'}
           LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
         `;
         return client.$queryRawUnsafe<OperationLogRow[]>(sql, ...listParams);
@@ -263,6 +272,24 @@ export class OperationLogService {
     }
     return null;
   }
+}
+
+/** 操作日志只读视图的字段白名单：列名来自开发者常量，绝不采用客户端输入。 */
+const OPERATION_LOG_TABLE_FIELDS = {
+  id: { column: 'id', type: 'number' },
+  operatorId: { column: 'operator_id', type: 'number' },
+  operatorName: { column: 'operator_name', type: 'text' },
+  system: { column: 'system', type: 'enum' },
+  feature: { column: 'feature', type: 'text' },
+  actionType: { column: 'action_type', type: 'enum' },
+  summary: { column: 'summary', type: 'text' },
+  createdAt: { column: 'created_at', type: 'date' },
+} as const;
+
+/** 将结构化筛选追加到已有权限/具名查询 WHERE 子句，不改变其既有 AND 语义。 */
+function appendWhereClause(existing: string, structured?: string): string {
+  if (!structured) return existing;
+  return existing ? `${existing} AND ${structured}` : `WHERE ${structured}`;
 }
 
 function mapRow(row: OperationLogRow): OperationLogListItem {

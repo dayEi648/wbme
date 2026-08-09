@@ -1,7 +1,8 @@
-import { App as AntApp, Button, Card, Form, Input, Radio, Space, Typography } from 'antd';
+import { Button, Card, Form, Input, Radio, Space, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
+import { useFeedback } from '../../request/feedback';
 import { useSession } from '../../request/session';
 
 interface RegisterPayload {
@@ -16,7 +17,7 @@ interface RegisterPayload {
  * 填写/确认姓名、性别并设置平台密码，确认后创建账号并自动登录。
  */
 export default function RegisterPage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const navigate = useNavigate();
   const { refresh } = useSession();
   const [phone, setPhone] = useState('');
@@ -29,13 +30,13 @@ export default function RegisterPage() {
       .catch((error) => {
         // 注册流程会话失效：明确提示（base PRD §3 不产生无提示跳转）
         setPhone('');
-        message.error(error instanceof ApiError ? error.body.message : '注册会话已失效，请重新扫码注册');
+        feedback.error(error, error instanceof ApiError ? error.body.message : '注册会话已失效，请重新扫码注册');
       });
-  }, [message]);
+  }, [feedback]);
 
   async function onFinish(values: RegisterPayload) {
     if (values.password !== values.confirmPassword) {
-      message.error('两次输入的密码不一致');
+      feedback.error(new Error('两次输入的密码不一致'), '两次输入的密码不一致');
       return;
     }
     setSubmitting(true);
@@ -47,11 +48,11 @@ export default function RegisterPage() {
         confirmPassword: values.confirmPassword,
       });
       await refresh();
-      message.success('注册成功');
+      feedback.success('注册成功');
       navigate('/portal', { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     } finally {
       setSubmitting(false);

@@ -27,6 +27,7 @@ import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
+import { buildHrApprovalRequestTableQuery } from '../../shared/table-query';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
 import type { ApprovalSideEffect } from './approval-side-effect';
 import { PositionApplicationService } from '../org/position-application.service';
@@ -329,13 +330,17 @@ export class HrApprovalService {
       return { items: [], total: 0 };
     }
     const where = await this.buildWhere(query, visibleTypes, userId);
+    const tableQuery = buildHrApprovalRequestTableQuery(query);
+    const effectiveWhere: Prisma.HrApprovalRequestWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.HrApprovalRequestWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.hrApprovalRequest.count({ where }),
+      this.prisma.client.hrApprovalRequest.count({ where: effectiveWhere }),
       this.prisma.client.hrApprovalRequest.findMany({
-        where,
-        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.HrApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -357,6 +362,10 @@ export class HrApprovalService {
   async exportList(userId: number, query: ApprovalListQueryDto, res: Response): Promise<void> {
     const visibleTypes = await this.resolveVisibleTypes(userId);
     const where = visibleTypes.length === 0 ? { id: -1 } : await this.buildWhere(query, visibleTypes, userId);
+    const tableQuery = buildHrApprovalRequestTableQuery(query);
+    const effectiveWhere: Prisma.HrApprovalRequestWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.HrApprovalRequestWhereInput] }
+      : where;
     const maxRows = await this.readExportMaxRows();
     await runExport<{
       application_no: string;
@@ -389,13 +398,13 @@ export class HrApprovalService {
         }),
       fetchCount: async (tx) => {
         const client = tx as PrismaService['client'];
-        return client.hrApprovalRequest.count({ where });
+        return client.hrApprovalRequest.count({ where: effectiveWhere });
       },
       fetchRows: async (tx, offset, limit) => {
         const client = tx as PrismaService['client'];
         const rows = await client.hrApprovalRequest.findMany({
-          where,
-          orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+          where: effectiveWhere,
+          orderBy: (tableQuery.orderBy as Prisma.HrApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
           skip: offset,
           take: limit,
         });
@@ -745,11 +754,31 @@ export class HrApprovalService {
       // 不可见类型筛选应返回空（范围外表现为不存在，主 PRD §3.2），不能被闭包覆盖
       if (where.id === undefined) {
         const closure = await this.closure.closureOfUser(userId);
-        const coveredIds = await this.findCoveredRequestIds(closure, {
-          overtime: departmentScopedOvertime,
-          position: departmentScopedPosition,
+        // 按类型分别计算闭包覆盖集合：混合档位（如加班 DEPARTMENT 档 + 岗位变更 COMPANY 档，
+        // 组织管理员兼部门级加班审批人）时，公司档类型不受闭包约束；
+        // 此前对全表应用单一 where.id 裁剪会误伤公司档记录（列表/待办数/导出全部不可见）
+        const [overtimeIds, positionIds] = await Promise.all([
+          departmentScopedOvertime
+            ? this.findCoveredRequestIds(closure, { overtime: true, position: false })
+            : Promise.resolve<number[] | null>(null),
+          departmentScopedPosition
+            ? this.findCoveredRequestIds(closure, { overtime: false, position: true })
+            : Promise.resolve<number[] | null>(null),
+        ]);
+        // 每个可见类型独立声明访问规则：DEPARTMENT 档限定闭包覆盖集合；COMPANY 档不裁剪
+        const typeClauses = visibleTypes.map((entry) => {
+          if (entry.requestType !== 'OVERTIME' && entry.requestType !== 'POSITION_CHANGE') {
+            return { requestType: entry.requestType };
+          }
+          const scoped = entry.requestType === 'OVERTIME' ? departmentScopedOvertime : departmentScopedPosition;
+          if (!scoped) {
+            return { requestType: entry.requestType };
+          }
+          const ids = entry.requestType === 'OVERTIME' ? overtimeIds : positionIds;
+          return { requestType: entry.requestType, id: { in: ids ?? [] } };
         });
-        where.id = { in: coveredIds };
+        const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+        where.AND = [...existingAnd, { OR: typeClauses }];
       }
     }
     return where;

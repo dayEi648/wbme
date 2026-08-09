@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -13,11 +13,10 @@ import {
   Max,
   MaxLength,
   Min,
-  Validate,
   ValidateNested,
 } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
-import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from './base.dto';
+import { BATCH_LIMIT, IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 自然日（YYYY-MM-DD；主 PRD §9.10 不经时区换算） */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,7 +28,7 @@ export type FinanceDetailType = 'invoice' | 'receipt' | 'subcontract-payment';
 export class FinanceAmountItemDto {
   @ApiProperty({ description: '金额（元，≥ 0，最多两位小数的十进制字符串）', example: '1234.50' })
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
   amount!: string;
 
   @ApiProperty({ description: '日期（YYYY-MM-DD）', required: false, example: '2026-08-01' })
@@ -145,7 +144,7 @@ export class ProjectCreateDto extends IdempotentDto {
   @ApiProperty({ description: '合同金额（元）', required: false, example: '100000.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
   contractAmount?: string;
 
   @ApiProperty({ description: '主合同付款节点', required: false, maxLength: 500 })
@@ -157,19 +156,19 @@ export class ProjectCreateDto extends IdempotentDto {
   @ApiProperty({ description: '暂定/审定金额（语义随项目进度切换）', required: false, example: '80000.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
   tentativeAuditedAmount?: string;
 
   @ApiProperty({ description: '分包结算（元）', required: false, example: '30000.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
   settlement?: string;
 
   @ApiProperty({ description: '零星费用（元）', required: false, example: '1000.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
   miscExpense?: string;
 
   @ApiProperty({ description: '项目级备注', required: false, maxLength: 1000 })
@@ -405,6 +404,16 @@ export class ImportConfirmDto extends IdempotentDto {
   @IsArray()
   @ArrayMaxSize(10_000)
   @ValidateNested({ each: true })
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      return value;
+    }
+  })
   @Type(() => ImportChoiceDto)
   choices!: ImportChoiceDto[];
 }

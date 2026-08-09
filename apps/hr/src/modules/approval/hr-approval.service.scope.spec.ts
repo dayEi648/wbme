@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { approvalErrors, OVERTIME_APPROVAL_FUNCTION_CODE } from '@wbme/contracts';
+import { approvalErrors, ORG_STRUCTURE_FUNCTION_CODE, OVERTIME_APPROVAL_FUNCTION_CODE } from '@wbme/contracts';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
 import type { ApprovalSideEffect } from './approval-side-effect';
@@ -123,7 +123,11 @@ describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             requestType: { in: ['OVERTIME'] },
-            id: { in: [11, 22] },
+            AND: [
+              {
+                OR: [{ requestType: 'OVERTIME', id: { in: [11, 22] } }],
+              },
+            ],
           }),
         }),
       );
@@ -165,6 +169,76 @@ describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
       const result = await service.list(5, { page: 1, pageSize: 20 });
       expect(result.items).toEqual([]);
       expect(service['buildWhere']).toBeDefined();
+    });
+
+    it('混合档位：加班 DEPARTMENT 档 + 岗位变更 COMPANY 档，公司档记录不被闭包误裁', async () => {
+      // 组织管理员（岗位变更=COMPANY 档）兼部门级加班审批人（加班=DEPARTMENT 档）
+      mockedGetAccess.mockImplementation(async (_prisma, _userId, code) => ({
+        registered: true,
+        systemCode: 'HR',
+        systemName: 'hr',
+        systemOpen: true,
+        allowed: true,
+        dataScope: code === OVERTIME_APPROVAL_FUNCTION_CODE ? 'DEPARTMENT' : 'COMPANY',
+      }));
+      const prisma = makePrisma();
+      // 加班闭包覆盖 request_id 11；岗位变更为公司档，不应触发其闭包查询
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ id: 11 }]);
+      const service = makeService(prisma);
+
+      const result = await service.list(5, { page: 1, pageSize: 20 });
+
+      expect(prisma.client.hrApprovalRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            requestType: { in: ['OVERTIME', 'POSITION_CHANGE'] },
+            AND: [
+              {
+                OR: [
+                  { requestType: 'OVERTIME', id: { in: [11] } },
+                  { requestType: 'POSITION_CHANGE' },
+                ],
+              },
+            ],
+          }),
+        }),
+      );
+      // 只执行一次闭包查询（仅加班 DEPARTMENT 档）
+      expect(prisma.client.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(result.total).toBe(0);
+    });
+
+    it('混合档位反向：加班 COMPANY 档 + 岗位变更 DEPARTMENT 档，加班记录不被闭包误裁', async () => {
+      mockedGetAccess.mockImplementation(async (_prisma, _userId, code) => ({
+        registered: true,
+        systemCode: 'HR',
+        systemName: 'hr',
+        systemOpen: true,
+        allowed: true,
+        dataScope: code === ORG_STRUCTURE_FUNCTION_CODE ? 'DEPARTMENT' : 'COMPANY',
+      }));
+      const prisma = makePrisma();
+      // 岗位变更闭包覆盖 request_id 22；加班为公司档，不触发闭包查询
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ id: 22 }]);
+      const service = makeService(prisma);
+
+      await service.list(5, { page: 1, pageSize: 20 });
+
+      expect(prisma.client.hrApprovalRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: [
+              {
+                OR: [
+                  { requestType: 'OVERTIME' },
+                  { requestType: 'POSITION_CHANGE', id: { in: [22] } },
+                ],
+              },
+            ],
+          }),
+        }),
+      );
+      expect(prisma.client.$queryRaw).toHaveBeenCalledTimes(1);
     });
   });
 

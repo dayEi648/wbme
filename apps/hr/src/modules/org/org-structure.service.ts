@@ -7,8 +7,10 @@ import { bumpUserOrgVersion } from '../../shared/org-version.service';
 
 /** 组织架构员工行（经只读视图组装） */
 export interface OrgEmployeeRow {
+  id: number;
   userId: number;
   name: string;
+  status: string;
   departmentIds: number[];
   departmentNames: string[];
   positionId: number | null;
@@ -36,11 +38,11 @@ export class OrgStructureService {
   async listEmployees(query: OrgEmployeeQueryDto): Promise<{ items: OrgEmployeeRow[]; total: number }> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const where: string[] = [];
+    const where: string[] = ['ua.deleted_at IS NULL'];
     const params: unknown[] = [];
     if (query.keyword) {
-      params.push(`%${query.keyword}%`);
-      where.push(`ua.name ILIKE $${params.length}`);
+      params.push(`%${escapeLike(query.keyword)}%`);
+      where.push(`ua.name ILIKE $${params.length} ESCAPE '\\'`);
     }
     if (query.departmentId !== undefined) {
       params.push(query.departmentId);
@@ -51,32 +53,37 @@ export class OrgStructureService {
       // 岗位独立走 user_positions（无部门员工的岗位在 user_org 视图中无行，B4 修复）
       where.push(`EXISTS (SELECT 1 FROM hr.user_positions up WHERE up.user_id = ua.user_id AND up.position_id = $${params.length})`);
     }
-    const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+    params.push(query.status ?? 'ACTIVE');
+    where.push(`ua.status::text = $${params.length}`);
+    const whereSql = where.join(' AND ');
+    const totalSql = `
+      SELECT COUNT(*)::int AS c
+      FROM backstage.user_accounts ua
+      WHERE ${whereSql}
+    `;
+    const listSql = `
+      SELECT ua.user_id,
+             ua.name,
+             ua.status::text AS status,
+             ut.title_name,
+             ARRAY_AGG(DISTINCT uo.department_id) FILTER (WHERE uo.department_id IS NOT NULL) AS department_ids,
+             ARRAY_AGG(DISTINCT uo.department_name) FILTER (WHERE uo.department_name IS NOT NULL) AS department_names,
+             MAX(up.position_id) AS position_id,
+             MAX(p.name) AS position_name,
+             MAX(p.status::text) AS position_status
+      FROM backstage.user_accounts ua
+      LEFT JOIN hr.user_titles ut ON ut.user_id = ua.user_id
+      LEFT JOIN hr.user_org uo ON uo.user_id = ua.user_id
+      LEFT JOIN hr.user_positions up ON up.user_id = ua.user_id
+      LEFT JOIN hr.positions p ON p.id = up.position_id
+      WHERE ${whereSql}
+      GROUP BY ua.user_id, ua.name, ua.status, ut.title_name
+      ORDER BY ua.user_id
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
     const [totalRows, rows] = await Promise.all([
-      this.prisma.client.$queryRaw<Array<{ c: number }>>`
-        SELECT COUNT(*)::int AS c
-        FROM backstage.user_accounts ua
-        WHERE ua.deleted_at IS NULL ${whereSql ? `AND ${whereSql.replace(/^WHERE /, '')}` : ''}
-      `.then((r) => r[0]?.c ?? 0),
-      this.prisma.client.$queryRaw<Array<Record<string, unknown>>>`
-        SELECT ua.user_id,
-               ua.name,
-               ut.title_name,
-               ARRAY_AGG(DISTINCT uo.department_id) FILTER (WHERE uo.department_id IS NOT NULL) AS department_ids,
-               ARRAY_AGG(DISTINCT uo.department_name) FILTER (WHERE uo.department_name IS NOT NULL) AS department_names,
-               MAX(p.position_id) AS position_id,
-               MAX(p.position_name) AS position_name,
-               MAX(p.position_status) AS position_status
-        FROM backstage.user_accounts ua
-        LEFT JOIN hr.user_titles ut ON ut.user_id = ua.user_id
-        LEFT JOIN hr.user_org uo ON uo.user_id = ua.user_id
-        LEFT JOIN hr.user_positions up ON up.user_id = ua.user_id
-        LEFT JOIN hr.positions p ON p.id = up.position_id
-        WHERE ua.deleted_at IS NULL ${whereSql ? `AND ${whereSql.replace(/^WHERE /, '')}` : ''}
-        GROUP BY ua.user_id, ua.name, ut.title_name
-        ORDER BY ua.user_id
-        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
-      `,
+      this.prisma.client.$queryRawUnsafe<Array<{ c: number }>>(totalSql, ...params).then((r) => r[0]?.c ?? 0),
+      this.prisma.client.$queryRawUnsafe<Array<Record<string, unknown>>>(listSql, ...params, pageSize, (page - 1) * pageSize),
     ]);
     return {
       total: totalRows,
@@ -195,8 +202,10 @@ export class OrgStructureService {
   /** 原始行 → 员工行（int[] 列可能为 null） */
   private toEmployeeRow(row: Record<string, unknown>): OrgEmployeeRow {
     return {
+      id: row.user_id as number,
       userId: row.user_id as number,
       name: row.name as string,
+      status: row.status as string,
       departmentIds: (row.department_ids as number[] | null) ?? [],
       departmentNames: (row.department_names as string[] | null) ?? [],
       positionId: (row.position_id as number | null) ?? null,
@@ -205,4 +214,9 @@ export class OrgStructureService {
       titleName: (row.title_name as string | null) ?? null,
     };
   }
+}
+
+/** LIKE 模式把通配符按字面量比较，避免关键字扩大查询语义。 */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
 }

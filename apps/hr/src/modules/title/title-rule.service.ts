@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, TITLE_MANAGE_FUNCTION_CODE, TitleRuleQueryDto, frameworkErrors } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, type HrOperationLogOperator } from '../../shared/hr-operation-log.util';
@@ -30,13 +31,27 @@ export class TitleRuleService {
     if (query.keyword) {
       where.titleName = { contains: query.keyword };
     }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      titleName: { prismaField: 'titleName', type: 'text' },
+      departmentId: { prismaField: 'departmentId', type: 'number' },
+      positionId: { prismaField: 'positionId', type: 'number' },
+      roleCondition: { prismaField: 'roleCondition', type: 'enum' },
+      status: { prismaField: 'status', type: 'enum' },
+      sort: { prismaField: 'sort', type: 'number' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+      updatedAt: { prismaField: 'updatedAt', type: 'date' },
+    });
+    const effectiveWhere: Prisma.TitleRuleWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.TitleRuleWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.titleRule.count({ where }),
+      this.prisma.client.titleRule.count({ where: effectiveWhere }),
       this.prisma.client.titleRule.findMany({
-        where,
-        orderBy: [{ sort: 'asc' }, { id: 'asc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.TitleRuleOrderByWithRelationInput[] | undefined) ?? [{ sort: 'asc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

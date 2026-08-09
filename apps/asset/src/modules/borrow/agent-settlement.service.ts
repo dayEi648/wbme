@@ -14,6 +14,7 @@ import {
   fingerprintPayload,
   type AssetOperationLogOperator,
 } from '../../shared/asset-operation-log.util';
+import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import { AssetApprovalService } from '../approval/asset-approval.service';
 import { BorrowService, type BorrowRecordLockRow } from './borrow.service';
 
@@ -157,13 +158,17 @@ export class AgentSettlementService {
 
   /** 分页查询 */
   private async paginate(where: Prisma.ApprovalRequestWhereInput, query: AgentSettlementQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const tableQuery = buildAssetApprovalRequestTableQuery(query);
+    const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.approvalRequest.count({ where }),
+      this.prisma.client.approvalRequest.count({ where: effectiveWhere }),
       this.prisma.client.approvalRequest.findMany({
-        where,
-        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

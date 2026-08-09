@@ -8,6 +8,7 @@ import {
   createValidationPipe,
   defaultDependencyDetector,
   GlobalExceptionFilter,
+  IdempotencyHeaderInterceptor,
   RequestTimeoutInterceptor,
 } from '@wbme/server';
 import { AppModule } from './app.module';
@@ -29,7 +30,7 @@ async function bootstrap(): Promise<void> {
   const errorLogWriter = RawSqlErrorLogWriter.from(prisma.client as unknown as RawSqlClient);
   app.useGlobalFilters(new GlobalExceptionFilter(defaultDependencyDetector, errorLogWriter));
   app.useGlobalPipes(createValidationPipe());
-  app.useGlobalInterceptors(new AccessLogInterceptor(), new RequestTimeoutInterceptor());
+  app.useGlobalInterceptors(new IdempotencyHeaderInterceptor(), new AccessLogInterceptor(), new RequestTimeoutInterceptor());
 
   const port = Number(process.env.ASSET_PORT ?? 3002);
   await app.listen(port);

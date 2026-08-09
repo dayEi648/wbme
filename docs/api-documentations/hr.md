@@ -35,9 +35,17 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/org/employees` | 全体员工列表（keyword/departmentId/positionId 筛选 + 分页；含部门/岗位/职称派生——职称经 hr.user_titles 视图实时计算） |
+| `GET` | `/org/employees` | 全体员工列表（keyword/departmentId/positionId/status 筛选 + 分页；默认仅正常账号；含部门/岗位/职称派生——职称经 hr.user_titles 视图实时计算） |
 | `PUT` | `/org/employees/{userId}/departments` | 调整员工所属部门（多部门并列；岗位须适用于全部新部门，否则 `POSITION_DEPARTMENT_MISMATCH`；`user_org_version++`） |
 | `PUT` | `/org/employees/{userId}/position` | 调整员工岗位（单岗位；须启用且适用于全部当前部门） |
+
+### 个人中心岗位申请选项
+
+仅需登录，无组织管理权限。该选项仅用于收窄交互；提交和审批时仍须在事务中重新校验。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/self-service/position-application-options` | 启用部门与允许自助申请岗位，岗位带 `departmentIds` 适用范围 |
 
 ## 部门管理（hr PRD §6）
 
@@ -96,10 +104,12 @@
 | --- | --- | --- |
 | `POST` | `/overtime/applications` | 提交加班批次（幂等；`OvertimeSubmitDto`：overtimeDate YYYY-MM-DD、startMinute 0-1439、endMinute 1-1440（24:00=1440）、reason≤500、userIds 1~100 去重；全有或全无——任一失败 `OVERTIME_BATCH_REJECTED` + 逐人原因，零写入；日期窗口=人事配置提前申请/补交窗口；节假日快照随明细保存） |
 | `POST` | `/overtime/applications/{id}/cancel` | 取消本人/代提待审批批次（批准或驳回后不能取消） |
+| `GET` | `/overtime/applications/mine` | 本人提交或代交的待审批加班批次（month 筛选 + 分页；无审批权限也可查看并通过上述取消接口完成闭环） |
 | `GET` | `/overtime/mine` | 个人已批准记录（month 筛选 + 分页；含日期类型/时长） |
 | `GET` | `/overtime/mine/summary` | 个人月度汇总（分钟精度；小时=分钟÷60 两位小数） |
-| `GET` | `/overtime/records` | 管理视图：员工列表 + 月度统计（DEPARTMENT 闭包/COMPANY；keyword/month 筛选） |
+| `GET` | `/overtime/records` | 管理视图：员工月度统计（DEPARTMENT 闭包/COMPANY；keyword/month/departmentId 与结构化筛选、多级排序） |
 | `GET` | `/overtime/records/summary` | 管理月度汇总（范围内员工合计） |
+| `GET` | `/overtime/records/{userId}` | 管理视图下钻：当前权限范围内指定员工的已批准加班明细（month/departmentId） |
 | `GET` | `/overtime/records/export` | 管理导出（runExport：Redis 互斥 + REPEATABLE READ + 120s 超时；行数上限=平台设置 export.max.rows；导出完成写 EXPORT 操作日志） |
 
 加班审批在统一审批中心处理（见 approval-center.md）：`overtime_approval` 功能（部门/公司档），

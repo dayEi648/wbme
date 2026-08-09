@@ -663,6 +663,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "字典类型过滤",
             "in": "query",
             "name": "dictType",
@@ -1071,6 +1091,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "项目名称关键字（规范化匹配，支持模糊）",
             "in": "query",
             "name": "name",
@@ -1221,6 +1261,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "项目名称关键字（规范化匹配，支持模糊）",
             "in": "query",
             "name": "name",
@@ -1330,6 +1390,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -1445,6 +1525,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "按项目过滤",
             "in": "query",
             "name": "projectId",
@@ -1513,6 +1613,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {

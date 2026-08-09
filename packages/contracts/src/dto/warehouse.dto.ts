@@ -10,9 +10,8 @@ import {
   IsString,
   MaxLength,
   Min,
-  Validate,
 } from 'class-validator';
-import { BATCH_LIMIT, PaginationQueryDto } from './base.dto';
+import { BATCH_LIMIT, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 通用校验：1～100 个互不重复的目标标识（主 PRD §9.5） */
 function assertBatchIds(value: unknown): boolean {
@@ -69,7 +68,7 @@ export class WarehouseUpdateDto {
 export class WarehouseBatchDeleteDto {
   @ApiProperty({ description: '库位 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
-  @Validate(assertBatchIds, { message: '至少需要 1 个库位 id' })
+  @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个库位 id' })
   @ArrayMaxSize(BATCH_LIMIT)
   @ArrayUnique()
   @Type(() => Number)

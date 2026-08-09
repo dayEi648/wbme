@@ -14,7 +14,7 @@ import {
   assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
-import { RedisService, runExport } from '@wbme/server';
+import { buildTablePrismaQuery, RedisService, runExport } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -106,7 +106,11 @@ export class AssetService {
    */
   async list(userId: number, query: AssetQueryDto): Promise<{ items: AssetDetail[]; total: number }> {
     const where = await this.buildListWhere(userId, query);
-    return this.paginate(where, query.page ?? 1, query.pageSize ?? 20);
+    const tableQuery = this.tableQuery(query);
+    const effectiveWhere: Prisma.AssetWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.AssetWhereInput] }
+      : where;
+    return this.paginate(effectiveWhere, query.page ?? 1, query.pageSize ?? 20, tableQuery.orderBy as Prisma.AssetOrderByWithRelationInput[] | undefined);
   }
 
   /**
@@ -119,6 +123,10 @@ export class AssetService {
    */
   async export(userId: number, query: AssetQueryDto, res: Response): Promise<void> {
     const where = await this.buildListWhere(userId, query);
+    const tableQuery = this.tableQuery(query);
+    const effectiveWhere: Prisma.AssetWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.AssetWhereInput] }
+      : where;
     const maxRows = await this.readExportMaxRows();
     await runExport<AssetDetail>({
       userId,
@@ -144,12 +152,12 @@ export class AssetService {
           isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
           timeout: options?.timeout,
         }),
-      fetchCount: async (tx) => (tx as PrismaService['client']).asset.count({ where }),
+      fetchCount: async (tx) => (tx as PrismaService['client']).asset.count({ where: effectiveWhere }),
       fetchRows: async (tx, offset, limit) => {
         const client = tx as PrismaService['client'];
         const rows = await client.asset.findMany({
-          where,
-          orderBy: { id: 'desc' },
+          where: effectiveWhere,
+          orderBy: (tableQuery.orderBy as Prisma.AssetOrderByWithRelationInput[] | undefined) ?? { id: 'desc' },
           skip: offset,
           take: limit,
         });
@@ -221,6 +229,25 @@ export class AssetService {
       where.AND = [{ OR: [{ responsibleUserId: userId }, { currentUserId: userId }] }];
     }
     return where;
+  }
+
+  /** 固定资产列表允许的结构化字段白名单；金额 numeric 不以 JavaScript number 参与比较。 */
+  private tableQuery(query: AssetQueryDto) {
+    return buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      keyword: { prismaField: ['name', 'specModel'] as const, type: 'text' },
+      name: { prismaField: 'name', type: 'text' },
+      categoryId: { prismaField: 'categoryId', type: 'number' },
+      specModel: { prismaField: 'specModel', type: 'text' },
+      purchaseAt: { prismaField: 'purchaseAt', type: 'date' },
+      usageStatus: { prismaField: 'usageStatus', type: 'enum' },
+      ownership: { prismaField: 'ownership', type: 'enum' },
+      departmentId: { prismaField: 'departmentId', type: 'number' },
+      responsibleUserId: { prismaField: 'responsibleUserId', type: 'number' },
+      currentUserId: { prismaField: 'currentUserId', type: 'number' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+      updatedAt: { prismaField: 'updatedAt', type: 'date' },
+    });
   }
 
   /** 读平台设置 export.max.rows（经只读视图；缺省 100000） */
@@ -574,12 +601,17 @@ export class AssetService {
   }
 
   /** 分页查询并格式化为详情行 */
-  private async paginate(where: Prisma.AssetWhereInput, page: number, pageSize: number): Promise<{ items: AssetDetail[]; total: number }> {
+  private async paginate(
+    where: Prisma.AssetWhereInput,
+    page: number,
+    pageSize: number,
+    orderBy?: Prisma.AssetOrderByWithRelationInput[],
+  ): Promise<{ items: AssetDetail[]; total: number }> {
     const [total, rows] = await Promise.all([
       this.prisma.client.asset.count({ where }),
       this.prisma.client.asset.findMany({
         where,
-        orderBy: [{ id: 'desc' }],
+        orderBy: orderBy ?? [{ id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

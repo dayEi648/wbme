@@ -1,8 +1,10 @@
-import { App as AntApp, Button, Card, Descriptions, Divider, Form, Input, Radio, Space, Typography } from 'antd';
+import { Button, Card, Descriptions, Divider, Drawer, Form, Input, Radio, Select, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, KeyOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { DataTable } from '../../components/DataTable';
 import { ApiError, http } from '../../request/http';
+import { useFeedback } from '../../request/feedback';
 
 interface MeData {
   user: {
@@ -22,16 +24,22 @@ interface MeData {
 
 /**
  * 个人中心（base PRD §6）：身份信息（手机号只读）、资料修改（超管直改/员工审批）、
- * 修改密码（成功后全部会话失效）；岗位申请与我的操作日志为契约预留（T6-6/T4-1）。
+ * 修改密码（成功后全部会话失效）；岗位申请与我的操作日志均在当前页完成。
  */
 export default function MePage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const navigate = useNavigate();
   const [me, setMe] = useState<MeData | null>(null);
   const [profileForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [positionOpen, setPositionOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [positionSubmitting, setPositionSubmitting] = useState(false);
+  const [positionOptions, setPositionOptions] = useState<{ departments: Array<{ id: number; name: string }>; positions: Array<{ id: number; name: string; departmentIds: number[] }> }>({ departments: [], positions: [] });
+  const [positionOptionsLoading, setPositionOptionsLoading] = useState(false);
+  const [positionForm] = Form.useForm<{ targetDepartmentId: number; targetPositionId: number }>();
 
   useEffect(() => {
     void http
@@ -42,19 +50,19 @@ export default function MePage() {
       })
       .catch((error) => {
         if (error instanceof ApiError) {
-          message.error(error.body.message);
+          feedback.error(error);
         }
       });
-  }, [message, profileForm]);
+  }, [feedback, profileForm]);
 
   async function submitProfile(values: { name: string; gender: 'MALE' | 'FEMALE' }) {
     setProfileSubmitting(true);
     try {
       const result = await http.put<{ applied: boolean; requestId?: number }>('/me/profile', values);
       if (result.applied) {
-        message.success('资料已更新');
+        feedback.success('资料已更新');
       } else {
-        message.success('资料修改申请已提交，等待管理员审批');
+        feedback.success('资料修改申请已提交，等待管理员审批');
       }
       // 超管直改立即生效：同步刷新身份信息卡
       setMe((prev) =>
@@ -68,7 +76,7 @@ export default function MePage() {
       );
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     } finally {
       setProfileSubmitting(false);
@@ -77,7 +85,7 @@ export default function MePage() {
 
   async function changePassword(values: { currentPassword: string; newPassword: string; confirmPassword: string }) {
     if (values.newPassword !== values.confirmPassword) {
-      message.error('两次输入的密码不一致');
+      feedback.error(new Error('两次输入的密码不一致'), '两次输入的密码不一致');
       return;
     }
     setPasswordSubmitting(true);
@@ -87,16 +95,47 @@ export default function MePage() {
         newPassword: values.newPassword,
         confirmPassword: values.confirmPassword,
       });
-      message.success('密码已修改，请重新登录');
+      feedback.success('密码已修改，请重新登录');
       navigate('/login', { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     } finally {
       setPasswordSubmitting(false);
     }
   }
+
+  async function submitPositionApplication(values: { targetDepartmentId: number; targetPositionId: number }) {
+    setPositionSubmitting(true);
+    try {
+      await http.post('/me/position-applications', values);
+      feedback.success('岗位申请已提交，等待审批');
+      setPositionOpen(false);
+    } catch (error) {
+      feedback.error(error, '岗位申请提交失败');
+    } finally {
+      setPositionSubmitting(false);
+    }
+  }
+
+  async function openPositionApplication() {
+    setPositionOpen(true);
+    setPositionOptionsLoading(true);
+    try {
+      const options = await http.get<{ departments: Array<{ id: number; name: string }>; positions: Array<{ id: number; name: string; departmentIds: number[] }> }>('/self-service/position-application-options', { service: 'hr', active: true });
+      setPositionOptions(options);
+    } catch (error) {
+      feedback.error(error, '岗位申请选项加载失败');
+    } finally {
+      setPositionOptionsLoading(false);
+    }
+  }
+
+  const selectedDepartmentId = Form.useWatch('targetDepartmentId', positionForm);
+  const positionSelectOptions = positionOptions.positions
+    .filter((position) => selectedDepartmentId === undefined || position.departmentIds.includes(selectedDepartmentId))
+    .map((position) => ({ label: position.name, value: position.id }));
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
@@ -116,8 +155,8 @@ export default function MePage() {
             <Descriptions.Item label="性别">{me?.user.gender === 'MALE' ? '男' : '女'}</Descriptions.Item>
             <Descriptions.Item label="手机号">{me?.user.phoneMasked}</Descriptions.Item>
             <Descriptions.Item label="账号状态">{me?.user.status === 'ACTIVE' ? '正常' : me?.user.status}</Descriptions.Item>
-            <Descriptions.Item label="部门">-（组织信息由人事系统提供）</Descriptions.Item>
-            <Descriptions.Item label="岗位">-（组织信息由人事系统提供）</Descriptions.Item>
+            <Descriptions.Item label="部门">{me?.departments.map((item) => String((item as { name?: unknown }).name ?? '')).filter(Boolean).join('、') || '—'}</Descriptions.Item>
+            <Descriptions.Item label="岗位">{me?.positions.map((item) => String((item as { name?: unknown }).name ?? '')).filter(Boolean).join('、') || '—'}</Descriptions.Item>
           </Descriptions>
         </Card>
 
@@ -170,10 +209,20 @@ export default function MePage() {
 
         <Divider />
         <Space direction="vertical" size="small">
-          <Button disabled title="岗位申请功能由人事系统提供（即将开放）">岗位变更申请（即将开放）</Button>
-          <Button disabled title="我的操作日志功能即将开放">我的操作日志（即将开放）</Button>
+          <Button disabled={!me?.canApplyPositionChange} onClick={() => void openPositionApplication()}>岗位变更申请</Button>
+          <Button onClick={() => setLogOpen(true)}>我的操作日志</Button>
         </Space>
       </Space>
+      <Drawer title="岗位变更申请" open={positionOpen} onClose={() => { setPositionOpen(false); positionForm.resetFields(); }} width={420}>
+        <Form form={positionForm} layout="vertical" onFinish={(values) => void submitPositionApplication(values)}>
+          <Form.Item name="targetDepartmentId" label="目标部门" rules={[{ required: true, message: '请选择目标部门' }]}><Select showSearch optionFilterProp="label" loading={positionOptionsLoading} options={positionOptions.departments.map((department) => ({ label: department.name, value: department.id }))} onChange={() => positionForm.setFieldValue('targetPositionId', undefined)} /></Form.Item>
+          <Form.Item name="targetPositionId" label="目标岗位" rules={[{ required: true, message: '请选择目标岗位' }]}><Select showSearch optionFilterProp="label" loading={positionOptionsLoading} disabled={selectedDepartmentId === undefined} options={positionSelectOptions} /></Form.Item>
+          <Button type="primary" htmlType="submit" loading={positionSubmitting}>提交申请</Button>
+        </Form>
+      </Drawer>
+      <Drawer title="我的操作日志" open={logOpen} onClose={() => setLogOpen(false)} width={760}>
+        <DataTable title="我的操作日志" description="仅展示当前账号的操作记录；筛选、排序和导出均限定在本人范围内。" service="platform" endpoint="/me/operation-logs" pageKey="me-operation-logs" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'createdAt', title: '时间' }, { key: 'system', title: '系统' }, { key: 'feature', title: '功能' }, { key: 'actionType', title: '操作' }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: [{ label: '基础平台', value: 'BASE' }, { label: '管理后台', value: 'BACKSTAGE' }, { label: '资产系统', value: 'ASSET' }, { label: '人事系统', value: 'HR' }, { label: '财务系统', value: 'FIN' }] }, { key: 'feature', title: '功能', type: 'text' }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }]} exportConfig={{ allEndpoint: '/me/operation-logs/export', filename: 'my-operation-logs.xlsx' }} />
+      </Drawer>
     </div>
   );
 }

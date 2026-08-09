@@ -1,0 +1,20 @@
+@media (min-width: 769px) {
+  .wbme-mobile-cards {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .wbme-desktop-table {
+    display: none;
+  }
+
+  /* 触控端所有可操作目标至少 44px，筛选/排序抽屉与卡片行内操作共享此规则。 */
+  .ant-drawer .ant-btn,
+  .wbme-mobile-cards .ant-btn,
+  .wbme-mobile-cards .ant-checkbox-wrapper {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

@@ -152,6 +152,18 @@ describeDb('组织模块（T6-1/T6-2/T6-3）', () => {
         SELECT department_id FROM hr.user_org WHERE user_id = ${employeeId}
       `;
       expect(rows.map((row) => row.department_id)).toEqual([deptA.id]);
+      const employeeList = await org.listEmployees({
+        page: 1,
+        pageSize: 20,
+        keyword: 'org测试员工',
+        departmentId: deptA.id,
+        positionId: position.id,
+        status: 'ACTIVE',
+      });
+      expect(employeeList).toMatchObject({
+        total: 1,
+        items: [{ id: employeeId, userId: employeeId, name: 'org测试员工', status: 'ACTIVE', departmentIds: [deptA.id], positionId: position.id }],
+      });
     } finally {
       await prisma.client.userDepartment.deleteMany({ where: { userId: employeeId } });
       await prisma.client.userPosition.deleteMany({ where: { userId: employeeId } });

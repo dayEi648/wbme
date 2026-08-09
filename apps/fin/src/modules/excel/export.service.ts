@@ -8,6 +8,7 @@ import { Prisma, type Project } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { writeFinOperationLog, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
 import { normalizeProjectName } from '../../shared/name-normalize';
+import { buildProjectTableQuery } from '../../shared/project-table-query';
 import { calcProjectAutoFields } from '../../shared/project-calc';
 import { type ExportProjectRow, type ExportSubtotal } from './export-builder';
 import { XlsxWorkerPool } from './xlsx-worker-pool';
@@ -210,13 +211,13 @@ export class ExportService {
           checkTimeout();
 
           // 工作簿生成（CPU 密集 → 工作池；快照数据在内存中随任务传递）
-          const buffer = await this.workerPool.run<Buffer>(
+          const result = await this.workerPool.run<Buffer | { buffer: ArrayBuffer }>(
             'build',
             { groups },
             [],
             signal,
           );
-          return { groups, buffer };
+          return { groups, buffer: unwrapBuildBuffer(result) };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: EXPORT_TIMEOUT_MS + 10_000 },
       );
@@ -275,6 +276,10 @@ export class ExportService {
       if (query.progressId !== undefined) {
         where.progressId = query.progressId;
       }
+      const tableQuery = buildProjectTableQuery(query);
+      if (tableQuery.where) {
+        return { AND: [where, tableQuery.where as Prisma.ProjectWhereInput] };
+      }
     }
     return where;
   }
@@ -288,6 +293,20 @@ export class ExportService {
       summary: `在利润分析中${scope === 'all' ? '导出了全部' : '按筛选条件导出了'}项目利润分析`,
     });
   }
+}
+
+/**
+ * 工作池结果统一为 Node Buffer（响应流输出要求）。
+ *
+ * 线程模式 worker 回传转移后的 `{ buffer: ArrayBuffer }` 包装（见 xlsx-worker.ts），
+ * 内联模式（测试/OpenAPI 生成）直接返回 Buffer；此前未解包导致 `res.end` 收到普通对象
+ * 抛 ERR_INVALID_ARG_TYPE、客户端下载空文件。
+ *
+ * @param result 工作池 build 任务返回
+ * @returns 可写入响应的 Buffer
+ */
+export function unwrapBuildBuffer(result: Buffer | { buffer: ArrayBuffer }): Buffer {
+  return Buffer.isBuffer(result) ? result : Buffer.from(result.buffer);
 }
 
 /** 分组小计（只汇总对应范围内数据；毛利率 = 组内汇总后计算） */

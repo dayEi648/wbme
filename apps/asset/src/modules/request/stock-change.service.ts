@@ -10,6 +10,7 @@ import {
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { allocateFifoBatches, cleanupEmptyItem, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
+import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -240,13 +241,17 @@ export class StockChangeService {
 
   /** 分页查询 */
   private async paginate(where: Prisma.ApprovalRequestWhereInput, query: StockChangeRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const tableQuery = buildAssetApprovalRequestTableQuery(query);
+    const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.approvalRequest.count({ where }),
+      this.prisma.client.approvalRequest.count({ where: effectiveWhere }),
       this.prisma.client.approvalRequest.findMany({
-        where,
-        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

@@ -39,6 +39,12 @@ export class ApprovalController {
     return this.approval.list(userId, query);
   }
 
+  /** 当前用户提交或代交的申请历史；不要求审批权限，待审批项可由申请人取消。 */
+  @Get('mine')
+  async listMine(@CurrentUser() userId: number, @Query() query: ApprovalListQueryDto): Promise<unknown> {
+    return this.approval.listMine(userId, query);
+  }
+
   /**
    * 审批详情。
    *

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Response } from 'express';
 import { INVENTORY_MANAGE_FUNCTION_CODE, StockFlowQueryDto } from '@wbme/contracts';
-import { RedisService, runExport } from '@wbme/server';
+import { buildTablePrismaQuery, RedisService, runExport } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { loadAssetOperationLogOperator } from '../../shared/asset-operation-log.util';
@@ -30,13 +30,17 @@ export class StockFlowService {
    */
   async list(query: StockFlowQueryDto): Promise<{ items: unknown[]; total: number }> {
     const where = await this.buildWhere(query);
+    const tableQuery = this.tableQuery(query);
+    const effectiveWhere: Prisma.StockFlowWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.StockFlowWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.stockFlow.count({ where }),
+      this.prisma.client.stockFlow.count({ where: effectiveWhere }),
       this.prisma.client.stockFlow.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.StockFlowOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -55,6 +59,10 @@ export class StockFlowService {
   async export(exporterUserId: number, query: StockFlowQueryDto, res: Response): Promise<void> {
     const maxRows = await this.readExportMaxRows();
     const where = await this.buildWhere(query);
+    const tableQuery = this.tableQuery(query);
+    const effectiveWhere: Prisma.StockFlowWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.StockFlowWhereInput] }
+      : where;
     await runExport<StockFlowExportRow>({
       userId: exporterUserId,
       redis: this.redis.redis,
@@ -79,12 +87,12 @@ export class StockFlowService {
           isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
           timeout: options?.timeout,
         }),
-      fetchCount: async (tx) => (tx as PrismaService['client']).stockFlow.count({ where }),
+      fetchCount: async (tx) => (tx as PrismaService['client']).stockFlow.count({ where: effectiveWhere }),
       fetchRows: async (tx, offset, limit) => {
         const client = tx as PrismaService['client'];
         return client.stockFlow.findMany({
-          where,
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          where: effectiveWhere,
+          orderBy: (tableQuery.orderBy as Prisma.StockFlowOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }, { id: 'desc' }],
           skip: offset,
           take: limit,
         });
@@ -135,6 +143,24 @@ export class StockFlowService {
       where.refId = query.refId;
     }
     return where;
+  }
+
+  /** 库存流水的受控筛选和排序字段；关联品种/库位仍由既有具名参数解析为条目 id。 */
+  private tableQuery(query: StockFlowQueryDto) {
+    return buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      inventoryItemId: { prismaField: 'inventoryItemId', type: 'number' },
+      flowType: { prismaField: 'flowType', type: 'enum' },
+      direction: { prismaField: 'direction', type: 'enum' },
+      consumableName: { prismaField: 'consumableName', type: 'text' },
+      spec: { prismaField: 'spec', type: 'text' },
+      warehouseName: { prismaField: 'warehouseName', type: 'text' },
+      qty: { prismaField: 'qty', type: 'number' },
+      refType: { prismaField: 'refType', type: 'text' },
+      refId: { prismaField: 'refId', type: 'number' },
+      operatorName: { prismaField: 'operatorName', type: 'text' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+    });
   }
 
   /** 读平台设置 export.max.rows（经只读视图；缺省 100000） */

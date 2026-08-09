@@ -7,6 +7,7 @@ import {
   frameworkErrors,
   inventoryErrors,
 } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import {
@@ -247,13 +248,27 @@ export class TransferService {
     if (query.operatorId) {
       where.operatorId = query.operatorId;
     }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      fromInventoryItemId: { prismaField: 'fromInventoryItemId', type: 'number' },
+      toInventoryItemId: { prismaField: 'toInventoryItemId', type: 'number' },
+      fromWarehouseName: { prismaField: 'fromWarehouseName', type: 'text' },
+      toWarehouseName: { prismaField: 'toWarehouseName', type: 'text' },
+      qty: { prismaField: 'qty', type: 'number' },
+      operatorId: { prismaField: 'operatorId', type: 'number' },
+      operatorName: { prismaField: 'operatorName', type: 'text' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+    });
+    const effectiveWhere: Prisma.InventoryTransferWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.InventoryTransferWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.inventoryTransfer.count({ where }),
+      this.prisma.client.inventoryTransfer.count({ where: effectiveWhere }),
       this.prisma.client.inventoryTransfer.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.InventoryTransferOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

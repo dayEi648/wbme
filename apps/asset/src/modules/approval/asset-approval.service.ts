@@ -28,6 +28,7 @@ import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
 import { loadAssetOperationLogOperator } from '../../shared/asset-operation-log.util';
+import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import { AssetApprovalSideEffect } from './asset-approval-side-effect';
 
 /** asset 审批申请类型（6+1） */
@@ -327,13 +328,17 @@ export class AssetApprovalService {
       return { items: [], total: 0 };
     }
     const where = await this.buildWhere(query, visibleTypes, userId);
+    const tableQuery = buildAssetApprovalRequestTableQuery(query);
+    const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.approvalRequest.count({ where }),
+      this.prisma.client.approvalRequest.count({ where: effectiveWhere }),
       this.prisma.client.approvalRequest.findMany({
-        where,
-        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -342,6 +347,64 @@ export class AssetApprovalService {
       total,
       items: rows.map((row) => this.toListItem(row)),
     };
+  }
+
+  /**
+   * 当前用户发起或代交的资产审批历史。
+   *
+   * 该视图不要求审批功能：申请人必须能查看并取消自己的待审批业务单；可见范围仅限
+   * applicantId/proxyId，不能借此读取其它员工申请。
+   *
+   * @param userId 当前用户
+   * @param query 分页与状态/类型/关键字筛选
+   * @returns 当前用户申请历史
+   */
+  async listMine(userId: number, query: ApprovalListQueryDto): Promise<{ items: AssetApprovalListItem[]; total: number }> {
+    const conditions: Prisma.ApprovalRequestWhereInput[] = [
+      { OR: [{ applicantId: userId }, { proxyId: userId }] },
+    ];
+    if (query.requestType) {
+      if (query.requestType === 'CONSUMABLE_REQUEST') {
+        conditions.push({ requestType: { in: ['CONSUMABLE_REQUEST', 'AGENT_REQUEST'] } });
+      } else if (ALL_ASSET_TYPES.includes(query.requestType as AssetRequestType)) {
+        conditions.push({ requestType: query.requestType as AssetRequestType });
+      } else {
+        conditions.push({ id: -1 });
+      }
+    }
+    if (query.status === 'PENDING') {
+      conditions.push({ status: 'PENDING' });
+    } else if (query.status === 'PROCESSED') {
+      conditions.push({ status: { in: ['APPROVED', 'REJECTED', 'CANCELLED'] } });
+    } else if (query.status === 'DRAFT' || query.status === 'APPROVED' || query.status === 'REJECTED' || query.status === 'CANCELLED') {
+      conditions.push({ status: query.status });
+    }
+    if (query.keyword) {
+      conditions.push({
+        OR: [
+          { applicationNo: { contains: query.keyword } },
+          { applicantName: { contains: query.keyword } },
+          { proxyName: { contains: query.keyword } },
+        ],
+      });
+    }
+    const where: Prisma.ApprovalRequestWhereInput = { AND: conditions };
+    const tableQuery = buildAssetApprovalRequestTableQuery(query);
+    const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
+      : where;
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const [total, rows] = await Promise.all([
+      this.prisma.client.approvalRequest.count({ where: effectiveWhere }),
+      this.prisma.client.approvalRequest.findMany({
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { total, items: rows.map((row) => this.toListItem(row)) };
   }
 
   /**
@@ -729,11 +792,7 @@ export class AssetApprovalService {
    */
   async exportList(userId: number, query: ApprovalListQueryDto, res: Response): Promise<void> {
     const visibleTypes = await this.resolveVisibleTypes(userId);
-    const exportWhere: Prisma.ApprovalRequestWhereInput = { id: -1 };
-    if (visibleTypes.length > 0) {
-      exportWhere.requestType = { in: visibleTypes.map((entry) => entry.requestType) };
-      delete exportWhere.id;
-    }
+    const tableQuery = buildAssetApprovalRequestTableQuery(query);
     const maxRows = await this.readExportMaxRows();
     await runExport<AssetApprovalListItem>({
       userId,
@@ -757,14 +816,20 @@ export class AssetApprovalService {
         }),
       fetchCount: async (tx) => {
         const where = await this.buildWhere(query, visibleTypes, userId);
-        return (tx as PrismaService['client']).approvalRequest.count({ where });
+        const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
+          ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
+          : where;
+        return (tx as PrismaService['client']).approvalRequest.count({ where: effectiveWhere });
       },
       fetchRows: async (tx, offset, limit) => {
         const where = await this.buildWhere(query, visibleTypes, userId);
+        const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
+          ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
+          : where;
         const client = tx as PrismaService['client'];
         const rows = await client.approvalRequest.findMany({
-          where,
-          orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+          where: effectiveWhere,
+          orderBy: (tableQuery.orderBy as Prisma.ApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
           skip: offset,
           take: limit,
         });

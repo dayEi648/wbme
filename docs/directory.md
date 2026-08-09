@@ -24,9 +24,9 @@
 | --- | --- |
 | `apps/platform-core/` | platform-core 部署单元（base + backstage；`src/modules/base/table-prefs` 表格偏好；backstage `content` 公告/更新日志、`backup` 备份恢复、`health-status` 健康状态、`operation-log`/`system-log` 日志查询等） |
 | `apps/asset/` | 资产系统部署单元（T7 全功能：`src/modules/` 下 approval 审批中心（含部门闭包与六类业务副作用）、asset 固定资产台账、repair 维修管理、consumable 品种、warehouse 库位、inventory 库存条目/批次/纠正/流水、request 入库与库存变更申请、transfer 轻量调拨、claim 普通与代交申领、borrow 借还/归还/核销/代领结清、disposal 注销员工借还直接处置、qr 二维码、settings 资产配置、catalog 分类与字典、base/table-prefs 表格偏好） |
-| `apps/hr/` | 人事系统部署单元（T6 全功能：`src/modules/` 下 approval 审批中心（含部门闭包与批准副作用）、org 组织/部门/岗位/岗位申请（含内部接口）、title 职称、holiday 节假日适配器、overtime 加班、settings 人事配置与字典、lifecycle 账号生命周期内部接口、base/table-prefs 表格偏好） |
+| `apps/hr/` | 人事系统部署单元（T6 全功能：`src/modules/` 下 approval 审批中心（含部门闭包与批准副作用）、org 组织/部门/岗位/岗位申请（含个人中心自助选项与内部接口）、title 职称、holiday 节假日适配器、overtime 加班、settings 人事配置与字典、lifecycle 账号生命周期内部接口、base/table-prefs 表格偏好） |
 | `apps/fin/` | 财务系统部署单元（T8 全功能：`src/modules/` 下 project 工程合同/金额明细/项目操作记录、profit 利润分析（单元格即时保存/总计）、excel 利润分析导入导出（CPU 工作池/模板签名/并发与超时）、dict 财务字典（进度/齐全度/分类/地区）、settings 财务配置、base/table-prefs 表格偏好；`src/assets/` 利润分析 V2 运行模板） |
-| `apps/web/` | 前端（Vite + React + Ant Design；认证与门户页面见 `src/pages/`，统一请求层见 `src/request/`） |
+| `apps/web/` | 前端（Vite + React + Ant Design；`src/pages/` 覆盖认证、门户、个人中心、管理后台、资产、人事、财务与扫码入口；`src/components/` 提供响应式系统壳、审批抽屉、通用表格、资源表单、设置编辑器与动态详情；`src/request/` 提供同源多服务网关、会话、CSRF、统一反馈与下载/上传） |
 | `apps/worker/` | BullMQ Worker 部署单元（Outbox 调度 + 统一后台任务消费；`src/outbox-scheduler.ts`、`src/background-task-worker.ts`、`src/processors/`） |
 | `apps/recovery-executor/` | 数据库恢复执行器部署单元 |
 | `apps/migration-runner/` | Migration Runner（按部署单元顺序执行迁移与视图脚本） |
@@ -35,8 +35,8 @@
 
 | 路径 | 用途 |
 | --- | --- |
-| `packages/contracts/` | 共享契约：错误码目录、BusinessException、DTO 基类、枚举、功能权限目录权威定义（`src/permission/catalog.ts`，主 PRD §3.1）、金额/时区约定 |
-| `packages/server/` | NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器、Redis、健康探针、内部 REST、会话/CSRF（含提权旋转标记与透明轮换） |
+| `packages/contracts/` | 共享契约：错误码目录、BusinessException、DTO 基类（含分页、结构化表格筛选/排序载荷）、枚举、功能权限目录权威定义（`src/permission/catalog.ts`，主 PRD §3.1）、金额/时区约定 |
+| `packages/server/` | NestJS 共享基础设施：请求上下文、全局异常过滤器、校验管道、拦截器（含幂等请求头桥接）、结构化表格查询白名单编译、Redis、健康探针、内部 REST、会话/CSRF（含提权旋转标记与透明轮换） |
 | `packages/approval/` | 统一审批内核（状态机/版本条件更新/范围/待审批限制/超时扫描；T5-1） |
 | `packages/logging/` | 操作日志模板与集中日志受限语句（T4 实现） |
 | `packages/tasks/` | 统一后台任务受限接口：任务类型常量、稳定 UUID、Outbox SQL、状态条件更新（T4-2） |

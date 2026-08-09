@@ -9,11 +9,10 @@ import {
   IsString,
   MaxLength,
   Min,
-  Validate,
   ValidateNested,
 } from 'class-validator';
 import { isRfc3339Utc } from '../time';
-import { IdempotentDto, PaginationQueryDto } from './base.dto';
+import { IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 库存变更申请明细行（asset PRD §6：仅意外扣减；同一库存条目整单只能出现一次） */
 export class StockChangeRequestItemDto {
@@ -53,7 +52,7 @@ export class StockChangeRequestCreateDto extends IdempotentDto {
   @ApiProperty({ description: '整单变更时间（RFC 3339；缺省提交时）', required: false })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isRfc3339Utc(value), { message: '必须是带时区的 RFC 3339 时间字符串' })
+  @IsValidatedBy(isRfc3339Utc, { message: '必须是带时区的 RFC 3339 时间字符串' })
   changedAt?: string;
 
   @ApiProperty({ description: '整单备注', required: false, maxLength: 500 })

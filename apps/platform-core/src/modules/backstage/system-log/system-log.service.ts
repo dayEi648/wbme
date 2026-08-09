@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors, PaginationQueryDto } from '@wbme/contracts';
 import { desensitizeErrorSample } from '@wbme/logging';
-import { RedisService, runExport } from '@wbme/server';
+import { buildTableSqlQuery, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { SETTING_KEYS, SettingsService } from '../../base/settings/settings.service';
 import { PrismaService } from '../../../prisma.service';
@@ -125,6 +125,8 @@ export interface SystemLogQuery {
   result?: string;
   from?: Date;
   to?: Date;
+  filters?: string;
+  sorts?: string;
   page: number;
   pageSize: number;
 }
@@ -158,20 +160,23 @@ export class SystemLogService {
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
     const { whereSql, params } = this.buildErrorWhere(query);
+    const tableQuery = buildTableSqlQuery(query, ERROR_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
+    const effectiveParams = [...params, ...tableQuery.params];
     const offset = (query.page - 1) * query.pageSize;
-    const listParams = [...params, query.pageSize, offset];
+    const listParams = [...effectiveParams, query.pageSize, offset];
     const sql = `
       SELECT id, level, service, source, error_category, deploy_commit, fingerprint,
              bucket_start, first_seen_at, last_seen_at, occurrence_count,
              status, handled_by, handled_at
       FROM backstage.error_logs
-      ${whereSql}
-      ORDER BY last_seen_at DESC
+      ${effectiveWhereSql}
+      ORDER BY ${tableQuery.orderBySql ?? 'last_seen_at DESC, id DESC'}
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
     `;
-    const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.error_logs ${whereSql}`;
+    const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.error_logs ${effectiveWhereSql}`;
     const rows = await this.prisma.client.$queryRawUnsafe<ErrorLogRow[]>(sql, ...listParams);
-    const countResult = await this.prisma.client.$queryRawUnsafe<CountRow[]>(countSql, ...params);
+    const countResult = await this.prisma.client.$queryRawUnsafe<CountRow[]>(countSql, ...effectiveParams);
     const totalItems = Number(countResult[0]?.total ?? 0);
     return {
       data: rows.map(mapErrorListRow),
@@ -239,18 +244,21 @@ export class SystemLogService {
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
     const { whereSql, params } = this.buildSecurityWhere(query);
+    const tableQuery = buildTableSqlQuery(query, SECURITY_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
+    const effectiveParams = [...params, ...tableQuery.params];
     const offset = (query.page - 1) * query.pageSize;
-    const listParams = [...params, query.pageSize, offset];
+    const listParams = [...effectiveParams, query.pageSize, offset];
     const sql = `
       SELECT id, event_type, actor_id, target_user_id, result, reason, source_ip, request_id, created_at
       FROM backstage.security_logs
-      ${whereSql}
-      ORDER BY id DESC
+      ${effectiveWhereSql}
+      ORDER BY ${tableQuery.orderBySql ?? 'id DESC'}
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
     `;
-    const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.security_logs ${whereSql}`;
+    const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.security_logs ${effectiveWhereSql}`;
     const rows = await this.prisma.client.$queryRawUnsafe<SecurityLogRow[]>(sql, ...listParams);
-    const countResult = await this.prisma.client.$queryRawUnsafe<CountRow[]>(countSql, ...params);
+    const countResult = await this.prisma.client.$queryRawUnsafe<CountRow[]>(countSql, ...effectiveParams);
     const totalItems = Number(countResult[0]?.total ?? 0);
     return {
       data: rows.map(mapSecurityRow),
@@ -273,7 +281,11 @@ export class SystemLogService {
    */
   async exportErrors(userId: number, query: SystemLogQuery, res: Response): Promise<void> {
     const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
-    const { whereSql, params } = this.buildErrorWhere({ ...query, page: 1, pageSize: 1 });
+    const exportQuery = { ...query, page: 1, pageSize: 1 };
+    const { whereSql, params } = this.buildErrorWhere(exportQuery);
+    const tableQuery = buildTableSqlQuery(exportQuery, ERROR_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
+    const effectiveParams = [...params, ...tableQuery.params];
     await runExport<ErrorLogRow>({
       userId,
       redis: this.redis.redis,
@@ -302,20 +314,20 @@ export class SystemLogService {
         }),
       fetchCount: async (tx) => {
         const client = tx as PrismaService['client'];
-        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.error_logs ${whereSql}`;
-        const result = await client.$queryRawUnsafe<Array<{ total: string }>>(countSql, ...params);
+        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.error_logs ${effectiveWhereSql}`;
+        const result = await client.$queryRawUnsafe<Array<{ total: string }>>(countSql, ...effectiveParams);
         return Number(result[0]?.total ?? 0);
       },
       fetchRows: async (tx, offset, limit) => {
         const client = tx as PrismaService['client'];
-        const listParams = [...params, limit, offset];
+        const listParams = [...effectiveParams, limit, offset];
         const sql = `
           SELECT id, level, service, source, error_category, deploy_commit, fingerprint,
                  bucket_start, first_seen_at, last_seen_at, occurrence_count,
                  sample, status, handled_by, handled_at
           FROM backstage.error_logs
-          ${whereSql}
-          ORDER BY id DESC
+          ${effectiveWhereSql}
+          ORDER BY ${tableQuery.orderBySql ?? 'last_seen_at DESC, id DESC'}
           LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
         `;
         return client.$queryRawUnsafe<ErrorLogRow[]>(sql, ...listParams);
@@ -335,7 +347,11 @@ export class SystemLogService {
    */
   async exportSecurity(userId: number, query: SystemLogQuery, res: Response): Promise<void> {
     const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
-    const { whereSql, params } = this.buildSecurityWhere({ ...query, page: 1, pageSize: 1 });
+    const exportQuery = { ...query, page: 1, pageSize: 1 };
+    const { whereSql, params } = this.buildSecurityWhere(exportQuery);
+    const tableQuery = buildTableSqlQuery(exportQuery, SECURITY_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
+    const effectiveParams = [...params, ...tableQuery.params];
     await runExport<SecurityLogRow>({
       userId,
       redis: this.redis.redis,
@@ -358,18 +374,18 @@ export class SystemLogService {
         }),
       fetchCount: async (tx) => {
         const client = tx as PrismaService['client'];
-        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.security_logs ${whereSql}`;
-        const result = await client.$queryRawUnsafe<Array<{ total: string }>>(countSql, ...params);
+        const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.security_logs ${effectiveWhereSql}`;
+        const result = await client.$queryRawUnsafe<Array<{ total: string }>>(countSql, ...effectiveParams);
         return Number(result[0]?.total ?? 0);
       },
       fetchRows: async (tx, offset, limit) => {
         const client = tx as PrismaService['client'];
-        const listParams = [...params, limit, offset];
+        const listParams = [...effectiveParams, limit, offset];
         const sql = `
           SELECT id, event_type, actor_id, target_user_id, result, reason, source_ip, request_id, created_at
           FROM backstage.security_logs
-          ${whereSql}
-          ORDER BY id DESC
+          ${effectiveWhereSql}
+          ORDER BY ${tableQuery.orderBySql ?? 'id DESC'}
           LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
         `;
         return client.$queryRawUnsafe<SecurityLogRow[]>(sql, ...listParams);
@@ -427,6 +443,38 @@ export class SystemLogService {
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     return { whereSql, params };
   }
+}
+
+/** 错误日志表只读字段白名单；枚举统一转换为 text 后再比较，避免客户端影响 SQL 类型。 */
+const ERROR_LOG_TABLE_FIELDS = {
+  id: { column: 'id', type: 'number' },
+  level: { column: 'level::text', type: 'enum' },
+  service: { column: 'service', type: 'text' },
+  source: { column: 'source', type: 'text' },
+  errorCategory: { column: 'error_category', type: 'text' },
+  fingerprint: { column: 'fingerprint', type: 'text' },
+  status: { column: 'status::text', type: 'enum' },
+  occurrenceCount: { column: 'occurrence_count', type: 'number' },
+  firstSeenAt: { column: 'first_seen_at', type: 'date' },
+  lastSeenAt: { column: 'last_seen_at', type: 'date' },
+  handledAt: { column: 'handled_at', type: 'date' },
+} as const;
+
+/** 安全日志表只读字段白名单。 */
+const SECURITY_LOG_TABLE_FIELDS = {
+  id: { column: 'id', type: 'number' },
+  eventType: { column: 'event_type::text', type: 'enum' },
+  actorId: { column: 'actor_id', type: 'number' },
+  targetUserId: { column: 'target_user_id', type: 'number' },
+  result: { column: 'result::text', type: 'enum' },
+  reason: { column: 'reason', type: 'text' },
+  createdAt: { column: 'created_at', type: 'date' },
+} as const;
+
+/** 将结构化筛选追加到已有具名查询 WHERE 子句，始终保持 AND 组合。 */
+function appendWhereClause(existing: string, structured?: string): string {
+  if (!structured) return existing;
+  return existing ? `${existing} AND ${structured}` : `WHERE ${structured}`;
 }
 
 function mapErrorListRow(row: ErrorLogRow): ErrorLogListItem {

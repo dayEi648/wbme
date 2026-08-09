@@ -1058,6 +1058,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "status",
             "required": false,
@@ -1296,6 +1316,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "申请类型（取值由各模块声明）",
             "in": "query",
             "name": "requestType",
@@ -1465,6 +1505,122 @@
           }
         },
         "summary": "处理资料修改审批（APPROVE / REJECT）",
+        "tags": [
+          "审批"
+        ]
+      }
+    },
+    "/api/v1/approval-requests/export": {
+      "post": {
+        "operationId": "ApprovalController_export",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "申请类型（取值由各模块声明）",
+            "in": "query",
+            "name": "requestType",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "PENDING=待处理；PROCESSED=已处理（批准/驳回/取消）；或具体状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "PROCESSED",
+                "DRAFT",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（单号/申请人等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "申请人姓名",
+            "in": "query",
+            "name": "applicantName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "处理人姓名",
+            "in": "query",
+            "name": "processorName",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "审批列表导出（导出所有/导出已筛选；xlsx 附件）",
         "tags": [
           "审批"
         ]
@@ -1863,6 +2019,26 @@
               "minimum": 10,
               "type": "number"
             }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2079,6 +2255,26 @@
               "minimum": 10,
               "type": "number"
             }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2094,6 +2290,65 @@
           }
         },
         "summary": "P6 我的操作日志（全员可用，仅本人记录）",
+        "tags": [
+          "个人中心"
+        ]
+      }
+    },
+    "/api/v1/me/operation-logs/export": {
+      "get": {
+        "operationId": "MeController_exportMyOperationLogs",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "P6 我的操作日志导出（仅当前用户记录；结构化筛选与列表一致）。",
         "tags": [
           "个人中心"
         ]
@@ -2124,6 +2379,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           }
         ],
@@ -2472,6 +2747,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "系统（base/backstage/asset/hr/fin）",
             "in": "query",
             "name": "system",
@@ -2583,6 +2878,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "系统（base/backstage/asset/hr/fin）",
             "in": "query",
             "name": "system",
@@ -2684,6 +2999,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -2842,6 +3177,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           }
         ],
@@ -3075,6 +3430,26 @@
               "minimum": 10,
               "type": "number"
             }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3119,6 +3494,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           }
         ],
@@ -3165,6 +3560,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           }
         ],
@@ -3287,6 +3702,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -3491,6 +3926,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "日志级别",
             "in": "query",
             "name": "level",
@@ -3613,6 +4068,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "事件类型",
             "in": "query",
             "name": "eventType",
@@ -3718,6 +4193,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -4024,6 +4519,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {

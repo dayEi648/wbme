@@ -1,14 +1,15 @@
-import { App as AntApp, Button, Card, Form, Input, Space, Spin, Typography } from 'antd';
+import { Button, Card, Form, Input, Space, Spin, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
+import { useFeedback } from '../../request/feedback';
 
 /**
  * 密码重置（base PRD §2）：
  * 入口页读取 fragment 凭证兑换（发重置流程 Cookie）→ 钉钉授权（RESET）→ 完成页设新密码。
  */
 export default function ResetPasswordPage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const location = useLocation();
   const navigate = useNavigate();
   const [state, setState] = useState<'redeeming' | 'failed'>('redeeming');
@@ -37,10 +38,10 @@ export default function ResetPasswordPage() {
         window.history.replaceState(null, '', '/reset-password');
         setState('failed');
         setErrorMessage(error instanceof ApiError ? error.body.message : '兑换失败');
-        message.error(error instanceof ApiError ? error.body.message : '兑换失败');
+        feedback.error(error, error instanceof ApiError ? error.body.message : '兑换失败');
       }
     })();
-  }, [location.hash, message]);
+  }, [location.hash, feedback]);
 
   if (state === 'redeeming') {
     return (
@@ -63,13 +64,13 @@ export default function ResetPasswordPage() {
 
 /** 重置完成页（钉钉授权回调后）：设置新密码（完成后全会话失效，重新登录） */
 export function ResetCompletePage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
 
   async function onFinish(values: { newPassword: string; confirmPassword: string }) {
     if (values.newPassword !== values.confirmPassword) {
-      message.error('两次输入的密码不一致');
+      feedback.error(new Error('两次输入的密码不一致'), '两次输入的密码不一致');
       return;
     }
     setSubmitting(true);
@@ -78,11 +79,11 @@ export function ResetCompletePage() {
         newPassword: values.newPassword,
         confirmPassword: values.confirmPassword,
       });
-      message.success('密码已重置，请重新登录');
+      feedback.success('密码已重置，请重新登录');
       navigate('/login', { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     } finally {
       setSubmitting(false);

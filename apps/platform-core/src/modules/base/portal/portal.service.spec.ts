@@ -12,6 +12,7 @@ try {
 import { PrismaService } from '../../../prisma.service';
 import { ensurePermissionCatalog } from '../../../test-support/ensure-permission-catalog';
 import { ApprovalCenterService } from '../approval-proxy/approval-center.service';
+import { SettingsService } from '../settings/settings.service';
 import { PendingBadgeClient } from './pending-badge.client';
 import { PortalService } from './portal.service';
 
@@ -35,7 +36,8 @@ describe.skipIf(!DATABASE_URL)('门户入口推导（T3-4 真实授权核对）'
 
   beforeAll(async () => {
     prisma = new PrismaService();
-    const approvalCenter = new ApprovalCenterService(prisma);
+    // 导出不在本规格路径；RedisService 以空对象占位（构造仅存储引用）
+    const approvalCenter = new ApprovalCenterService(prisma, {} as never, new SettingsService(prisma));
     // 门户角标远程依赖注入空客户端（本规格不测 hr/asset 联调）
     const pendingBadge = new PendingBadgeClient(null, null);
     portal = new PortalService(prisma, approvalCenter, pendingBadge);

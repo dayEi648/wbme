@@ -18,7 +18,9 @@
 登录态。删除当前会话 + LOGOUT 安全日志 + 清 Cookie。无入参。
 
 ### A3 当前身份 `GET /auth/me`
-登录态。`{ user: { id, name, gender, phoneMasked, status, isSuperAdmin }, hasDingtalkBinding }`。
+登录态。`{ user: { id, name, gender, phoneMasked, status, isSuperAdmin }, hasDingtalkBinding, functionCodes }`。
+`functionCodes` 为当前会话已授予的功能编码（超级管理员返回完整目录），仅供 Web 菜单与操作显隐；
+服务端守卫仍是最终授权边界。
 
 ## 钉钉 OAuth（auth/dingtalk）
 
@@ -117,11 +119,15 @@
 ### P4 岗位变更申请 `POST /me/position-applications`
 经 hr 内部接口提交（T6-6 落地）：hr 侧校验（单部门限制/岗位启用+自助+适用部门），业务错误码透传（`MULTI_DEPARTMENT_APPLY_FORBIDDEN` / `POSITION_APPLY_TARGET_UNAVAILABLE` / `PENDING_LIMIT_REACHED` 等）；hr 不可用时返回 `DEPENDENCY`。
 
+个人中心提交前调用 HR 的 `GET /self-service/position-application-options`，按已选部门收窄允许自助申请的岗位；选项只用于交互，HR 在提交和审批时仍重新校验。
+
 ### P5 我的岗位申请记录 `GET /me/position-applications`
 经 hr 内部接口查询真实记录（T6-6 落地）；hr 不可用时降级为空分页。
 
 ### P6 我的操作日志 `GET /me/operation-logs`
-登录态。仅返回当前用户的操作日志（`operator_id = 当前用户`），分页；走操作日志联合视图查询（主 PRD §3.3）。
+登录态。仅返回当前用户的操作日志（`operator_id = 当前用户`），支持分页、结构化筛选与多级排序；走操作日志联合视图查询（主 PRD §3.3）。
+
+`GET /me/operation-logs/export` 只导出当前用户记录，支持“全部 / 已筛选”两种范围，使用与列表相同的字段白名单和一致性快照。
 
 ## 资料修改审批处理（T5 统一审批内核）
 

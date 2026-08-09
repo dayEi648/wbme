@@ -12,6 +12,9 @@ import {
   MaxLength,
   Min,
   Validate,
+  ValidatorConstraint,
+  type ValidationArguments,
+  type ValidatorConstraintInterface,
 } from 'class-validator';
 import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from './base.dto';
 
@@ -20,6 +23,20 @@ export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** 月份格式：YYYY-MM */
 export const MONTH_PATTERN = /^\d{4}-\d{2}$/;
+
+/** 加班起止分钟交叉字段校验；必须使用约束类以访问完整 DTO，而非把函数误传给 @Validate。 */
+@ValidatorConstraint({ name: 'overtimeTimeRange', async: false })
+class OvertimeTimeRangeConstraint implements ValidatorConstraintInterface {
+  validate(_value: unknown, arguments_: ValidationArguments): boolean {
+    const dto = arguments_.object as Partial<OvertimeSubmitDto>;
+    const { startMinute, endMinute } = dto;
+    return Number.isInteger(startMinute) && Number.isInteger(endMinute) && startMinute !== undefined && endMinute !== undefined && startMinute < endMinute;
+  }
+
+  defaultMessage(): string {
+    return '结束时间必须晚于开始时间';
+  }
+}
 
 /**
  * 加班 DTO（hr PRD §3）。
@@ -42,10 +59,7 @@ export class OvertimeSubmitDto extends IdempotentDto {
     minimum: 0,
     maximum: 1439,
   })
-  @Validate(
-    (dto: OvertimeSubmitDto) => dto.startMinute < dto.endMinute,
-    { message: '结束时间必须晚于开始时间' },
-  )
+  @Validate(OvertimeTimeRangeConstraint)
   @Type(() => Number)
   @IsInt()
   @Min(0)

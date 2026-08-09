@@ -1,8 +1,9 @@
-import { App as AntApp, Button, Card, Checkbox, Form, Input, Modal, Space, Typography } from 'antd';
+import { Button, Card, Checkbox, Form, Input, Modal, Space, Typography } from 'antd';
 import { QrcodeOutlined, UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
+import { useFeedback } from '../../request/feedback';
 import { useSession } from '../../request/session';
 
 interface LoginPayload {
@@ -26,7 +27,7 @@ const DINGTALK_ERROR_TEXT: Record<string, string> = {
 
 /** 登录页（base PRD §2）：手机号 + 密码 与 钉钉扫码双通道；忘记密码（钉钉验证式自助重置）入口 */
 export default function LoginPage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const navigate = useNavigate();
   const location = useLocation();
   const { refresh } = useSession();
@@ -39,22 +40,22 @@ export default function LoginPage() {
     const params = new URLSearchParams(location.search);
     const code = params.get('error');
     if (code) {
-      message.error(DINGTALK_ERROR_TEXT[code] ?? '操作失败，请重试');
+      feedback.error(new Error(DINGTALK_ERROR_TEXT[code] ?? '操作失败，请重试'), DINGTALK_ERROR_TEXT[code] ?? '操作失败，请重试');
       window.history.replaceState(null, '', '/login');
     }
-  }, [location.search, message]);
+  }, [location.search, feedback]);
 
   async function onFinish(values: LoginPayload) {
     setSubmitting(true);
     try {
       await http.post('/auth/login/password', values);
       await refresh();
-      message.success('登录成功');
+      feedback.success('登录成功');
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from ?? '/portal', { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     } finally {
       setSubmitting(false);
@@ -68,7 +69,7 @@ export default function LoginPage() {
       window.location.href = authorizeUrl;
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     }
   }
@@ -82,7 +83,7 @@ export default function LoginPage() {
       window.location.href = authorizeUrl;
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(error.body.message);
+        feedback.error(error);
       }
     } finally {
       setResetSubmitting(false);

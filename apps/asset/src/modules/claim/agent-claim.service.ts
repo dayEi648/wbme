@@ -17,6 +17,7 @@ import {
 } from '../../shared/asset-operation-log.util';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess } from '../../shared/cross-schema-auth';
+import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import { AssetApprovalService } from '../approval/asset-approval.service';
 
 /**
@@ -304,14 +305,18 @@ export class AgentClaimService {
 
   /** 分页查询（含受领人名单） */
   private async paginate(where: Prisma.ApprovalRequestWhereInput, query: ConsumableRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const tableQuery = buildAssetApprovalRequestTableQuery(query);
+    const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.approvalRequest.count({ where }),
+      this.prisma.client.approvalRequest.count({ where: effectiveWhere }),
       this.prisma.client.approvalRequest.findMany({
-        where,
+        where: effectiveWhere,
         include: { agentRecipients: { orderBy: { id: 'asc' } } },
-        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+        orderBy: (tableQuery.orderBy as Prisma.ApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

@@ -86,8 +86,8 @@
 - 批准副作用：`POSITION_CHANGE` 批准时事务内重校验（员工仍无/单部门、目标部门有效、
   目标岗位有效且允许自助申请且适用）→ 组织生效 + `user_org_version++`；任一条件不成立
   → `POSITION_APPLY_STALE`(422) 保持待审批；`OVERTIME` 批准无副作用。
-- 审批中心导出：`GET /api/v1/approval-requests/export`（runExport 流式；行数上限=平台设置
-  export.max.rows；导出完成写 EXPORT 操作日志）。
+- 审批中心导出：`POST /api/v1/approval-requests/export`（查询参数与列表同构；runExport 流式；
+  行数上限=平台设置 export.max.rows；导出完成写 EXPORT 操作日志）。
 
 ### 内部接口
 
@@ -114,6 +114,8 @@
 
 - T7：DEPARTMENT 档按部门闭包裁剪（申请人/受领人名单/借出时部门快照全部 ∈ 闭包，快照形状兼容数组与单对象）；批准/驳回/取消业务副作用与终态同一事务（入库建批次、变更/申领 FIFO 出库与额度转换、归还回库、核销、代领结清；驳回/取消释放占用）
 - 审批中心导出：`GET /approval-requests/export/all`（runExport，可见性与列表一致）
+- 我的申请：`GET /approval-requests/mine` 仅返回当前申请人或代交人的资产审批历史，不要求
+  `consumable_approval`；待审批项仍通过 `POST /approval-requests/{id}/cancel` 由申请人/代交人取消。
 - 「注销员工借还处置」非审批类型（`GET/POST /disposals`），见 asset.md，不在本中心待办
 
 ### 内部接口

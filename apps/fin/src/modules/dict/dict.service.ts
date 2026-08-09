@@ -8,6 +8,7 @@ import {
   type FinDictItemQueryDto,
   type FinDictItemUpdateDto,
 } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { Prisma, type FinanceDictItem } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
@@ -40,13 +41,24 @@ export class DictService {
     if (query.status) {
       where.status = query.status;
     }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      dictType: { prismaField: 'dictType', type: 'enum' },
+      name: { prismaField: 'name', type: 'text' },
+      semantic: { prismaField: 'semantic', type: 'enum' },
+      status: { prismaField: 'status', type: 'enum' },
+      sort: { prismaField: 'sort', type: 'number' },
+    });
+    const effectiveWhere: Prisma.FinanceDictItemWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.FinanceDictItemWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.financeDictItem.count({ where }),
+      this.prisma.client.financeDictItem.count({ where: effectiveWhere }),
       this.prisma.client.financeDictItem.findMany({
-        where,
-        orderBy: [{ sort: 'asc' }, { id: 'asc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.FinanceDictItemOrderByWithRelationInput[] | undefined) ?? [{ sort: 'asc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, Validate } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
-import { PaginationQueryDto } from './base.dto';
+import { IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 库存条目查询（消耗品库存管理） */
 export class InventoryItemQueryDto extends PaginationQueryDto {
@@ -90,7 +90,7 @@ export class BatchCorrectionDto {
   @ApiProperty({ description: '单价（元，最多两位小数）', required: false, example: '10.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
   unitPrice?: string;
 
   @ApiProperty({ description: '批次备注', required: false, maxLength: 500 })

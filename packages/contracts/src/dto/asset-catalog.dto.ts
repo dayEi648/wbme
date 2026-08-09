@@ -10,9 +10,8 @@ import {
   IsString,
   MaxLength,
   Min,
-  Validate,
 } from 'class-validator';
-import { BATCH_LIMIT, PaginationQueryDto } from './base.dto';
+import { BATCH_LIMIT, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 分类状态（与 asset 模块 Prisma enum 对齐） */
 export type DictStatus = 'ACTIVE' | 'DISABLED';
@@ -75,7 +74,7 @@ export class AssetCategoryUpdateDto {
 export class AssetCategoryBatchDeleteDto {
   @ApiProperty({ description: '分类 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
-  @Validate(assertBatchIds, { message: '至少需要 1 个分类 id' })
+  @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个分类 id' })
   @ArrayMaxSize(BATCH_LIMIT)
   @ArrayUnique()
   @Type(() => Number)
@@ -135,7 +134,7 @@ export class AssetDictItemUpdateDto {
 export class AssetDictItemBatchDeleteDto {
   @ApiProperty({ description: '字典项 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
-  @Validate(assertBatchIds, { message: '至少需要 1 个字典项 id' })
+  @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个字典项 id' })
   @ArrayMaxSize(BATCH_LIMIT)
   @ArrayUnique()
   @Type(() => Number)

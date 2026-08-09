@@ -6,6 +6,7 @@ import {
   frameworkErrors,
   inventoryErrors,
 } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import {
@@ -90,13 +91,28 @@ export class ConsumableService {
     if (query.keyword) {
       where.name = { contains: query.keyword, mode: 'insensitive' };
     }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      name: { prismaField: 'name', type: 'text' },
+      categoryId: { prismaField: 'categoryId', type: 'number' },
+      unitId: { prismaField: 'unitId', type: 'number' },
+      type: { prismaField: 'type', type: 'enum' },
+      quotaCycle: { prismaField: 'quotaCycle', type: 'enum' },
+      safetyStock: { prismaField: 'safetyStock', type: 'number' },
+      status: { prismaField: 'status', type: 'enum' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+      updatedAt: { prismaField: 'updatedAt', type: 'date' },
+    });
+    const effectiveWhere: Prisma.ConsumableWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ConsumableWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.consumable.count({ where }),
+      this.prisma.client.consumable.count({ where: effectiveWhere }),
       this.prisma.client.consumable.findMany({
-        where,
-        orderBy: { id: 'asc' },
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ConsumableOrderByWithRelationInput[] | undefined) ?? { id: 'asc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

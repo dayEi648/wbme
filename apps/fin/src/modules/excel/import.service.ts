@@ -14,6 +14,23 @@ import { COL, UNCLASSIFIED_GROUP } from './xlsx-template';
 /** 导入总时限（毫秒）：120 秒（fin PRD §4 固定值） */
 export const IMPORT_TIMEOUT_MS = 120_000;
 
+/**
+ * 导入固定总时限检查器（fin PRD §4：120s；超时抛 IMPORT_TIMEOUT 503）。
+ *
+ * 预览与确认各关键步骤（解析/匹配/每行写入）间调用；确认写入在事务内，
+ * 超时抛错使整批回滚（全有或全无，不留部分导入）。
+ *
+ * @returns 检查函数（从创建时刻起计算 deadline）
+ */
+function makeImportTimeoutCheck(): () => void {
+  const deadline = Date.now() + IMPORT_TIMEOUT_MS;
+  return () => {
+    if (Date.now() > deadline) {
+      throw new BusinessException(exportErrors.IMPORT_TIMEOUT);
+    }
+  };
+}
+
 /** 导入锁 TTL（比总时限多 30s，防极端时序下并发语义失效） */
 const IMPORT_LOCK_TTL_SECONDS = Math.ceil(IMPORT_TIMEOUT_MS / 1000) + 30;
 
@@ -187,8 +204,12 @@ export class ImportService {
   async preview(operator: FinOperationLogOperator, buffer: Buffer, signal?: AbortSignal): Promise<ImportPreviewResult> {
     const release = await this.acquireImportLock(operator.id);
     try {
+      const checkTimeout = makeImportTimeoutCheck();
       const parsed = await this.parseWithWorker(buffer, signal);
-      return await this.matchRows(parsed.rows, parsed.errors);
+      checkTimeout();
+      const result = await this.matchRows(parsed.rows, parsed.errors);
+      checkTimeout();
+      return result;
     } finally {
       await release();
     }
@@ -214,9 +235,13 @@ export class ImportService {
     const release = await this.acquireImportLock(operator.id);
     try {
       // 重新解析同一文件，以重新解析的行号解释选择映射（文件被替换导致行号错位时由 dataRevision 兜底）
+      const checkTimeout = makeImportTimeoutCheck();
       const parsed = await this.parseWithWorker(buffer, signal);
+      checkTimeout();
       const preview = await this.matchRows(parsed.rows, parsed.errors);
+      checkTimeout();
       const { inputs } = await this.buildRowInputsWithGroups(parsed.rows, parsed.errors);
+      checkTimeout();
       return executeIdempotentOperation(this.prisma.client, {
         operator,
         feature: FINANCE_MAINTAIN_FUNCTION_CODE,
@@ -224,7 +249,7 @@ export class ImportService {
         idempotencyKey,
         fingerprint: fingerprintPayload({ choices }),
         run: async (tx) => {
-          const result = await this.applyImport(tx, operator, inputs, preview, choices);
+          const result = await this.applyImport(tx, operator, inputs, preview, choices, checkTimeout);
           return {
             result,
             actionType: 'UPDATE' as const,
@@ -544,6 +569,7 @@ export class ImportService {
     inputs: ProjectRowInput[],
     preview: ImportPreviewResult,
     choices: ImportChoiceDto[],
+    checkTimeout: () => void,
   ): Promise<ImportConfirmResult> {
     if (inputs.length === 0) {
       return { summary: { created: 0, overwritten: 0, skipped: 0 } };
@@ -591,6 +617,7 @@ export class ImportService {
     // 1. 新增：业务键必须仍不存在（含软删除占键；预览后创建/恢复 → 整批回滚）
     const createdIds: number[] = [];
     for (const item of toCreate) {
+      checkTimeout();
       const clash = await tx.project.findFirst({ where: { businessKey: item.businessKey, year: item.input.year as number } });
       if (clash) {
         throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
@@ -604,6 +631,7 @@ export class ImportService {
     // 2. 覆盖：dataRevision 条件更新（预览后变化 → 整批回滚；缺数核对）
     const overwriteDetail: Array<{ projectId: number; beforeDetails: ProjectDetailSnapshot; afterDetails: ProjectDetailSnapshot }> = [];
     for (const item of toOverwrite) {
+      checkTimeout();
       const existing = await tx.project.findFirst({ where: { id: item.targetId } });
       if (!existing || existing.deletedAt !== null) {
         throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {

@@ -9,12 +9,11 @@ import {
   IsString,
   MaxLength,
   Min,
-  Validate,
   ValidateNested,
 } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
 import { isRfc3339Utc } from '../time';
-import { IdempotentDto, PaginationQueryDto } from './base.dto';
+import { IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 入库申请明细行（asset PRD §6：品种 + 供应商/品牌/规格/库位 + 数量 + 可选单价） */
 export class StockInRequestItemDto {
@@ -58,7 +57,7 @@ export class StockInRequestItemDto {
   @ApiProperty({ description: '单价（元，最多两位小数；可空）', required: false, example: '10.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
   unitPrice?: string;
 }
 
@@ -74,7 +73,7 @@ export class StockInRequestCreateDto extends IdempotentDto {
   @ApiProperty({ description: '整单申请时间（RFC 3339；缺省提交时；批准后作为批次入库时间）', required: false })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isRfc3339Utc(value), { message: '必须是带时区的 RFC 3339 时间字符串' })
+  @IsValidatedBy(isRfc3339Utc, { message: '必须是带时区的 RFC 3339 时间字符串' })
   receivedAt?: string;
 
   @ApiProperty({ description: '整单备注', required: false, maxLength: 500 })

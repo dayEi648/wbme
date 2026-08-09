@@ -1,7 +1,8 @@
-import { App as AntApp, Button, Card, Result, Spin, Typography } from 'antd';
+import { Button, Card, Result, Spin, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
+import { useFeedback } from '../../request/feedback';
 
 /**
  * 激活入口页（base PRD §2）：
@@ -10,7 +11,7 @@ import { ApiError, http } from '../../request/http';
  * 凭流程 Cookie 发起钉钉授权（ACTIVATION）。
  */
 export default function ActivatePage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const location = useLocation();
   const [state, setState] = useState<'redeeming' | 'redirecting' | 'failed'>('redeeming');
   const [errorMessage, setErrorMessage] = useState('');
@@ -41,10 +42,10 @@ export default function ActivatePage() {
         window.history.replaceState(null, '', '/activate');
         setState('failed');
         setErrorMessage(error instanceof ApiError ? error.body.message : '兑换失败，请重试');
-        message.error(error instanceof ApiError ? error.body.message : '兑换失败');
+        feedback.error(error, error instanceof ApiError ? error.body.message : '兑换失败');
       }
     })();
-  }, [location.hash, message]);
+  }, [location.hash, feedback]);
 
   if (state === 'redeeming') {
     return (

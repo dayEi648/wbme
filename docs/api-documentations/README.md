@@ -1,5 +1,20 @@
 # API 文档目录约定
 
+## 浏览器公开网关路径（T9）
+
+服务内部仍统一实现 `/api/v1`，浏览器只通过同源网关访问下列稳定公开前缀。网关将独立业务服务
+的前缀重写为容器内 `/api/v1` 后转发；`/internal/v1` 永不暴露给浏览器。
+
+| 归属服务 | 浏览器公开前缀 | 容器内前缀 |
+| --- | --- | --- |
+| platform-core（base/backstage） | `/api/v1` | `/api/v1` |
+| asset | `/api/asset/v1` | `/api/v1` |
+| hr | `/api/hr/v1` | `/api/v1` |
+| fin | `/api/fin/v1` | `/api/v1` |
+
+开发环境由 Vite 代理遵循此契约；生产环境 Nginx 在 T10-1 按相同规则实现。此映射避免独立服务
+间同名资源（例如审批与表格偏好）发生路由冲突。
+
 - `*.md` 为各部署单元接口文档（手写，随接口提交同步维护；文档与实现不一致视为任务未完成）。
 - `openapi/platform-core.openapi.json` 为 platform-core 的 OpenAPI 产物（主 PRD §9.5）：由构建期脚本生成并提交进版本库。
   **新增/变更接口（路由、DTO、错误码、权限要求）时执行 `pnpm --filter @wbme/platform-core openapi:generate`
@@ -17,3 +32,18 @@
   产物提交 + verify 接入 CI），产物命名 `<unit>.openapi.json`。
 - 各部署单元接口文档（手写）：`asset.md`（T7）、`hr.md`（T6）、`fin.md`（T8 工程合同/利润分析/Excel 导入导出/操作记录/财务配置），
   OpenAPI 产物 `asset.openapi.json` / `hr.openapi.json` / `fin.openapi.json` 由各单元 `openapi:generate` 生成并提交。
+
+## 幂等写请求（T9）
+
+对请求体类型继承 `IdempotentDto` 的写接口，客户端可在 body 中提交 `idempotencyKey`，也可使用标准
+`Idempotency-Key` 请求头。服务端只会在目标 `@Body()` DTO 明确继承 `IdempotentDto` 时，将请求头安全映射
+到该字段；body 已显式提供值时优先保留。认证、扫码解析等非幂等 DTO 不接收该字段，仍由全局白名单拒绝未知入参。
+
+## 表格查询通用载荷（T9）
+
+所有继承 `PaginationQueryDto` 的列表端点接受可选 `filters` 和 `sorts` JSON：
+简单条件使用 `filters={ logic, conditions: [{ field, operator, value, valueEnd? }] }`；复杂组合使用
+`filters={ logic: 'OR', groups: [{ logic: 'AND', conditions: [...] }] }`。日期区间使用
+`operator: 'BETWEEN'` 与 `value/valueEnd`，`sorts=[{ field, direction }]` 表示按顺序的多级排序。
+服务端仅按该资源已注册的字段白名单解释条件；前端同时传递同名的既有具名查询参数，保证已上线的
+分页、权限与索引约束不被绕过。任何未知字段、SQL 片段或未声明筛选都不会被拼接或执行。

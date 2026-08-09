@@ -64,6 +64,8 @@ export class OperationLogController {
       actionType: query.actionType,
       from: query.from,
       to: query.to,
+      filters: query.filters,
+      sorts: query.sorts,
       page: query.page,
       pageSize: query.pageSize,
     });
@@ -83,6 +85,8 @@ export class OperationLogController {
       actionType: query.actionType,
       from: query.from,
       to: query.to,
+      filters: query.filters,
+      sorts: query.sorts,
     }, res);
   }
 }

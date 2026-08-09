@@ -10,11 +10,10 @@ import {
   IsString,
   MaxLength,
   Min,
-  Validate,
   ValidateIf,
 } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
-import { BATCH_LIMIT, PaginationQueryDto } from './base.dto';
+import { BATCH_LIMIT, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 品种类型（与 asset 模块 Prisma enum 对齐；创建后不可变） */
 export type ConsumableType = 'DISPOSABLE' | 'REUSABLE';
@@ -81,7 +80,7 @@ export class ConsumableCreateDto {
   @ApiProperty({ description: '参考单价（元，最多两位小数）', required: false, example: '10.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
   referencePrice?: string;
 
   @ApiProperty({ description: '安全库存', required: false, default: 0, minimum: 0 })
@@ -150,7 +149,7 @@ export class ConsumableUpdateDto {
   @ApiProperty({ description: '参考单价（元，最多两位小数）', required: false, example: '10.00' })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '单价必须是 ≥ 0 且最多两位小数的十进制字符串' })
   referencePrice?: string;
 
   @ApiProperty({ description: '安全库存', minimum: 0 })
@@ -185,7 +184,7 @@ export class ConsumableUpdateDto {
 export class ConsumableBatchDeleteDto {
   @ApiProperty({ description: '品种 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
-  @Validate(assertBatchIds, { message: '至少需要 1 个品种 id' })
+  @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个品种 id' })
   @ArrayMaxSize(BATCH_LIMIT)
   @ArrayUnique()
   @Type(() => Number)

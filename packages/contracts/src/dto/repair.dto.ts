@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Validate } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
 import { isRfc3339Utc } from '../time';
-import { IdempotentDto, PaginationQueryDto } from './base.dto';
+import { IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 import type { AssetStatus } from './fixed-asset.dto';
 
 /** 维修单状态（与 asset 模块 Prisma enum 对齐） */
@@ -28,7 +28,7 @@ export class RepairOrderCreateDto extends IdempotentDto {
   })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isRfc3339Utc(value), { message: '必须是带时区的 RFC 3339 时间字符串' })
+  @IsValidatedBy(isRfc3339Utc, { message: '必须是带时区的 RFC 3339 时间字符串' })
   reportedAt?: string;
 }
 
@@ -37,7 +37,7 @@ export class RepairStartDto {
   @ApiProperty({ description: '开始维修时间（RFC 3339；缺省为当前时间）', required: false })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isRfc3339Utc(value), { message: '必须是带时区的 RFC 3339 时间字符串' })
+  @IsValidatedBy(isRfc3339Utc, { message: '必须是带时区的 RFC 3339 时间字符串' })
   startedAt?: string;
 }
 
@@ -50,7 +50,7 @@ export class RepairCompleteDto {
 
   @ApiProperty({ description: '实际费用（元，无费用为 0；最多两位小数）', example: '0' })
   @IsString()
-  @Validate((value: string) => isNonNegativeAmount(value), { message: '费用必须是 ≥ 0 且最多两位小数的十进制字符串' })
+  @IsValidatedBy(isNonNegativeAmount, { message: '费用必须是 ≥ 0 且最多两位小数的十进制字符串' })
   actualCost!: string;
 
   @ApiProperty({
@@ -63,7 +63,7 @@ export class RepairCompleteDto {
   @ApiProperty({ description: '完成时间（RFC 3339；缺省为当前时间）', required: false })
   @IsOptional()
   @IsString()
-  @Validate((value: string) => isRfc3339Utc(value), { message: '必须是带时区的 RFC 3339 时间字符串' })
+  @IsValidatedBy(isRfc3339Utc, { message: '必须是带时区的 RFC 3339 时间字符串' })
   completedAt?: string;
 }
 

@@ -60,6 +60,14 @@ class TestController {
     throw new Error('internal boom');
   }
 
+  @Get('file-too-large')
+  fileTooLarge(): never {
+    // MulterError 形状（鸭子类型识别；LIMIT_FILE_SIZE 为 multer 稳定错误码）
+    const error = new Error('File too large') as Error & { code: string };
+    error.code = 'LIMIT_FILE_SIZE';
+    throw error;
+  }
+
   @Get('slow')
   async slow(): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -146,5 +154,14 @@ describe('统一请求链路（主 PRD §9.6）', () => {
   it('超过固定总超时返回 503 TIMEOUT', async () => {
     const res = await request(app.getHttpServer()).get('/slow').expect(503);
     expect(res.body.error).toMatchObject({ type: 'TIMEOUT', code: 'REQUEST_TIMEOUT' });
+  });
+
+  it('上传文件超限（MulterError LIMIT_FILE_SIZE）映射为 413 IMPORT_FILE_TOO_LARGE', async () => {
+    const res = await request(app.getHttpServer()).get('/file-too-large').expect(413);
+    expect(res.body.error).toMatchObject({
+      type: 'VALIDATION',
+      domain: 'FINANCE',
+      code: 'IMPORT_FILE_TOO_LARGE',
+    });
   });
 });

@@ -2,7 +2,7 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UploadedFi
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { BusinessException, financeErrors, frameworkErrors, ImportConfirmDto, ProjectQueryDto } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RequestTimeout } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFinanceMaintainAccess, assertFinanceReadAccess } from '../../shared/cross-schema-auth';
 import { loadFinOperationLogOperator } from '../../shared/fin-operation-log.util';
@@ -11,6 +11,9 @@ import { ImportService } from './import.service';
 
 /** 上传文件固定上限：20 MiB（fin PRD §4 MVP 固定值；Multer 层先拦截） */
 export const IMPORT_MAX_BYTES = 20 * 1024 * 1024;
+
+/** Excel 导入/导出路由超时：业务总时限 120s + 30s 缓冲（全局默认 30s 会提前截断长任务） */
+const EXCEL_ROUTE_TIMEOUT_MS = 150_000;
 
 /**
  * 利润分析 Excel 导入/导出（fin PRD §4）。
@@ -26,6 +29,7 @@ export class ExcelController {
 
   /** 导入预览（multipart 单文件；服务端当前请求内解析校验，不写入正式表、不保留文件） */
   @Post('import/preview')
+  @RequestTimeout(EXCEL_ROUTE_TIMEOUT_MS)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: IMPORT_MAX_BYTES } }))
   async importPreview(
     @CurrentUser() userId: number,
@@ -42,6 +46,7 @@ export class ExcelController {
 
   /** 导入确认（携带选择映射与幂等键；服务端重新解析同一文件后集合化批量写入，全有或全无） */
   @Post('import/confirm')
+  @RequestTimeout(EXCEL_ROUTE_TIMEOUT_MS)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: IMPORT_MAX_BYTES } }))
   async importConfirm(
     @CurrentUser() userId: number,
@@ -59,6 +64,7 @@ export class ExcelController {
 
   /** 导出（导出所有/导出已筛选；固定 V2 模板；附件直接响应） */
   @Get('export/:scope')
+  @RequestTimeout(EXCEL_ROUTE_TIMEOUT_MS)
   async export(
     @CurrentUser() userId: number,
     @Param('scope') scope: string,

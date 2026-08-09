@@ -41,6 +41,8 @@ export interface MeResult {
     isSuperAdmin: boolean;
   };
   hasDingtalkBinding: boolean;
+  /** 当前会话可见的功能编码；仅用于前端显隐，服务端守卫仍是最终授权边界。 */
+  functionCodes: string[];
 }
 
 /**
@@ -136,10 +138,19 @@ export class AuthService {
     if (!user || user.deletedAt !== null) {
       throw new BusinessException(frameworkErrors.SESSION_EXPIRED);
     }
-    const binding = await this.prisma.client.dingtalkBinding.findFirst({
-      where: { userId, status: 'BOUND' },
-      select: { id: true },
-    });
+    const [binding, functionCodes] = await Promise.all([
+      this.prisma.client.dingtalkBinding.findFirst({
+        where: { userId, status: 'BOUND' },
+        select: { id: true },
+      }),
+      user.isSuperAdmin
+        ? this.prisma.client.function
+            .findMany({ select: { code: true }, orderBy: { code: 'asc' } })
+            .then((functions) => functions.map((functionItem) => functionItem.code))
+        : this.prisma.client.employeeGrant
+            .findMany({ where: { userId }, select: { functionCode: true }, orderBy: { functionCode: 'asc' } })
+            .then((grants) => grants.map((grant) => grant.functionCode)),
+    ]);
     return {
       user: {
         id: user.id,
@@ -150,6 +161,7 @@ export class AuthService {
         isSuperAdmin: user.isSuperAdmin,
       },
       hasDingtalkBinding: binding !== null,
+      functionCodes,
     };
   }
 

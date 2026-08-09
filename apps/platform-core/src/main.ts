@@ -9,6 +9,7 @@ import {
   createValidationPipe,
   defaultDependencyDetector,
   GlobalExceptionFilter,
+  IdempotencyHeaderInterceptor,
   RequestTimeoutInterceptor,
 } from '@wbme/server';
 import { AppModule } from './app.module';
@@ -35,7 +36,7 @@ async function bootstrap(): Promise<void> {
   const errorLogWriter = app.get(PlatformErrorLogWriter);
   app.useGlobalFilters(new GlobalExceptionFilter(defaultDependencyDetector, errorLogWriter));
   app.useGlobalPipes(createValidationPipe());
-  app.useGlobalInterceptors(new AccessLogInterceptor(), new RequestTimeoutInterceptor());
+  app.useGlobalInterceptors(new IdempotencyHeaderInterceptor(), new AccessLogInterceptor(), new RequestTimeoutInterceptor());
 
   const port = Number(process.env.PLATFORM_CORE_PORT ?? 3001);
   await app.listen(port);

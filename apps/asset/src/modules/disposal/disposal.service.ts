@@ -96,19 +96,30 @@ export class DisposalService {
     const scope = await this.approverScope(userId, access);
     const closure = await this.closures.closureOfUser(userId);
     // 范围条件（⑩ 修复：下沉 SQL 分页，消除 LIMIT 500 内存过滤；与处置记录视图同一闭包语义）：
-    // PERSONAL 按借出时部门快照闭包；AGENT 按受领人名单部门快照闭包
+    // PERSONAL 按借出时部门快照闭包；AGENT 按受领人名单部门快照闭包。
+    // 闭包语义与审批中心一致（主 PRD §3.2 全部对象部门 ∈ 审批人闭包）：
+    // 任一部门命中即显示会泄露范围外记录（多部门员工快照场景），此处全部部门须在闭包内
     const scopeSql =
       scope.kind === 'COMPANY'
         ? Prisma.empty
         : Prisma.sql`AND (
-            (br.record_type = 'PERSONAL' AND EXISTS (
-              SELECT 1 FROM jsonb_array_elements(br.department_snapshot) el WHERE el->>'id' = ANY(${[...closure] as number[]}))
+            (br.record_type = 'PERSONAL' AND jsonb_array_length(br.department_snapshot) > 0
+              AND NOT EXISTS (
+                SELECT 1 FROM jsonb_array_elements(br.department_snapshot) el
+                WHERE (el->>'id')::int <> ALL(${[...closure] as number[]})
+              )
             )
-            OR (br.record_type = 'AGENT' AND EXISTS (
+            OR (br.record_type = 'AGENT' AND NOT EXISTS (
               SELECT 1 FROM asset.agent_recipients arp
-              CROSS JOIN LATERAL jsonb_array_elements(arp.department_snapshot) el
-              WHERE arp.request_id = br.agent_request_id AND el->>'id' = ANY(${[...closure] as number[]}))
-            )
+              WHERE arp.request_id = br.agent_request_id
+                AND (
+                  jsonb_array_length(arp.department_snapshot) = 0
+                  OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(arp.department_snapshot) el
+                    WHERE (el->>'id')::int <> ALL(${[...closure] as number[]})
+                  )
+                )
+            ))
           )`;
     const recordTypeSql =
       query.recordType === undefined
@@ -267,17 +278,20 @@ export class DisposalService {
       conditions.push(Prisma.sql`dr.created_at <= ${new Date(query.createdAtTo)}`);
     }
     if (scope.kind === 'DEPARTMENT') {
+      // 与待处置列表同一闭包语义：记录对应部门快照全部 ∈ 审批人闭包才可见
+      // （数组=多部门员工全部部门；单对象快照兼容展开；快照缺失不可见）
       conditions.push(Prisma.sql`
-        EXISTS (
+        jsonb_typeof(COALESCE(dr.department_snapshot, br.department_snapshot)) IN ('array', 'object')
+        AND NOT EXISTS (
           SELECT 1
           FROM jsonb_array_elements(
             CASE
               WHEN jsonb_typeof(COALESCE(dr.department_snapshot, br.department_snapshot)) = 'array'
                 THEN COALESCE(dr.department_snapshot, br.department_snapshot)
-              ELSE '[]'::jsonb
+              ELSE jsonb_build_array(COALESCE(dr.department_snapshot, br.department_snapshot))
             END
           ) el
-          WHERE el->>'id' = ANY(${[...closure] as number[]})
+          WHERE (el->>'id')::int <> ALL(${[...closure] as number[]})
         )
       `);
     }
@@ -358,7 +372,8 @@ export class DisposalService {
       const deptIds = extractDepartmentIdsFromSnapshot(deptRows[0]?.department_snapshot ?? null).filter(
         (id): id is number => id !== null,
       );
-      if (!deptIds.some((id) => closure.has(id))) {
+      // 全部部门 ∈ 闭包（与审批中心处理路径 assertScopeCoversAll 一致）；快照缺失不可处置
+      if (deptIds.length === 0 || !deptIds.every((id) => closure.has(id))) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
       }
     }

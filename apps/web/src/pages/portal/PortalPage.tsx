@@ -1,8 +1,9 @@
-import { App as AntApp, Badge, Button, Card, Drawer, Space, Tag, Typography } from 'antd';
+import { Badge, Button, Card, Drawer, Space, Tag, Typography } from 'antd';
 import { BellOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
+import { useFeedback } from '../../request/feedback';
 import { useSession } from '../../request/session';
 
 interface SystemEntry {
@@ -26,7 +27,7 @@ interface PortalData {
  * 入口可见 ≠ 可进入："即将上线"展示状态但不可进入。
  */
 export default function PortalPage() {
-  const { message } = AntApp.useApp();
+  const feedback = useFeedback();
   const navigate = useNavigate();
   const { logout } = useSession();
   const [portal, setPortal] = useState<PortalData | null>(null);
@@ -38,14 +39,14 @@ export default function PortalPage() {
       .then(setPortal)
       .catch((error) => {
         if (error instanceof ApiError) {
-          message.error(error.body.message);
+          feedback.error(error);
         }
       });
-  }, [message]);
+  }, [feedback]);
 
   async function handleLogout() {
     await logout();
-    message.success('已退出登录');
+    feedback.success('已退出登录');
   }
 
   return (

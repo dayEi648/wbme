@@ -104,10 +104,10 @@ export class OvertimeSummaryService {
    * 员工月度明细（下钻）。
    *
    * @param userId 员工 id
-   * @param month YYYY-MM
+   * @param month YYYY-MM（缺省=当前月）
    * @returns 明细列表（含申请编号/日期/时间段/时长/事由/日期类型）
    */
-  async detailForUser(userId: number, month: string): Promise<unknown[]> {
+  async detailForUser(userId: number, month?: string): Promise<unknown[]> {
     const { start, end } = monthRange(month);
     return this.prisma.client.$queryRaw<unknown[]>`
       SELECT oi.id,

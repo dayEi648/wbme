@@ -1,10 +1,11 @@
 /**
  * 统一请求层（主 PRD §9.5/§10.5，T9-1 前置落地）。
  *
- * - baseURL=/api/v1、credentials 携带 Cookie、自动附加 X-WBME-CSRF-Token（双提交）；
+ * - 平台核心使用 /api/v1；独立业务服务使用稳定网关前缀 /api/{service}/v1；
+ *   credentials 携带 Cookie、自动附加 X-WBME-CSRF-Token（双提交）；
  * - 写请求默认 X-WBME-Active: 1；读请求仅页面导航/用户查询显式传 { active: true }
  *   （轮询/预取/静默刷新不得续期，base PRD §3）；
- * - 重要写操作自动生成幂等键：同一请求体生成相同键（网络重试保持不变，主 PRD §9.5）；
+ * - 重要写操作为每次用户意图生成随机幂等键；调用方在网络重试时显式复用同一键（主 PRD §9.5）；
  * - 统一错误映射：会话失效/账号状态异常 → 清理登录态并带提示跳登录页（base PRD §3）。
  */
 
@@ -55,26 +56,50 @@ function hasSessionCookie(): boolean {
 }
 
 /**
- * 稳定幂等键：同一请求体（同一用户意图的重试）生成相同键，网络重试保持不变（主 PRD §9.5）。
- * 失败请求不产生幂等记录，重试时后端按首次成功结果去重；显式传入的键优先。
+ * 为一次请求生成高熵幂等键。
+ *
+ * 不能按请求体哈希：两次独立但内容相同的业务意图必须分别执行。确需重试时，页面持有并显式
+ * 传回第一次的键；失败请求不产生幂等记录，重试时后端按首次成功结果去重。
  */
-function stableIdempotencyKey(method: string, path: string, body: unknown): string {
-  const raw = `${method}:${path}:${JSON.stringify(body ?? '')}`;
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    hash = (hash * 31 + raw.charCodeAt(i)) | 0;
-  }
-  return `auto-${(hash >>> 0).toString(16)}`;
+function createIdempotencyKey(): string {
+  return `web-${crypto.randomUUID()}`;
 }
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
+  /** 目标公开服务；平台核心为默认值，业务服务经同源网关前缀路由。 */
+  service?: ApiService;
   /** 是否视为"有效交互"（续期会话）；写请求默认 true，读请求按页面导航/查询显式传 */
   active?: boolean;
-  /** 重要写操作幂等键（自动生成并缓存，网络重试保持不变） */
+  /** 重要写操作幂等键；调用方在重试同一用户意图时显式复用。 */
   idempotencyKey?: string;
 }
+
+/** 二进制下载或 multipart 上传的选项。 */
+export interface ServiceRequestOptions {
+  service?: ApiService;
+  active?: boolean;
+  idempotencyKey?: string;
+  /** 仅导出端点需要 POST 时复用与普通请求一致的 CSRF 与幂等约定。 */
+  method?: 'GET' | 'POST';
+  body?: unknown;
+}
+
+/**
+ * 面向浏览器的公开 API 服务标识。
+ *
+ * 后端容器内部仍保留各自的 /api/v1 契约；前端只消费此处定义的同源网关路径，
+ * 以消除 asset/hr/fin 中同名资源的路由歧义。
+ */
+export type ApiService = 'platform' | 'asset' | 'hr' | 'fin';
+
+const SERVICE_PREFIX: Readonly<Record<ApiService, string>> = {
+  platform: '/api/v1',
+  asset: '/api/asset/v1',
+  hr: '/api/hr/v1',
+  fin: '/api/fin/v1',
+};
 
 /** 读 CSRF Cookie（双提交） */
 function readCsrfCookie(): string {
@@ -98,6 +123,15 @@ function parseErrorBody(raw: string, status: number, requestId: string): ApiErro
   );
 }
 
+/** 对所有请求形式统一处理会话与账号状态失效，避免下载/上传绕过会话清理。 */
+function handleSessionError(error: ApiError): void {
+  if (error.type === 'AUTHENTICATION' && error.code === 'SESSION_EXPIRED') {
+    onSessionExpired?.(undefined, !hasSessionCookie());
+  } else if ((error.code === 'ACCOUNT_DEACTIVATED' || error.code === 'ACCOUNT_PENDING_ACTIVATION') && hasSessionCookie()) {
+    onSessionExpired?.(error.message);
+  }
+}
+
 /** 请求体编码（null/undefined 不带 body） */
 function encodeBody(body: unknown): string | undefined {
   if (body === undefined || body === null) {
@@ -113,6 +147,7 @@ function encodeBody(body: unknown): string | undefined {
  */
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? 'GET';
+  const service = options.service ?? 'platform';
   const isWrite = method !== 'GET';
   const active = options.active ?? isWrite;
   const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -126,8 +161,8 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (active) {
     headers['x-wbme-active'] = '1';
   }
-  // 幂等键：显式传入优先；写操作未显式传入时按请求体自动生成稳定键（重试保持不变）
-  const idempotencyKey = options.idempotencyKey ?? (isWrite ? stableIdempotencyKey(method, path, options.body) : undefined);
+  // 幂等键：每次独立写入意图都有新键；调用方只有在重试同一次意图时才复用显式键。
+  const idempotencyKey = options.idempotencyKey ?? (isWrite ? createIdempotencyKey() : undefined);
   if (idempotencyKey) {
     headers['idempotency-key'] = idempotencyKey;
   }
@@ -137,7 +172,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   let response: Response;
   try {
-    response = await fetch(`/api/v1${path}`, {
+    response = await fetch(`${SERVICE_PREFIX[service]}${path}`, {
       method,
       headers,
       credentials: 'same-origin',
@@ -162,14 +197,76 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   // 会话失效：统一清理并跳登录（主 PRD §10.5，base PRD §3 明确提示）。
   // 持有会话 Cookie 却返回 SESSION_EXPIRED = 会话中途失效（明确提示）；
   // 无会话 Cookie（未登录首访）静默跳转，不弹误导性提示。
-  if (error.type === 'AUTHENTICATION' && error.code === 'SESSION_EXPIRED') {
-    onSessionExpired?.(undefined, !hasSessionCookie());
-  } else if ((error.code === 'ACCOUNT_DEACTIVATED' || error.code === 'ACCOUNT_PENDING_ACTIVATION') && hasSessionCookie()) {
-    // 已登录态下账号状态异常（注销/待激活）：清理登录态并透传服务端提示；
-    // 登录失败场景（无会话 Cookie）不触发全局处理，由页面自行展示（避免双 toast）
-    onSessionExpired?.(error.message);
-  }
+  handleSessionError(error);
   throw error;
+}
+
+/**
+ * 下载受保护的附件。
+ *
+ * @returns 二进制内容；由调用页以临时 Object URL 触发浏览器下载，不写入本地持久存储。
+ */
+export async function download(path: string, options: ServiceRequestOptions = {}): Promise<Blob> {
+  const requestId = crypto.randomUUID();
+  const method = options.method ?? 'GET';
+  const isWrite = method !== 'GET';
+  const csrf = readCsrfCookie();
+  const idempotencyKey = options.idempotencyKey ?? (isWrite ? createIdempotencyKey() : undefined);
+  let response: Response;
+  try {
+    response = await fetch(`${SERVICE_PREFIX[options.service ?? 'platform']}${path}`, {
+      method,
+      headers: {
+        'x-request-id': requestId,
+        ...(isWrite ? { 'content-type': 'application/json' } : {}),
+        ...(isWrite && csrf ? { 'x-wbme-csrf-token': csrf } : {}),
+        ...(options.active ?? isWrite ? { 'x-wbme-active': '1' } : {}),
+        ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+      },
+      credentials: 'same-origin',
+      body: isWrite ? encodeBody(options.body) : undefined,
+    });
+  } catch {
+    throw new ApiError(
+      { type: 'DEPENDENCY', code: 'DEPENDENCY_UNAVAILABLE', message: '网络异常，请稍后重试', requestId },
+      0,
+    );
+  }
+  if (!response.ok) {
+    const error = parseErrorBody(await response.text(), response.status, requestId);
+    handleSessionError(error);
+    throw error;
+  }
+  return response.blob();
+}
+
+/**
+ * 上传 multipart 表单（例如财务 Excel）。
+ *
+ * 浏览器自动生成 multipart boundary；禁止手动设置 Content-Type，以免破坏服务端文件解析。
+ */
+export async function upload<T>(path: string, formData: FormData, options: ServiceRequestOptions = {}): Promise<T> {
+  const requestId = crypto.randomUUID();
+  const headers: Record<string, string> = { 'x-request-id': requestId, ...(options.active === false ? {} : { 'x-wbme-active': '1' }) };
+  const csrf = readCsrfCookie();
+  if (csrf) {
+    headers['x-wbme-csrf-token'] = csrf;
+  }
+  if (options.idempotencyKey) {
+    headers['idempotency-key'] = options.idempotencyKey;
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${SERVICE_PREFIX[options.service ?? 'platform']}${path}`, { method: 'POST', headers, credentials: 'same-origin', body: formData });
+  } catch {
+    throw new ApiError({ type: 'DEPENDENCY', code: 'DEPENDENCY_UNAVAILABLE', message: '网络异常，请稍后重试', requestId }, 0);
+  }
+  if (!response.ok) {
+    const error = parseErrorBody(await response.text(), response.status, requestId);
+    handleSessionError(error);
+    throw error;
+  }
+  return response.status === 204 ? (undefined as T) : (await response.json()) as T;
 }
 
 export const http = {
@@ -178,4 +275,8 @@ export const http = {
     api<T>(path, { ...options, method: 'POST', body }),
   put: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body'>) =>
     api<T>(path, { ...options, method: 'PUT', body }),
+  patch: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body'>) =>
+    api<T>(path, { ...options, method: 'PATCH', body }),
+  delete: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body'>) =>
+    api<T>(path, { ...options, method: 'DELETE', body }),
 };

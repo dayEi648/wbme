@@ -43,17 +43,23 @@ export class OvertimeExportService {
    * @param exporterUserId 导出会话用户（单用户并发互斥键）
    * @param userIds 范围内员工 id 集合（空 = 导出空表）
    * @param month YYYY-MM（缺省=本月）
+   * @param keyword 员工姓名关键字（可选；与管理列表同口径）
    * @param res Express 响应（流式写回）
    */
-  async export(exporterUserId: number, userIds: ReadonlySet<number>, month: string | undefined, res: Response): Promise<void> {
+  async export(
+    exporterUserId: number,
+    userIds: ReadonlySet<number>,
+    month: string | undefined,
+    keyword: string | undefined,
+    res: Response,
+  ): Promise<void> {
     const maxRows = await this.readExportMaxRows();
     const { start, end } = monthRange(month);
     const userIdArray = [...userIds];
-    const whereSql =
-      userIdArray.length > 0
-        ? `WHERE r.status = 'APPROVED' AND oi.user_id = ANY($1) AND oi.overtime_date >= $2::date AND oi.overtime_date < $3::date`
-        : `WHERE r.status = 'APPROVED' AND 1 = 0`;
-    const params: unknown[] = userIdArray.length > 0 ? [userIdArray, start, end] : [];
+    const whereSql = userIdArray.length > 0
+      ? `WHERE r.status = 'APPROVED' AND oi.user_id = ANY($1) AND oi.overtime_date >= $2::date AND oi.overtime_date < $3::date${keyword ? " AND oi.user_name ILIKE $4 ESCAPE '\\'" : ''}`
+      : `WHERE r.status = 'APPROVED' AND 1 = 0`;
+    const params: unknown[] = userIdArray.length > 0 ? [userIdArray, start, end, ...(keyword ? [`%${escapeLike(keyword)}%`] : [])] : [];
     await runExport<OvertimeExportRow>({
       userId: exporterUserId,
       redis: this.redis.redis,
@@ -120,6 +126,11 @@ export class OvertimeExportService {
     const value = Number(rows[0]?.value ?? 100000);
     return Number.isFinite(value) && value > 0 ? value : 100000;
   }
+}
+
+/** LIKE 模糊匹配将通配符按字面量解释，避免用户输入改变筛选语义。 */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
 }
 
 /** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC 构造） */

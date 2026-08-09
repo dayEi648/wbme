@@ -8,6 +8,7 @@ import {
   assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -321,14 +322,26 @@ export class RepairService {
     if (query.status) {
       where.status = query.status;
     }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      assetId: { prismaField: 'assetId', type: 'number' },
+      faultDescription: { prismaField: 'faultDescription', type: 'text' },
+      status: { prismaField: 'status', type: 'enum' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+      startedAt: { prismaField: 'startedAt', type: 'date' },
+      completedAt: { prismaField: 'completedAt', type: 'date' },
+    });
+    const effectiveWhere: Prisma.RepairOrderWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.RepairOrderWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.repairOrder.count({ where }),
+      this.prisma.client.repairOrder.count({ where: effectiveWhere }),
       this.prisma.client.repairOrder.findMany({
-        where,
+        where: effectiveWhere,
         include: { asset: { select: { name: true, usageStatus: true, departmentId: true, departmentName: true } } },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: (tableQuery.orderBy as Prisma.RepairOrderOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

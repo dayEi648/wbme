@@ -8,6 +8,7 @@ import {
   frameworkErrors,
   inventoryErrors,
 } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import {
@@ -69,12 +70,26 @@ export class InventoryService {
     if (query.spec) {
       where.spec = query.spec;
     }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      consumableId: { prismaField: 'consumableId', type: 'number' },
+      warehouseId: { prismaField: 'warehouseId', type: 'number' },
+      spec: { prismaField: 'spec', type: 'text' },
+      warehouseName: { prismaField: 'warehouseName', type: 'text' },
+      bookQty: { prismaField: 'bookQty', type: 'number' },
+      reservedQty: { prismaField: 'reservedQty', type: 'number' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+      updatedAt: { prismaField: 'updatedAt', type: 'date' },
+    });
+    const effectiveWhere: Prisma.InventoryItemWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.InventoryItemWhereInput] }
+      : where;
     const [total, rows] = await Promise.all([
-      this.prisma.client.inventoryItem.count({ where }),
+      this.prisma.client.inventoryItem.count({ where: effectiveWhere }),
       this.prisma.client.inventoryItem.findMany({
-        where,
+        where: effectiveWhere,
         include: { consumable: { select: { name: true, safetyStock: true } } },
-        orderBy: [{ id: 'asc' }],
+        orderBy: (tableQuery.orderBy as Prisma.InventoryItemOrderByWithRelationInput[] | undefined) ?? [{ id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -187,13 +202,27 @@ export class InventoryService {
       });
       where.inventoryItemId = { in: ids.map((item) => item.id) };
     }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      inventoryItemId: { prismaField: 'inventoryItemId', type: 'number' },
+      consumableId: { prismaField: 'consumableId', type: 'number' },
+      consumableName: { prismaField: 'consumableName', type: 'text' },
+      spec: { prismaField: 'spec', type: 'text' },
+      warehouseName: { prismaField: 'warehouseName', type: 'text' },
+      remainingQty: { prismaField: 'remainingQty', type: 'number' },
+      receivedAt: { prismaField: 'receivedAt', type: 'date' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+    });
+    const effectiveWhere: Prisma.BatchWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.BatchWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.batch.count({ where }),
+      this.prisma.client.batch.count({ where: effectiveWhere }),
       this.prisma.client.batch.findMany({
-        where,
-        orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.BatchOrderByWithRelationInput[] | undefined) ?? [{ receivedAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -202,7 +231,7 @@ export class InventoryService {
       total,
       items: rows.map((row) => ({
         ...row,
-        unitPrice: row.unitPrice !== null ? Number(row.unitPrice).toFixed(2) : null,
+        unitPrice: row.unitPrice !== null ? row.unitPrice.toFixed(2) : null,
       })),
     };
   }

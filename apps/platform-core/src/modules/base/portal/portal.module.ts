@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PermissionModule } from '../../backstage/permission/permission.module';
 import { OperationLogModule } from '../../backstage/operation-log/operation-log.module';
+import { SettingsModule } from '../settings/settings.module';
 import { PortalService } from './portal.service';
 import { PortalController } from './portal.controller';
 import { MeController } from '../me/me.controller';
@@ -12,7 +13,7 @@ import { HrOrgClient } from '../me/hr-org.client';
 
 /** 门户与个人中心模块（base PRD §5/§6，T2-6/T2-7 / T5 / T6-6 岗位申请接通） */
 @Module({
-  imports: [PermissionModule, OperationLogModule],
+  imports: [PermissionModule, OperationLogModule, SettingsModule],
   providers: [
     PortalService,
     ProfileChangeService,

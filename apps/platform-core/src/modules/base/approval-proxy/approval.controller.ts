@@ -1,5 +1,6 @@
 import { ApiTags } from '@nestjs/swagger';
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApprovalListQueryDto,
   CancelApprovalDto,
@@ -36,6 +37,17 @@ export class ApprovalController {
   @RequireFunction(USER_MANAGE_FUNCTION_CODE)
   async list(@Query() query: ApprovalListQueryDto): Promise<unknown> {
     return this.approvalCenter.list(query);
+  }
+
+  /** 审批列表导出（导出所有/导出已筛选；xlsx 附件） */
+  @Post('export')
+  @RequireFunction(USER_MANAGE_FUNCTION_CODE)
+  async export(
+    @Query() query: ApprovalListQueryDto,
+    @CurrentUser() userId: number,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.approvalCenter.export(userId, query, res);
   }
 
   /** 审批详情 */

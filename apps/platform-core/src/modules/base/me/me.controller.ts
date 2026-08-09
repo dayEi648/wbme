@@ -1,5 +1,5 @@
 import { ApiProperty, ApiTags } from '@nestjs/swagger';
-import { Body, Controller, Get, Inject, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Put, Query, Res } from '@nestjs/common';
 import {
   BusinessException,
   frameworkErrors,
@@ -9,6 +9,7 @@ import {
   PositionApplicationSubmitDto,
 } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
+import type { Response } from 'express';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PrismaService } from '../../../prisma.service';
 import { ProfileChangeService } from '../approval-proxy/profile-change.service';
@@ -125,6 +126,16 @@ export class MeController {
     @CurrentUser() userId: number,
     @Query() query: PaginationQueryDto,
   ): Promise<unknown> {
-    return this.operationLog.listMine(userId, { page: query.page, pageSize: query.pageSize });
+    return this.operationLog.listMine(userId, { page: query.page, pageSize: query.pageSize, filters: query.filters, sorts: query.sorts });
+  }
+
+  /** P6 我的操作日志导出（仅当前用户记录；结构化筛选与列表一致）。 */
+  @Get('operation-logs/export')
+  async exportMyOperationLogs(
+    @CurrentUser() userId: number,
+    @Query() query: PaginationQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.operationLog.export(userId, { operatorId: userId, filters: query.filters, sorts: query.sorts }, res);
   }
 }

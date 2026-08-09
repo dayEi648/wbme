@@ -913,6 +913,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "申请类型（取值由各模块声明）",
             "in": "query",
             "name": "requestType",
@@ -1112,6 +1132,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -1394,6 +1434,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -1841,6 +1901,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "关键字（姓名/工号等模糊匹配）",
             "in": "query",
             "name": "keyword",
@@ -2019,6 +2099,82 @@
         ]
       }
     },
+    "/api/v1/overtime/applications/mine": {
+      "get": {
+        "operationId": "OvertimeController_myPendingApplications",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "月份（YYYY-MM）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "当前用户可取消的待审批加班批次。\n\n申请人或代交人均可见，用于在没有审批权限时仍能完成本人申请的取消闭环；\n不返回其它申请人的记录，也不依赖审批功能授权。",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
     "/api/v1/overtime/date-type": {
       "get": {
         "operationId": "OvertimeController_dateType",
@@ -2070,6 +2226,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -2162,6 +2338,26 @@
             }
           },
           {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "description": "月份（YYYY-MM）",
             "in": "query",
             "name": "month",
@@ -2210,10 +2406,18 @@
         ]
       }
     },
-    "/api/v1/overtime/records/export": {
+    "/api/v1/overtime/records/{targetUserId}": {
       "get": {
-        "operationId": "OvertimeController_exportRecords",
+        "operationId": "OvertimeController_recordDetails",
         "parameters": [
+          {
+            "in": "path",
+            "name": "targetUserId",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
           {
             "description": "月份（YYYY-MM；空 = 当月）",
             "in": "query",
@@ -2221,6 +2425,95 @@
             "required": false,
             "schema": {
               "example": "2026-08",
+              "type": "string"
+            }
+          },
+          {
+            "description": "按部门过滤",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "管理视图下钻：只读取当前权限范围内指定员工的当月已批准明细。",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/records/export": {
+      "get": {
+        "operationId": "OvertimeController_exportRecords",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "月份（YYYY-MM）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（姓名等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
               "type": "string"
             }
           },
@@ -2467,6 +2760,21 @@
         ]
       }
     },
+    "/api/v1/self-service/position-application-options": {
+      "get": {
+        "operationId": "SelfServiceController_positionApplicationOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "返回岗位变更申请的活跃部门与允许自助申请的岗位。",
+        "tags": [
+          "SelfService"
+        ]
+      }
+    },
     "/api/v1/title-rules": {
       "get": {
         "operationId": "TitleController_list",
@@ -2492,6 +2800,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {
@@ -2759,6 +3087,26 @@
               "maximum": 100,
               "minimum": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
             }
           },
           {

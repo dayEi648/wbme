@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
 import { isNonNegativeAmount } from '@wbme/contracts';
 import { normalizeProjectName } from '../../shared/name-normalize';
+import { buildProjectTableQuery } from '../../shared/project-table-query';
 import { calcProjectAutoFields, type ProjectCalcResult } from '../../shared/project-calc';
 import {
   formatCalendarDate,
@@ -150,13 +151,17 @@ export class ProfitService {
     if (query.progressId !== undefined) {
       where.progressId = query.progressId;
     }
+    const tableQuery = buildProjectTableQuery(query);
+    const effectiveWhere: Prisma.ProjectWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ProjectWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.project.count({ where }),
+      this.prisma.client.project.count({ where: effectiveWhere }),
       this.prisma.client.project.findMany({
-        where,
-        orderBy: [{ year: 'desc' }, { id: 'desc' }],
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ProjectOrderByWithRelationInput[] | undefined) ?? [{ year: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -317,7 +322,8 @@ export class ProfitService {
           throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { fields: [{ field, reason: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' }] });
         }
         const amount = value === null || value === '' ? null : new Prisma.Decimal(value as string);
-        return { write: { [field]: amount }, displayValue: amount === null ? null : (value as string) };
+        // 回显与比较均走 toFixed(2) 规范化（与 before 快照同一口径，避免 "600" 提交被误判为变更）
+        return { write: { [field]: amount }, displayValue: amount === null ? null : amount.toFixed(2) };
       }
       case 'string-array': {
         if (!Array.isArray(value)) {

@@ -1,8 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ApprovalListQueryDto } from '@wbme/contracts';
-import { BusinessException, frameworkErrors } from '@wbme/contracts';
+import { BusinessException, frameworkErrors, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
+import { runExport, RedisService } from '@wbme/server';
+import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
+import type { Response } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
+import {
+  loadOperationLogOperator,
+  writeBackstageOperationLog,
+} from '../../backstage/permission/operation-log.util';
 
 /** 审批中心列表项 */
 export interface ApprovalListItem {
@@ -26,7 +33,11 @@ export interface ApprovalListItem {
  */
 @Injectable()
 export class ApprovalCenterService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+    private readonly settings: SettingsService,
+  ) {}
 
   /**
    * 分页列表。
@@ -47,23 +58,69 @@ export class ApprovalCenterService {
         take: pageSize,
       }),
     ]);
-    return {
-      total,
-      items: rows.map((row) => ({
-        id: row.id,
-        applicationNo: row.applicationNo,
-        requestType: row.requestType,
-        applicantId: row.applicantId,
-        applicantName: row.applicantName,
-        status: row.status,
-        version: row.version,
-        submittedAt: row.submittedAt,
-        processorId: row.processorId,
-        processorName: row.processorName,
-        processedAt: row.processedAt,
-        opinion: row.opinion,
-      })),
-    };
+    return { total, items: rows.map(toListItem) };
+  }
+
+  /**
+   * 导出审批列表为 xlsx 流（T4-11 通用导出；与列表同一筛选、排序与快照）。
+   *
+   * @param userId 导出人（需 user_manage）
+   * @param query 与列表相同的筛选条件
+   * @param res Express 响应
+   */
+  async export(userId: number, query: ApprovalListQueryDto, res: Response): Promise<void> {
+    const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
+    const where = this.buildWhere(query);
+    await runExport<ApprovalListItem>({
+      userId,
+      redis: this.redis.redis,
+      maxRows,
+      filename: 'approval-requests.xlsx',
+      columns: [
+        { header: '审批号', value: (row) => row.applicationNo },
+        { header: '类型', value: (row) => row.requestType },
+        { header: '申请人', value: (row) => row.applicantName },
+        { header: '状态', value: (row) => row.status },
+        { header: '提交时间', value: (row) => row.submittedAt?.toISOString() ?? '' },
+        { header: '处理人', value: (row) => row.processorName ?? '' },
+        { header: '处理时间', value: (row) => row.processedAt?.toISOString() ?? '' },
+        { header: '处理意见', value: (row) => row.opinion ?? '' },
+      ],
+      transaction: (fn, options) =>
+        this.prisma.client.$transaction(fn, {
+          isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+          timeout: options?.timeout,
+        }),
+      fetchCount: async (tx) => {
+        const client = tx as PrismaService['client'];
+        return client.approvalRequest.count({ where });
+      },
+      fetchRows: async (tx, offset, limit) => {
+        const client = tx as PrismaService['client'];
+        const rows = await client.approvalRequest.findMany({
+          where,
+          orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+          skip: offset,
+          take: limit,
+        });
+        return rows.map(toListItem);
+      },
+      res,
+    });
+    await this.recordExportLog(userId);
+  }
+
+  /** 导出完成后写 EXPORT 操作日志（主 PRD §3.3） */
+  private async recordExportLog(operatorId: number): Promise<void> {
+    const operator = await loadOperationLogOperator(this.prisma.client, operatorId);
+    await this.prisma.client.$transaction((tx) =>
+      writeBackstageOperationLog(tx, {
+        operator,
+        feature: USER_MANAGE_FUNCTION_CODE,
+        actionType: 'EXPORT',
+        summary: '导出审批列表',
+      }),
+    );
   }
 
   /**
@@ -197,4 +254,35 @@ export class ApprovalCenterService {
     }
     return where;
   }
+}
+
+/** 审批头行 → 列表/导出共用条目（同一字段口径） */
+function toListItem(row: {
+  id: number;
+  applicationNo: string;
+  requestType: string;
+  applicantId: number;
+  applicantName: string;
+  status: string;
+  version: number;
+  submittedAt: Date | null;
+  processorId: number | null;
+  processorName: string | null;
+  processedAt: Date | null;
+  opinion: string | null;
+}): ApprovalListItem {
+  return {
+    id: row.id,
+    applicationNo: row.applicationNo,
+    requestType: row.requestType,
+    applicantId: row.applicantId,
+    applicantName: row.applicantName,
+    status: row.status,
+    version: row.version,
+    submittedAt: row.submittedAt,
+    processorId: row.processorId,
+    processorName: row.processorName,
+    processedAt: row.processedAt,
+    opinion: row.opinion,
+  };
 }
