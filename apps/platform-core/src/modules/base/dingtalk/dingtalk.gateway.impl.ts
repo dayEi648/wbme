@@ -10,7 +10,7 @@ import {
 /**
  * 钉钉官方 OAuth2 网页扫码登录实现（base PRD §2，2026-08 官方流程）。
  *
- * - 授权页：login.dingtalk.io/oauth2/auth（企业内部应用；域名历史有 .com/.io 两种表述，集中常量可配）；
+ * - 授权页：login.dingtalk.com/oauth2/auth（企业内部应用；域名集中于下方常量，调整只改此处）；
  * - 授权码 → userAccessToken（含用户所选组织 corpId，组织校验依据）；
  * - userinfo 取 unionId/openId/nick/mobile/stateCode；
  * - 组织成员校验：corpId 与部署配置一致 且 组织成员接口成功且 active；
@@ -20,8 +20,8 @@ import {
  */
 
 /** 钉钉授权页与开放 API 域名（如钉钉域名调整只改此处） */
-const DINGTALK_LOGIN_BASE = 'https://login.dingtalk.io/oauth2/auth';
-const DINGTALK_API_BASE = 'https://api.dingtalk.io';
+const DINGTALK_LOGIN_BASE = 'https://login.dingtalk.com/oauth2/auth';
+const DINGTALK_API_BASE = 'https://api.dingtalk.com';
 
 @Injectable()
 export class DingtalkGatewayImpl implements DingtalkGateway {

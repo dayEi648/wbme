@@ -30,7 +30,7 @@ export class FakeDingtalkGateway implements DingtalkGateway {
 
   buildAuthorizeUrl(params: { state: string; redirectUri: string }): string {
     const search = new URLSearchParams({ state: params.state, redirect_uri: params.redirectUri });
-    return `https://login.dingtalk.io/oauth2/auth?${search.toString()}`;
+    return `https://login.dingtalk.com/oauth2/auth?${search.toString()}`;
   }
 
   async exchangeCodeForUserToken(code: string): Promise<{ accessToken: string; corpId: string }> {

@@ -117,7 +117,7 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
     await cleanStates();
     const res = await request(app.getHttpServer()).get('/auth/dingtalk/authorize?purpose=LOGIN');
     expect(res.status).toBe(200);
-    expect(res.body.authorizeUrl).toContain('login.dingtalk.io/oauth2/auth');
+    expect(res.body.authorizeUrl).toContain('login.dingtalk.com/oauth2/auth');
     expect(res.body.authorizeUrl).toContain('state=');
     // 回调地址须指向后端 /api/v1 路由（经前端/Nginx 代理转发，base PRD §2）
     expect(res.body.authorizeUrl).toContain(`redirect_uri=${encodeURIComponent('http://localhost:5173/api/v1/auth/dingtalk/callback')}`);
