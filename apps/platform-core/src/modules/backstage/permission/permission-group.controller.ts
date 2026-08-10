@@ -1,7 +1,7 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { PaginationQueryDto, PERMISSION_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from './function-permission.guard';
 import { PermissionGroupService } from './permission-group.service';
 import { BatchDeleteGroupsDto, CreatePermissionGroupDto, UpdatePermissionGroupDto } from './permission-group.dto';
@@ -47,8 +47,10 @@ export class PermissionGroupController {
     return this.groups.updateGroup(operatorId, groupId, dto);
   }
 
-  /** 批量删除权限组（软删除；全有或全无） */
+  /** 批量删除权限组（软删除；全有或全无）；限流与批量授权/撤销同档（主 PRD §9.7） */
   @Post('batch-delete')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'permission-group-batch-delete', keyType: 'user', limit: 10, windowSeconds: 60 })
   batchDeleteGroups(@CurrentUser() operatorId: number, @Body() dto: BatchDeleteGroupsDto): Promise<unknown> {
     return this.groups.batchDeleteGroups(operatorId, dto);
   }

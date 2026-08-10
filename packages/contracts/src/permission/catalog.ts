@@ -358,7 +358,7 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
           {
             code: 'finance_view',
             name: '财务数据查看',
-            description: '项目、工程合同、利润分析与项目操作记录只读；仅利润分析页支持按指定模板导出（财务查看人员）',
+            description: '项目、工程合同、利润分析与项目操作记录只读（财务查看人员）；导入导出为数据维护能力，入口在独立导入导出页且仅财务数据维护人员可见',
             dataScopeOptions: ['COMPANY'],
           },
           {
@@ -496,7 +496,7 @@ export const STOCK_CHANGE_HISTORY_FUNCTION_CODE = 'stock_change_history';
 /** asset「资产配置」功能编码（asset PRD §1 / §12：公司档，运行参数与业务字典） */
 export const ASSET_CONFIG_FUNCTION_CODE = 'asset_config';
 
-/** fin「财务数据查看」功能编码（fin PRD §1：公司档只读，项目/合同/利润分析/操作记录；利润分析页支持按模板导出） */
+/** fin「财务数据查看」功能编码（fin PRD §1：公司档只读，项目/合同/利润分析/操作记录；导入导出入口在独立页且归财务数据维护） */
 export const FINANCE_VIEW_FUNCTION_CODE = 'finance_view';
 
 /** fin「财务数据维护」功能编码（fin PRD §1：项目新建编辑、财务数据与明细维护、利润分析模板导入；隐含财务数据查看） */

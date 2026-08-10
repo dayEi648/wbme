@@ -25,6 +25,8 @@ export class XlsxWorkerPool implements OnModuleDestroy {
   static inline = false;
   private readonly workers: Worker[] = [];
   private readonly busy: Set<Worker> = new Set();
+  /** 正在终止的 worker（terminate 完成前不参与派发——dispatch 跳过，防任务派给垂死 worker 挂起） */
+  private readonly terminating: Set<Worker> = new Set();
   /** worker → 当前执行任务（worker 异常/退出时兜底 reject） */
   private readonly pendingTasks = new Map<Worker, TaskEntry | null>();
   private readonly queue: TaskEntry[] = [];
@@ -42,12 +44,13 @@ export class XlsxWorkerPool implements OnModuleDestroy {
   /** 创建工作线程（worker 入口编译进 dist/modules/excel/xlsx-worker.js） */
   private spawn(): Worker {
     const worker = new Worker(resolve(__dirname, 'xlsx-worker.js'));
-    const pending = new Map<string, TaskEntry>();
     worker.on('message', (message: { id: string; ok: boolean; result?: unknown; error?: { message: string } }) => {
-      const task = pending.get(message.id);
-      pending.delete(message.id);
-      this.busy.delete(worker);
+      // 任务完成：以 this.pendingTasks 跟踪（此前用闭包内从未写入的 pending Map，
+      // task 恒 undefined 导致正常完成路径永不 resolve——生产线程模式导入/导出挂起，
+      // 仅测试 inline 模式掩盖了该缺陷；S7 复核修复）
+      const task = this.pendingTasks.get(worker);
       this.pendingTasks.set(worker, null);
+      this.busy.delete(worker);
       if (task) {
         if (message.ok) {
           task.resolve(message.result);
@@ -69,6 +72,8 @@ export class XlsxWorkerPool implements OnModuleDestroy {
         const index = this.workers.indexOf(worker);
         if (index >= 0) {
           this.workers[index] = this.spawn();
+          // 替换后重新派发：否则队列中的任务要等下一次触发才接手（worker 崩溃且队列非空时停滞）
+          this.dispatch();
         }
       }
     });
@@ -124,8 +129,12 @@ export class XlsxWorkerPool implements OnModuleDestroy {
             if (current === task) {
               this.pendingTasks.set(worker, null);
               this.busy.delete(worker);
+              // 标记终止中：terminate 完成前 dispatch 不把新任务派给该 worker
+              // （垂死 worker 的 postMessage 消息会被丢弃，任务 Promise 挂起——S7 复核修复）
+              this.terminating.add(worker);
               task.reject(new Error('任务已取消'));
               void worker.terminate().then(() => {
+                this.terminating.delete(worker);
                 if (!this.stopped) {
                   const index = this.workers.indexOf(worker);
                   if (index >= 0) {
@@ -151,7 +160,7 @@ export class XlsxWorkerPool implements OnModuleDestroy {
       return;
     }
     for (const worker of this.workers) {
-      if (this.busy.has(worker)) {
+      if (this.busy.has(worker) || this.terminating.has(worker)) {
         continue;
       }
       let task: TaskEntry | undefined;

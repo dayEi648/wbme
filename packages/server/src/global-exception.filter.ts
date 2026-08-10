@@ -64,7 +64,7 @@ const DEPENDENCY_ERROR_CODES = new Set([
   'EHOSTUNREACH',
 ]);
 
-const DEPENDENCY_ERROR_NAMES = new Set(['TimeoutError', 'ConnectionError', 'NR_CLUSTER', 'NR_SOCKET']);
+const DEPENDENCY_ERROR_NAMES = new Set(['TimeoutError', 'ConnectionError', 'NR_CLUSTER', 'NR_SOCKET', 'InternalRequestError']);
 
 export const defaultDependencyDetector: DependencyExceptionDetector = {
   isDependencyException(exception) {

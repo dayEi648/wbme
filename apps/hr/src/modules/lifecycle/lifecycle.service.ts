@@ -73,6 +73,10 @@ export class LifecycleService {
   async restoreApply(dto: HrRestoreApplyDto): Promise<{ applied: true }> {
     try {
       await this.prisma.client.$transaction(async (tx) => {
+      // 同 rid 请求按事务级 advisory lock 串行化（M13）：唯一约束 (restore_request_id, user_id)
+      // 覆盖不了「同 rid 异目标集且目标集无交集用户」的并发双双成功——advisory lock 使
+      // 后到事务必然看到先到事务已提交记录，按目标集比对重放/409，P2002 兜底保留防漂移。
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`hr-restore:${dto.restoreRequestId}`}))`;
       // 事务内幂等判定（M13）：同 rid 已有记录 → 同目标集重放成功，异目标集 409。
       // 先查后写消除顺序重放的 TOCTOU；并发窗口（双方都查不到）由唯一约束 + P2002 兜底。
       const existing = await tx.orgCompatRecord.findMany({

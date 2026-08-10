@@ -52,10 +52,12 @@ export async function processImageCleanup(task: BackgroundTaskRow, ctx: Processo
       skipped += 1;
       continue;
     }
-    await storage.deleteObject(key);
-    // 同步清理正式对象注册表（M5 复核修复）：否则 image_objects 行无界增长，
-    // 且对象已删的注册表项仍可签发预签名 URL（客户端最终 OSS 404）
+    // 先删注册表行（幂等、立即关闭下载通道）再删对象（M5 复核修复）：
+    // 对象删除失败时任务报错重试，下一轮仍会列举到该对象并完成删除；
+    // 原顺序（先删对象）下注册表删除失败会留下指向已删对象的孤儿行，且
+    // 后续轮次不再列举该对象，孤儿行永远无法清理、仍可签发预签名 URL
     await ctx.sql.query('DELETE FROM backstage.image_objects WHERE object_key = $1', [key]);
+    await storage.deleteObject(key);
     removed += 1;
   }
   console.log(`[image-cleanup] 完成：删除 ${removed} 个未关联对象，保留 ${skipped} 个（含正式关联）`);

@@ -54,8 +54,9 @@ async function getPgServerMajorVersion(databaseUrl: string): Promise<number> {
 
 /**
  * 校验 pg_dump 客户端版本不低于服务器版本，防止大版本漂移导致备份硬失败。
+ * （导出供直接单测——S2 复核补测）
  */
-async function assertPgClientCompatible(databaseUrl: string): Promise<void> {
+export async function assertPgClientCompatible(databaseUrl: string): Promise<void> {
   const [clientMajor, serverMajor] = await Promise.all([
     getPgDumpMajorVersion(),
     getPgServerMajorVersion(databaseUrl),

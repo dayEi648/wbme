@@ -21,6 +21,11 @@ TAG="${1:?用法: ./release.sh <tag>}"
 ENV_FILE="$DEPLOY_DIR/.env.production"
 RELEASE_STATE_DIR="${RELEASE_STATE_DIR:-/opt/wbme/persist/release-state}"
 STATE_FILE="$RELEASE_STATE_DIR/last-deployed"
+# 恢复执行器状态目录（compose 的 RESTORE_STATE_DIR 硬编码值）：容器以非 root
+# uid 运行（Dockerfile USER wbme = 10001），bind mount 自动创建的宿主目录为
+# root:root，会使 readyz 写探针 EACCES → 首次发布卡死，部署前置预建并移交属主
+RESTORE_STATE_DIR="${RESTORE_STATE_DIR:-/opt/wbme/persist/restore-state}"
+RECOVERY_EXECUTOR_UID="${RECOVERY_EXECUTOR_UID:-10001}"
 COMPOSE_OPTS=(--env-file "$ENV_FILE")
 
 log()  { printf '[release] %s\n' "$*"; }
@@ -33,6 +38,9 @@ command -v git >/dev/null || fail "git 不可用"
 docker compose version >/dev/null 2>&1 || fail "docker compose 插件不可用"
 mkdir -p "$RELEASE_STATE_DIR"
 chmod 700 "$RELEASE_STATE_DIR"
+mkdir -p "$RESTORE_STATE_DIR"
+chown "$RECOVERY_EXECUTOR_UID:$RECOVERY_EXECUTOR_UID" "$RESTORE_STATE_DIR"
+chmod 700 "$RESTORE_STATE_DIR"
 
 # ---- 2. 目标 tag 解析与远端同步 ----
 git fetch --tags origin >/dev/null 2>&1 || true

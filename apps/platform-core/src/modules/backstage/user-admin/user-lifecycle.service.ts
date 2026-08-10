@@ -127,9 +127,12 @@ export class UserLifecycleService {
         const now = new Date();
         for (const target of targets) {
           const lifecycleVersion = target.lifecycleVersion + 1;
-          // ① base 注销：注销标记 + 撤销全部会话（session_version 递增）+ 生命周期版本递增
-          await tx.user.update({
-            where: { id: target.id },
+          // ① base 注销：注销标记 + 撤销全部会话（session_version 递增）+ 生命周期版本递增。
+          // 版本条件更新（M8/S8 复核修复）：两个并发批次注销同一用户时，后到批次锁内
+          // 快照版本已过期 → count=0 → 输出业务冲突整批回滚（重试得 TARGET_DEACTIVATED）；
+          // 无条件重写会以同一生命周期版本生成同 taskUuid 撞唯一约束抛 P2002 500。
+          const updated = await tx.user.updateMany({
+            where: { id: target.id, lifecycleVersion: target.lifecycleVersion },
             data: {
               status: 'DEACTIVATED',
               deletedAt: now,
@@ -139,6 +142,11 @@ export class UserLifecycleService {
               updatedBy: operator.id,
             },
           });
+          if (updated.count === 0) {
+            throw new BusinessException(accountErrors.USER_BATCH_BLOCKED, {
+              failures: [{ userId: target.id, code: 'TARGET_DEACTIVATED', message: DEACTIVATE_FAILURE.TARGET_DEACTIVATED }],
+            });
+          }
           // 目标全部未使用邀请立即失效（含激活与密码重置凭证）
           await tx.activationInvitation.updateMany({
             where: { userId: target.id, status: 'VALID' },

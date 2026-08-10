@@ -159,7 +159,41 @@ export class BorrowService {
       throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
     }
 
-    // 分配行与批次在同一顺序下锁定，防止同一借还记录的并发归还重复使用批次份额。
+    // 无锁定位分配行（仅预检归属；最终校验以锁后重读为准）。
+    const peekAllocations = await tx.$queryRaw<
+      Array<{
+        id: number;
+        batchId: number;
+        issuedQty: number;
+        returnedQty: number;
+        inventoryItemId: number;
+      }>
+    >`
+      SELECT
+        ba.id,
+        ba.batch_id AS "batchId",
+        ba.issued_qty AS "issuedQty",
+        ba.returned_qty AS "returnedQty",
+        b.inventory_item_id AS "inventoryItemId"
+      FROM asset.borrow_batch_allocations ba
+      INNER JOIN asset.batches b ON b.id = ba.batch_id
+      WHERE ba.borrow_record_id = ${record.id}
+      ORDER BY ba.id DESC
+    `;
+    if (peekAllocations.length === 0 || peekAllocations.some((allocation) => allocation.inventoryItemId !== record.inventoryItemId)) {
+      throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
+    }
+
+    // 锁序与全系统一致（M8 复核修复）：先锁库存条目，再锁批次行——
+    // 原实现先锁批次（FOR UPDATE OF ba, b）再锁条目，与调拨/纠正
+    // （无锁定位后按 id 升序一次性锁条目，再锁批次）反向，并发归还 × 调拨
+    // 可成环 40P01。
+    const itemRow = await this.lockInventoryItem(tx, record.inventoryItemId);
+    if (!itemRow) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+
+    // 锁后重读分配行与批次行（锁定份额防并发归还重复使用批次份额；最终校验以此为准）。
     const allocations = await tx.$queryRaw<
       Array<{
         id: number;
@@ -183,12 +217,8 @@ export class BorrowService {
     `;
 
     const allocatedQty = allocations.reduce((sum, allocation) => sum + allocation.issuedQty - allocation.returnedQty, 0);
-    if (allocatedQty < qty || allocations.length === 0 || allocations.some((allocation) => allocation.inventoryItemId !== record.inventoryItemId)) {
+    if (allocatedQty < qty || allocations.some((allocation) => allocation.inventoryItemId !== record.inventoryItemId)) {
       throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
-    }
-    const itemRow = await this.lockInventoryItem(tx, record.inventoryItemId);
-    if (!itemRow) {
-      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
 
     let remaining = qty;

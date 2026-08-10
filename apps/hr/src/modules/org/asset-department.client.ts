@@ -32,7 +32,7 @@ export class AssetDepartmentClient {
    * 查询部门固定资产归属数（删除预览）。
    *
    * @param departmentId 部门 id
-   * @returns 资产数；asset 不可用返回 null（预览降级展示）
+   * @returns 资产数；asset 不可用（连接失败/超时/非 2xx 响应）返回 null（预览降级展示）
    */
   async countAssets(departmentId: number): Promise<number | null> {
     if (!this.client) {
@@ -40,6 +40,11 @@ export class AssetDepartmentClient {
     }
     try {
       const response = await this.client.get(`/departments/${departmentId}/asset-count`);
+      // InternalHttpClient 对 4xx/5xx 返回 Response 而不抛错：非 2xx 一律视为依赖错误降级
+      // （否则 body.count 为 undefined、deletePreview 静默显示 0——M12 复核修复）
+      if (!response.ok) {
+        return null;
+      }
       const body = (await response.json()) as AssetDepartmentResult;
       return body.count;
     } catch (error) {
@@ -54,12 +59,19 @@ export class AssetDepartmentClient {
    * 置空部门固定资产归属（删除事务内调用；失败抛错使 hr 删除整体中止）。
    *
    * @param departmentId 部门 id
-   * @throws SERVICE_UNAVAILABLE asset 不可用（删除事务回滚）
+   * @throws SERVICE_UNAVAILABLE asset 不可用或返回错误（删除事务回滚；避免
+   *   "hr 删除已提交而 asset 归属未置空"的两侧不一致——M12 复核修复）
    */
   async clearAssignments(departmentId: number): Promise<void> {
     if (!this.client) {
       throw new Error('内部令牌未配置，无法调用 asset 部门接口');
     }
-    await this.client.write(`/departments/${departmentId}/clear-assignments`, { method: 'POST', body: {} });
+    const response = await this.client.write(`/departments/${departmentId}/clear-assignments`, { method: 'POST', body: {} });
+    if (!response.ok) {
+      throw new InternalRequestError(
+        `asset 置空部门资产归属失败（HTTP ${response.status}）：${departmentId}`,
+        `HTTP ${response.status}`,
+      );
+    }
   }
 }

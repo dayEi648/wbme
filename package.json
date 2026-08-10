@@ -10,7 +10,7 @@
   "scripts": {
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm --workspace-concurrency=1 -r test",
     "build": "pnpm -r build",
     "build:packages": "pnpm -r --filter './packages/**' build",
     "prisma:generate": "pnpm -r --filter @wbme/platform-core --filter @wbme/asset --filter @wbme/hr --filter @wbme/fin exec prisma generate",

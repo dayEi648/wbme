@@ -166,14 +166,15 @@ export class DictService {
   }
 
   /**
-   * 字典项批量硬删除（fin PRD §6：任一被历史项目引用则整批拒绝，不产生部分删除）。
+   * 字典项批量硬删除（fin PRD §6：任一被历史项目引用则整批拒绝，不产生部分删除；幂等）。
    *
    * @param operator 操作人
    * @param ids 目标 id 列表
+   * @param idempotencyKey 幂等键（同键重试返回原结果）
    * @returns 删除结果
    */
-  async batchDelete(operator: FinOperationLogOperator, ids: readonly number[]): Promise<{ deleted: number }> {
-    return this.runDictWrite(operator, undefined, 'fin.dict.delete', { ids }, async (tx) => {
+  async batchDelete(operator: FinOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
+    return this.runDictWrite(operator, idempotencyKey, 'fin.dict.delete', { ids }, async (tx) => {
       const rows = await tx.financeDictItem.findMany({ where: { id: { in: [...ids] } } });
       if (rows.length !== ids.length) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);

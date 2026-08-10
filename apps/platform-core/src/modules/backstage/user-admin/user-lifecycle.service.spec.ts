@@ -276,6 +276,10 @@ describe.skipIf(!DATABASE_URL)('账号生命周期（T3-5 后半：批量注销/
   });
 
   it('并发批量注销可清空全部超管的竞态已被阻断：FOR UPDATE 锁串行化', async () => {
+    // ⚠️ 全局副作用：本用例会临时降级库中全部可用超管（含其它测试进程刚创建的），
+    // 窗口期（约 1-2s）内其它依赖超管身份的集成测试（如 asset 审批）会误判
+    // 操作人非超管而失败。已按包级串行跑测试（根 package.json test 脚本
+    // --workspace-concurrency=1），切勿改回并行跑全仓；本用例不得并行执行。
     // 临时降级所有既有超管，确保本用例 A/B/C 是仅存的可用超管
     const originalSupers = await prisma.client.user.findMany({
       where: { isSuperAdmin: true, status: 'ACTIVE', deletedAt: null },
@@ -305,8 +309,12 @@ describe.skipIf(!DATABASE_URL)('账号生命周期（T3-5 后半：批量注销/
         const rejected = results.filter((r) => r.status === 'rejected');
         expect(succeeded).toHaveLength(1);
         expect(rejected).toHaveLength(1);
-        // 并发下失败方可能先因操作人被注销得到 UNAUTHORIZED，也可能进入锁后校验得到
-        // USER_BATCH_BLOCKED/LAST_SUPER_ADMIN；两种路径共同保证不会清空全部超管。
+        // 并发下失败方有两条合法保护路径（均非测试漏洞，收紧会导致 flaky）：
+        // 1. USER_BATCH_BLOCKED/LAST_SUPER_ADMIN——进入锁内计数校验（全超管行 FOR UPDATE 串行化），
+        //    后到批次在锁内发现注销后无可用超管，拒绝；
+        // 2. UNAUTHORIZED——批次 2 的操作人 superB 被批次 1 注销，锁内复核操作人身份时拒绝。
+        // 核心回归护栏是下方 remaining=1 断言：若 FOR UPDATE 锁被移除，两批次均通过 →
+        // 超管清零 → remaining=0 → 断言失败；UNAUTHORIZED 路径不会使该断言漏过（0.8 复核确认）。
         const exception = rejected[0]?.reason as BusinessException | undefined;
         expect(exception?.entry.code).toBeDefined();
         if (!exception) {

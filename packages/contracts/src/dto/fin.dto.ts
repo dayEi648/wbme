@@ -359,8 +359,8 @@ export class FinDictItemQueryDto extends PaginationQueryDto {
   status?: 'ACTIVE' | 'DISABLED';
 }
 
-/** 财务字典批量硬删除（被项目引用则整批拒绝；fin PRD §6） */
-export class FinDictItemBatchDeleteDto {
+/** 财务字典批量硬删除（被项目引用则整批拒绝；fin PRD §6；幂等键 M10 同类补齐） */
+export class FinDictItemBatchDeleteDto extends IdempotentDto {
   @ApiProperty({ description: '字典项 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @ArrayMaxSize(BATCH_LIMIT)

@@ -50,10 +50,12 @@ describe.skipIf(!DATABASE_URL)('processImageCleanup（T4-10 未关联图片清�
 
   afterAll(async () => {
     await rm(root, { recursive: true, force: true });
-    // 清理测试插入的设置行
+    // 清理测试插入的设置行、资产引用与注册表行
     await sql.query(
       `DELETE FROM backstage.system_settings WHERE key = 'upload.unassociated.image.retention.hours'`,
     );
+    await sql.query(`DELETE FROM asset.assets WHERE image_oss_key LIKE $1`, [`${OSS_PREFIX_IMAGES}9999/%`]);
+    await sql.query(`DELETE FROM backstage.image_objects WHERE object_key LIKE $1`, [`${OSS_PREFIX_IMAGES}9999/%`]);
     await (sql as unknown as { end: () => Promise<void> }).end?.().catch(() => undefined);
   });
 
@@ -90,6 +92,13 @@ describe.skipIf(!DATABASE_URL)('processImageCleanup（T4-10 未关联图片清�
        VALUES ('upload.unassociated.image.retention.hours', '24', 'NUMBER', 'PLATFORM', '未关联图片保留时长', false, NOW(), NOW())
        ON CONFLICT (key) DO UPDATE SET value = '24'`,
     );
+    // 注册表同步清理（M5）：预置孤儿对象的正式化注册行，清理后该行必须消失
+    await sql.query(
+      `INSERT INTO backstage.image_objects (object_key, owner_user_id, finalized_at)
+       VALUES ($1, 1, NOW() - INTERVAL '25 hours')
+       ON CONFLICT (object_key) DO NOTHING`,
+      [orphanKey],
+    );
 
     const task = { taskUuid: 'test-cleanup', taskType: 'UNASSOCIATED_IMAGE_CLEANUP' } as BackgroundTaskRow;
     await processImageCleanup(task, ctx);
@@ -98,6 +107,12 @@ describe.skipIf(!DATABASE_URL)('processImageCleanup（T4-10 未关联图片清�
     const remaining = await readdir(join(fsRoot, 'images', '9999')).catch(() => []);
     expect(remaining).not.toContain('orphan-old.bin');
     expect(remaining).toContain('referenced.bin');
+    // 注册表行随对象同步删除（M5 复核修复）
+    const registry = await sql.queryRows<{ count: string }>(
+      `SELECT count(*)::text AS count FROM backstage.image_objects WHERE object_key = $1`,
+      [orphanKey],
+    );
+    expect(Number(registry[0]?.count ?? 0)).toBe(0);
   });
 
   it('保留期内的未关联对象不被删除', async () => {

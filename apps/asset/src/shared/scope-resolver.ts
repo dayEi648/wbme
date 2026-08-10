@@ -28,9 +28,11 @@ export class ScopeResolver {
     const access = await assertFunctionAccess(this.prisma.client, userId, functionCode);
     if (access.dataScope === null || access.dataScope === 'COMPANY') {
       // 范围历史包含已注销员工（M9，产品确认 2026-08-10）：既有业务记录须返回并展示
-      // 原 ID/姓名快照与已注销标记（主 PRD §2.6）；仅过滤软删除账号
+      // 原 ID/姓名快照与已注销标记（主 PRD §2.6）。本系统注销即置 deleted_at、恢复才清除，
+      // 无其它删除语义，故 COMPANY 档不过滤任何用户状态——与 DEPARTMENT 档
+      // （经 hr.user_org，不过滤用户状态）口径一致。
       const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number }>>`
-        SELECT user_id FROM backstage.user_accounts WHERE deleted_at IS NULL
+        SELECT user_id FROM backstage.user_accounts
       `;
       return new Set(rows.map((row) => row.user_id));
     }

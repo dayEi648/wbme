@@ -105,6 +105,10 @@ export default function FinPage() {
         return <DataTable title="项目操作记录" description="记录财务项目的新增、修改、删除与金额明细变更。" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'id', title: 'ID', fixed: 'left' as const }, { key: 'projectName', title: '项目' }, { key: 'actionType', title: '操作' }, { key: 'operatorName', title: '操作者' }, { key: 'createdAt', title: '时间' }]} filterFields={[{ key: 'projectId', title: '项目 ID', type: 'number' }]} />;
       case 'config':
         return <FinanceConfig />;
+      // 利润分析常驻渲染（见下方 display:none 容器），body 不再重复挂载，避免
+      // 与 SystemHome 欢迎页叠放（M22 复核回归：缺该分支时 /fin/profit 命中 default）
+      case 'profit':
+        return null;
       default:
         return <SystemHome systemName="财务系统" welcome="维护工程合同、金额明细、利润分析和财务配置。" items={NAVIGATION} />;
     }
@@ -196,10 +200,11 @@ export function ProfitAnalysis() {
   const location = useLocation();
   const navigate = useNavigate();
   const lastPathRef = useRef(`${location.pathname}${location.search}`);
-  // 用户已确认放弃本次未保存内容；组件卸载后自动失效，重新进入本页时保护恢复
-  const leaveConfirmedRef = useRef(false);
   // 回退导航标记：弹窗选「留在本页」后 navigate 回退，避免该次导航再次触发确认（防重入）
   const restoreRef = useRef(false);
+  // 用户确认「放弃并离开」的时刻：放弃前发起的在途保存请求若随后失败，不再重新标记
+  // dirtyRef（否则用户已离开本页，后续任意导航被无端二次拦截，M22 复核修复）
+  const abandonedAtRef = useRef<number | null>(null);
   const [leavePrompt, setLeavePrompt] = useState<{ from: string } | null>(null);
   useEffect(() => {
     const current = `${location.pathname}${location.search}`;
@@ -210,15 +215,17 @@ export function ProfitAnalysis() {
       restoreRef.current = false;
       return;
     }
-    if (leaveConfirmedRef.current) return;
-    if (Object.keys(moneyDrafts).length === 0 && !dirtyRef.current) return;
+    // 未保存内容 = 金额草稿 / 保存失败标记 / 保存请求在途（M22 复核修复：在途保存
+    // 期间导航离开，若保存随后失败用户无感知，PRD §4 要求「保存中」也在离开保护内）
+    const hasUnsaved = Object.keys(moneyDrafts).length > 0 || dirtyRef.current || saveState === 'saving';
+    if (!hasUnsaved) return;
     if (leavePrompt) return; // 确认框已打开时跳过（回退导航二次触发）
     setLeavePrompt({ from: previous });
-  }, [location, leavePrompt, moneyDrafts]);
+  }, [location, leavePrompt, moneyDrafts, saveState]);
 
   // 浏览器刷新/关闭离开保护（beforeunload 只能提示，无法阻止站内跳转）
   useEffect(() => {
-    const hasDirty = () => Object.keys(moneyDrafts).length > 0 || dirtyRef.current;
+    const hasDirty = () => Object.keys(moneyDrafts).length > 0 || dirtyRef.current || saveState === 'saving';
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (hasDirty()) {
         event.preventDefault();
@@ -227,7 +234,7 @@ export function ProfitAnalysis() {
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [moneyDrafts]);
+  }, [moneyDrafts, saveState]);
 
   const load = async () => {
     setLoading(true);
@@ -249,6 +256,7 @@ export function ProfitAnalysis() {
   const saveCell = async (row: RecordValue, field: string, value: string): Promise<boolean> => {
     const projectId = Number(row.id);
     if (!Number.isInteger(projectId)) return false;
+    const startedAt = Date.now();
     setSaveState('saving');
     try {
       const result = await http.put<{ value: unknown; auto: RecordValue; dataRevision: number }>('/profit/cells', { projectId, field, value }, { service: 'fin' });
@@ -259,7 +267,11 @@ export function ProfitAnalysis() {
       return true;
     } catch (error) {
       setSaveState('error');
-      dirtyRef.current = true;
+      // 请求发起于用户「放弃并离开」之前 → 该失败属于已确认放弃的内容，不再置
+      // dirtyRef（否则离开后再次导航会被无端拦截；放弃后的新编辑失败仍正常标记）
+      if (abandonedAtRef.current === null || startedAt >= abandonedAtRef.current) {
+        dirtyRef.current = true;
+      }
       feedback.error(error, '单元格保存失败');
       return false;
     }
@@ -334,7 +346,12 @@ export function ProfitAnalysis() {
       okText="放弃并离开"
       cancelText="留在本页"
       onOk={() => {
-        leaveConfirmedRef.current = true;
+        // 确认放弃：清空草稿与保存失败标记，保护基于「是否存在新编辑内容」重新生效；
+        // 记录放弃时刻，放弃前发起的在途保存请求随后失败不再重新标记（M22 复核修复）。
+        abandonedAtRef.current = Date.now();
+        setMoneyDrafts({});
+        dirtyRef.current = false;
+        setSaveState('idle');
         setLeavePrompt(null);
       }}
       onCancel={() => {

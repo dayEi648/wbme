@@ -269,6 +269,9 @@ export class ImportService {
         fingerprint: fingerprintPayload({ choices, fileSha256: createHash('sha256').update(buffer).digest('hex') }),
         run: async (tx) => {
           const result = await this.applyImport(tx, operator, inputs, preview, choices, checkTimeout);
+          // 终末检查点：applyImport 最后一个检查点在审计 createMany 之后，而幂等日志写入与
+          // 事务提交之间还有一次 DB 往返——取消恰落此窗口时事务仍会提交（S7 复核修复）
+          checkTimeout();
           return {
             result,
             actionType: 'UPDATE' as const,

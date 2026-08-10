@@ -66,23 +66,23 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     // 清理失败运行残留（先子表后主表；按测试名称与 ID 段）
     await prisma.client.$executeRaw`
       DELETE FROM fin.project_operations
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.invoices
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.receipts
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.subcontract_payments
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.projects
-      WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999}
+      WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999}
     `;
     // 字典种子
     await prisma.client.$executeRaw`
@@ -109,22 +109,22 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     const testProjectIds = [projectA, projectB, projectDel];
     await prisma.client.$executeRaw`
       DELETE FROM fin.project_operations WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.invoices WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.receipts WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.subcontract_payments WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
     `;
     await prisma.client.$executeRaw`
-      DELETE FROM fin.projects WHERE id = ANY(${testProjectIds}) OR name IN ('待删除项目', '全新项目名称', '导入软删项目')
+      DELETE FROM fin.projects WHERE id = ANY(${testProjectIds}) OR name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目')
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.finance_dict_items WHERE id IN (${regionId}, ${progressTentativeId}, ${progressAuditedId}, ${categoryId}, ${completenessId})
@@ -475,5 +475,14 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     sheet2.getCell(3, COL.YEAR).value = 2026;
     const buffer2 = Buffer.from(await workbook2.xlsx.writeBuffer());
     await expect(imports.confirm(OPERATOR, buffer2, [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE' }], key)).rejects.toThrow('幂等键已被其他请求使用');
+
+    // 用例自清理（CLAUDE.md：测试后清理临时数据；动态项目名无法进 afterAll 固定名单，
+    // 先删操作记录再删项目——M17 复核修复发现残留）
+    await prisma.client.$executeRaw`
+      DELETE FROM fin.project_operations WHERE project_id IN (SELECT id FROM fin.projects WHERE name LIKE ${`${projectName}%`})
+    `;
+    await prisma.client.$executeRaw`
+      DELETE FROM fin.projects WHERE name LIKE ${`${projectName}%`}
+    `;
   });
 });

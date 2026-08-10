@@ -14,6 +14,7 @@ import { BusinessException, inventoryErrors } from '@wbme/contracts';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GlobalExceptionFilter } from './global-exception.filter';
+import { InternalRequestError } from './internal/internal-http.client';
 import { AccessLogInterceptor } from './access-log.interceptor';
 import { RequestTimeoutInterceptor } from './request-timeout.interceptor';
 import { createRequestContextMiddleware } from './request-context';
@@ -72,6 +73,12 @@ class TestController {
   async slow(): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 200));
     return 'too late';
+  }
+
+  @Get('dep-down')
+  depDown(): never {
+    // 内部服务不可用（连接失败/超时/5xx）：按依赖错误映射 503（M12 复核修复）
+    throw new InternalRequestError('内部调用失败（ECONNREFUSED）：GET /internal/v1/test', 'ECONNREFUSED');
   }
 
   @Post('echo')
@@ -149,6 +156,14 @@ describe('统一请求链路（主 PRD §9.6）', () => {
     expect(res.body.error.type).toBe('VALIDATION');
     expect(res.body.error.details.fields).toBeDefined();
     expect(JSON.stringify(res.body)).toContain('hacker');
+  });
+
+  it('内部服务不可用（InternalRequestError）映射为 503 DEPENDENCY_UNAVAILABLE', async () => {
+    const res = await request(app.getHttpServer()).get('/dep-down').expect(503);
+    expect(res.body.error).toMatchObject({ type: 'DEPENDENCY', code: 'DEPENDENCY_UNAVAILABLE' });
+    // 不泄露内部调用细节
+    expect(JSON.stringify(res.body)).not.toContain('ECONNREFUSED');
+    expect(JSON.stringify(res.body)).not.toContain('internal/v1');
   });
 
   it('超过固定总超时返回 503 TIMEOUT', async () => {

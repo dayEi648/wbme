@@ -18,6 +18,23 @@ import {
 } from '../../shared/asset-operation-log.util';
 import { cleanupEmptyItem, loadWarehouseWithPath, lockInventoryItems, lockOrCreateItem } from '../../shared/inventory-core';
 
+/**
+ * 批次是否仍存在（correctBatch 并发路径辅助）：来源条目缺失时，若批次仍在则说明
+ * 并发纠正已移动批次归属并清理了来源条目——属并发冲突应提示重试而非「资源不存在」。
+ *
+ * @param tx 事务客户端
+ * @param batchId 批次 id
+ * @throws VALIDATION_FAILED 批次仍在（归属被并发移动）
+ */
+async function assertBatchStillExists(tx: Prisma.TransactionClient, batchId: number): Promise<void> {
+  const rows = await tx.$queryRaw<Array<{ id: number }>>`
+    SELECT id FROM asset.batches WHERE id = ${batchId}
+  `;
+  if (rows[0]) {
+    throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '批次资料已被并发修改，请重试' });
+  }
+}
+
 /** 库存条目列表项 */
 export interface InventoryItemListItem {
   id: number;
@@ -298,54 +315,40 @@ export class InventoryService {
         if (!batchPeekRow) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
-        // 锁来源条目（lockInventoryItems 按 id 升序）
-        const sourceRows = await lockInventoryItems(tx, [batchPeekRow.inventory_item_id]);
-        const sourceItem = sourceRows[0];
-        if (!sourceItem) {
+        // 无锁读来源条目（锁前仅取库位用于目标条目定位；行锁后重新校验）
+        const sourcePeek = await tx.inventoryItem.findUnique({
+          where: { id: batchPeekRow.inventory_item_id },
+          select: { id: true, warehouseId: true },
+        });
+        if (!sourcePeek) {
+          await assertBatchStillExists(tx, batchId);
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
-
-        const before = {
-          supplierId: batchPeekRow.supplier_id,
-          supplierName: batchPeekRow.supplier_name,
-          brandId: batchPeekRow.brand_id,
-          brandName: batchPeekRow.brand_name,
-          unitPrice: batchPeekRow.unit_price?.toString() ?? null,
-          remark: batchPeekRow.remark,
-          spec: batchPeekRow.spec,
-          warehouseId: sourceItem.warehouseId,
-          warehouseName: batchPeekRow.warehouse_name,
-        };
-
-        // 供应商/品牌/单价/备注：直接纠正（字段可空则清除）
-        const supplier = input.supplierId !== undefined ? await this.loadDictName(tx, input.supplierId, 'SUPPLIER') : null;
-        const brand = input.brandId !== undefined ? await this.loadDictName(tx, input.brandId, 'BRAND') : null;
-        const finalSupplierId = input.supplierId !== undefined ? (input.supplierId || null) : batchPeekRow.supplier_id;
-        const finalSupplierName = input.supplierId !== undefined ? (supplier?.name ?? null) : batchPeekRow.supplier_name;
-        const finalBrandId = input.brandId !== undefined ? (input.brandId || null) : batchPeekRow.brand_id;
-        const finalBrandName = input.brandId !== undefined ? (brand?.name ?? null) : batchPeekRow.brand_name;
-        const finalUnitPrice = input.unitPrice !== undefined ? (input.unitPrice ? new Prisma.Decimal(input.unitPrice) : null) : batchPeekRow.unit_price;
-        const finalRemark = input.remark !== undefined ? input.remark : batchPeekRow.remark;
-
-        // 规格/库位纠正：会改变批次所属条目，仅当无后续流水且来源条目无待审批占用时允许
-        const finalSpec = input.spec ?? batchPeekRow.spec;
-        const finalWarehouseId = input.warehouseId ?? sourceItem.warehouseId;
-        let finalWarehouseName = batchPeekRow.warehouse_name;
-        let finalWarehousePath = batchPeekRow.warehouse_path;
-        const specChanged = finalSpec !== batchPeekRow.spec;
-        const warehouseChanged = finalWarehouseId !== sourceItem.warehouseId;
-        let targetItem: { id: number; bookQty: number } | null = null;
-        // 目标条目已存在：与来源条目按 id 升序同批锁定（遵守系统锁序纪律，M8）
+        // 规格/库位纠正会改变批次所属条目：锁前按当前值猜测目标键用于无锁定位；
+        // 目标条目与来源条目按 id 升序一次性锁定——遵守系统锁序纪律「条目升序 → 批次」
+        // （M8 复核修复：原实现先单锁来源、再补锁目标，反向纠正并发时各持来源互要
+        // 对方成环死锁 40P01；目标不存在时仅锁来源，批次锁后创建）
+        const finalSpecGuess = input.spec ?? batchPeekRow.spec;
+        const finalWarehouseIdGuess = input.warehouseId ?? sourcePeek.warehouseId;
         const targetCandidate =
-          specChanged || warehouseChanged
+          finalSpecGuess !== batchPeekRow.spec || finalWarehouseIdGuess !== sourcePeek.warehouseId
             ? await tx.inventoryItem.findFirst({
-                where: { consumableId: batchPeekRow.consumable_id, spec: finalSpec, warehouseId: finalWarehouseId },
+                where: { consumableId: batchPeekRow.consumable_id, spec: finalSpecGuess, warehouseId: finalWarehouseIdGuess },
                 select: { id: true },
               })
             : null;
+        const lockIds = [...new Set([batchPeekRow.inventory_item_id, ...(targetCandidate ? [targetCandidate.id] : [])])].sort((a, b) => a - b);
+        const lockedItems = await lockInventoryItems(tx, lockIds);
+        const sourceItem = lockedItems.find((row) => row.id === batchPeekRow.inventory_item_id);
+        if (!sourceItem) {
+          // 锁等待期间并发纠正可能已移动批次归属并清理来源条目：条目消失时区分
+          // 「批次仍在但归属已移动」（并发冲突，重试）与「批次本身消失」
+          await assertBatchStillExists(tx, batchId);
+          throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+        }
+        let targetItem: { id: number; bookQty: number } | null = null;
         if (targetCandidate) {
-          const locked = await lockInventoryItems(tx, [sourceItem.id, targetCandidate.id]);
-          targetItem = locked.find((row) => row.id === targetCandidate.id) ?? null;
+          targetItem = lockedItems.find((row) => row.id === targetCandidate.id) ?? null;
           if (!targetItem) {
             throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
           }
@@ -399,6 +402,36 @@ export class InventoryService {
         ) {
           throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '批次资料已被并发修改，请重试' });
         }
+        // 锁后重算纠正值（复核修复）：兜底字段一律以锁后读的批次行/条目行为准——原实现
+        // 取锁前 peek，并发「改规格」与「改供应商」交错时后提交者用过期值覆盖先提交者
+        // 的修改（丢失更新），且审计 before 失真
+        const before = {
+          supplierId: batchRow.supplier_id,
+          supplierName: batchRow.supplier_name,
+          brandId: batchRow.brand_id,
+          brandName: batchRow.brand_name,
+          unitPrice: batchRow.unit_price?.toString() ?? null,
+          remark: batchRow.remark,
+          spec: batchRow.spec,
+          warehouseId: sourceItem.warehouseId,
+          warehouseName: batchRow.warehouse_name,
+        };
+        // 供应商/品牌/单价/备注：直接纠正（字段可空则清除）
+        const supplier = input.supplierId !== undefined ? await this.loadDictName(tx, input.supplierId, 'SUPPLIER') : null;
+        const brand = input.brandId !== undefined ? await this.loadDictName(tx, input.brandId, 'BRAND') : null;
+        const finalSupplierId = input.supplierId !== undefined ? (input.supplierId || null) : batchRow.supplier_id;
+        const finalSupplierName = input.supplierId !== undefined ? (supplier?.name ?? null) : batchRow.supplier_name;
+        const finalBrandId = input.brandId !== undefined ? (input.brandId || null) : batchRow.brand_id;
+        const finalBrandName = input.brandId !== undefined ? (brand?.name ?? null) : batchRow.brand_name;
+        const finalUnitPrice = input.unitPrice !== undefined ? (input.unitPrice ? new Prisma.Decimal(input.unitPrice) : null) : batchRow.unit_price;
+        const finalRemark = input.remark !== undefined ? input.remark : batchRow.remark;
+        // 规格/库位纠正：会改变批次所属条目，仅当无后续流水且来源条目无待审批占用时允许
+        const finalSpec = input.spec ?? batchRow.spec;
+        const finalWarehouseId = input.warehouseId ?? sourceItem.warehouseId;
+        let finalWarehouseName = batchRow.warehouse_name;
+        let finalWarehousePath = batchRow.warehouse_path;
+        const specChanged = finalSpec !== batchRow.spec;
+        const warehouseChanged = finalWarehouseId !== sourceItem.warehouseId;
         if (specChanged || warehouseChanged) {
           const flowCount = await tx.$queryRaw<Array<{ total: bigint }>>`
             SELECT COUNT(*) AS total

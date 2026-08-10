@@ -49,6 +49,6 @@ export class DictController {
   async batchDelete(@CurrentUser() userId: number, @Body() dto: FinDictItemBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, FINANCE_CONFIG_FUNCTION_CODE);
     const operator = await loadFinOperationLogOperator(this.prisma.client, userId);
-    return this.dict.batchDelete(operator, dto.ids);
+    return this.dict.batchDelete(operator, dto.ids, dto.idempotencyKey);
   }
 }

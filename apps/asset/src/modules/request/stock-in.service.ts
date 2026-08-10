@@ -9,7 +9,7 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
-import { loadWarehouseWithPath, lockOrCreateItem, writeStockFlow } from '../../shared/inventory-core';
+import { loadWarehouseWithPath, lockInventoryItems, lockOrCreateItem, writeStockFlow } from '../../shared/inventory-core';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import {
   executeIdempotentOperation,
@@ -95,16 +95,49 @@ export class StockInService {
    */
   async applyApproved(tx: Prisma.TransactionClient, head: { id: number }, processorId: number): Promise<void> {
     const lines = await tx.stockInItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
+    if (lines.length === 0) {
+      return;
+    }
+    // 整单条目按 id 升序一次性锁定（M8 复核修复：原实现逐行 lockOrCreateItem，两单行序
+    // 交错时交叉加锁成环死锁 40P01）：先无锁批量定位已存在条目（IS NOT DISTINCT FROM
+    // 处理可空库位），升序锁后逐行建批次；不存在条目在锁后创建（P2002 重试锁读，
+    // 新行 id 恒大于旧行，不影响已锁集合的升序）
+    const existing = await tx.$queryRaw<Array<{ id: number; consumable_id: number; spec: string; warehouse_id: number | null }>>(
+      Prisma.sql`
+        SELECT id, consumable_id, spec, warehouse_id
+        FROM asset.inventory_items
+        WHERE ${Prisma.join(
+          lines.map(
+            (line) =>
+              Prisma.sql`(consumable_id = ${line.consumableId} AND spec = ${line.spec} AND warehouse_id IS NOT DISTINCT FROM ${line.warehouseId})`,
+          ),
+          ' OR ',
+        )}
+      `,
+    );
+    const locked =
+      existing.length > 0 ? await lockInventoryItems(tx, existing.map((row) => row.id)) : [];
+    const lockedById = new Map(locked.map((row) => [row.id, row]));
     for (const line of lines) {
       // 注意：批准时不再校验品种启用状态——停用前已提交的申请仍可批准（asset PRD §5）；
       // 品种状态只约束新提交（submit 已校验 ACTIVE）
-      const item = await lockOrCreateItem(tx, {
-        consumableId: line.consumableId,
-        spec: line.spec,
-        warehouseId: line.warehouseId,
-        warehouseName: line.warehouseName,
-        warehousePath: line.warehousePath,
-      });
+      // 已存在条目取锁后行（含当前账面）；锁不到（并发清空删除）或不存在则创建
+      const match = existing.find(
+        (row) =>
+          row.consumable_id === line.consumableId &&
+          row.spec === line.spec &&
+          row.warehouse_id === line.warehouseId,
+      );
+      const lockedRow = match ? lockedById.get(match.id) : undefined;
+      const item = lockedRow
+        ? { id: lockedRow.id, bookQty: lockedRow.bookQty }
+        : await lockOrCreateItem(tx, {
+            consumableId: line.consumableId,
+            spec: line.spec,
+            warehouseId: line.warehouseId,
+            warehouseName: line.warehouseName,
+            warehousePath: line.warehousePath,
+          });
       await tx.batch.create({
         data: {
           inventoryItemId: item.id,

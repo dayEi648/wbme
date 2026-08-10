@@ -62,32 +62,65 @@ export class TransferService {
       idempotencyKey: dto.idempotencyKey,
       fingerprint: fingerprintPayload(dto),
       run: async (tx) => {
-        // ① 锁定来源条目（FOR UPDATE）；目标条目可能不存在（创建由唯一索引兜底并发）
-        const [sourceItem] = await lockInventoryItems(tx, [dto.fromInventoryItemId]);
-        if (!sourceItem) {
+        // ① 无锁定位来源条目（锁前仅取归属与库位用于目标条目定位；行锁后重新校验）
+        const sourcePeek = await tx.inventoryItem.findUnique({
+          where: { id: dto.fromInventoryItemId },
+          select: { id: true, consumableId: true, spec: true, warehouseId: true },
+        });
+        if (!sourcePeek) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
         // ② 目标库位：必须启用且不同于来源库位（来源库位停用仍可调出）
         const targetWarehouse = await loadWarehouseWithPath(tx, dto.toWarehouseId);
-        if (!targetWarehouse || targetWarehouse.id === sourceItem.warehouseId) {
+        if (!targetWarehouse || targetWarehouse.id === sourcePeek.warehouseId) {
           throw new BusinessException(inventoryErrors.LOCATION_INVALID_TARGET);
         }
-        // ③ 事务内重算可用库存：超过当前可用 / 状态变化 → CONFLICT
+        // ③ 无锁定位目标条目（同品种 + 同规格 + 目标库位；目标库位 ≠ 来源库位故不会命中来源行）；
+        // 与来源条目按 id 升序一次性锁定——遵守系统锁序纪律「条目升序 → 批次」（M8 复核修复：
+        // 原实现先单锁来源、再补锁目标，反向调拨 A→B 与 B→A 并发时各持来源互要对方成环死锁 40P01）
+        const targetCandidate = await tx.inventoryItem.findFirst({
+          where: { consumableId: sourcePeek.consumableId, spec: sourcePeek.spec, warehouseId: targetWarehouse.id },
+          select: { id: true },
+        });
+        const lockIds = targetCandidate
+          ? [...new Set([sourcePeek.id, targetCandidate.id])].sort((a, b) => a - b)
+          : [sourcePeek.id];
+        const lockedItems = await lockInventoryItems(tx, lockIds);
+        const sourceItem = lockedItems.find((row) => row.id === sourcePeek.id);
+        if (!sourceItem) {
+          throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+        }
+        // 锁后一致性校验：来源条目归属在锁前与锁后不一致 → 并发移动，整批拒绝重试
+        if (
+          sourceItem.consumableId !== sourcePeek.consumableId ||
+          sourceItem.spec !== sourcePeek.spec ||
+          sourceItem.warehouseId !== sourcePeek.warehouseId
+        ) {
+          throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '来源条目已被并发修改，请重试' });
+        }
+        let targetItem: { id: number; bookQty: number } | null = null;
+        if (targetCandidate) {
+          targetItem = lockedItems.find((row) => row.id === targetCandidate.id) ?? null;
+          if (!targetItem) {
+            throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+          }
+        }
+        // ④ 事务内重算可用库存：超过当前可用 / 状态变化 → CONFLICT（以锁后行值为准）
         const available = sourceItem.bookQty - sourceItem.reservedQty;
         if (sourceItem.bookQty <= 0 || dto.qty > available) {
           throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
         }
-        // ④ FIFO 分配来源批次
+        // ⑤ FIFO 分配来源批次（条目锁之后，M8 锁序）
         const allocations = await allocateFifoBatches(tx, sourceItem.id, dto.qty);
-        // ⑤ 目标条目（同品种 + 同规格 + 目标库位）；不存在则创建；锁读保证流水 book_before/after 一致（M8）
-        const targetItem = await lockOrCreateItem(tx, {
+        // ⑥ 目标条目不存在：批次锁之后创建（P2002 重试锁读；新行 id 恒大于旧行，不影响已锁升序）
+        targetItem ??= await lockOrCreateItem(tx, {
           consumableId: sourceItem.consumableId,
           spec: sourceItem.spec,
           warehouseId: targetWarehouse.id,
           warehouseName: targetWarehouse.name,
           warehousePath: targetWarehouse.path,
         });
-        // ⑥ 写调拨主记录 + 批次分配明细（同事务；调拨完成后不可编辑/删除）
+        // ⑦ 写调拨主记录 + 批次分配明细（同事务；调拨完成后不可编辑/删除）
         const transfer = await tx.inventoryTransfer.create({
           data: {
             fromInventoryItemId: sourceItem.id,
@@ -102,7 +135,7 @@ export class TransferService {
             operatorName: operator.name,
           },
         });
-        // ⑦ 来源减少、目标增加（账面）；每段建子批次 + 明细 + 成对流水
+        // ⑧ 来源减少、目标增加（账面）；每段建子批次 + 明细 + 成对流水
         let outBefore = sourceItem.bookQty;
         let inBefore = targetItem.bookQty;
         for (const allocation of allocations) {

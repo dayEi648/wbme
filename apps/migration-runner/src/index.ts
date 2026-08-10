@@ -25,24 +25,39 @@ try {
  */
 
 interface DeploymentUnit {
-  /** 应用目录名与包名后缀 */
+  /** 应用目录名 */
   name: string;
-  /** workspace 包名 */
-  packageName: string;
   /** 迁移元数据默认 schema（platform-core 使用 base，代表 base+backstage 合并序列） */
   metadataSchema: string;
 }
 
 const DEPLOYMENT_UNITS: readonly DeploymentUnit[] = [
-  { name: 'platform-core', packageName: '@wbme/platform-core', metadataSchema: 'base' },
-  { name: 'asset', packageName: '@wbme/asset', metadataSchema: 'asset' },
-  { name: 'hr', packageName: '@wbme/hr', metadataSchema: 'hr' },
-  { name: 'fin', packageName: '@wbme/fin', metadataSchema: 'fin' },
+  { name: 'platform-core', metadataSchema: 'base' },
+  { name: 'asset', metadataSchema: 'asset' },
+  { name: 'hr', metadataSchema: 'hr' },
+  { name: 'fin', metadataSchema: 'fin' },
 ];
+
+/** 应用目录（prisma.config.ts 所在位置） */
+function appDirOf(root: string, unit: DeploymentUnit): string {
+  return resolve(root, 'apps', unit.name);
+}
 
 /** 应用 Prisma 目录（schema 与迁移所在位置） */
 function prismaDirOf(root: string, unit: DeploymentUnit): string {
   return resolve(root, 'apps', unit.name, 'prisma');
+}
+
+/**
+ * 单元 Prisma CLI 可执行文件。
+ *
+ * 直接调用各应用 node_modules/.bin/prisma（pnpm workspace 布局；生产 runtime 镜像
+ * 已 COPY 该目录）而非 `pnpm --filter <pkg> exec`——生产镜像无 pnpm 且根 workspace
+ * 清单未复制，`pnpm` 必 ENOENT（S4 复核修复）；cwd 由调用方指向应用目录以解析
+ * prisma.config.ts。
+ */
+function prismaBinOf(root: string, unit: DeploymentUnit): string {
+  return resolve(root, 'apps', unit.name, 'node_modules', '.bin', 'prisma');
 }
 
 /** 单元是否已配置 Prisma schema（尚未建模的单元跳过迁移） */
@@ -52,9 +67,9 @@ function hasSchema(root: string, unit: DeploymentUnit): boolean {
 }
 
 /** 执行命令并等待结束 */
-function run(cmd: string, args: string[]): Promise<{ ok: boolean; code: number | null }> {
+function run(cmd: string, args: string[], cwd?: string): Promise<{ ok: boolean; code: number | null }> {
   return new Promise((resolvePromise) => {
-    const child = spawn(cmd, args, { stdio: 'inherit', env: process.env });
+    const child = spawn(cmd, args, { stdio: 'inherit', env: process.env, cwd });
     child.on('close', (code) => resolvePromise({ ok: code === 0, code }));
   });
 }
@@ -170,7 +185,7 @@ async function main(): Promise<void> {
       }
     }
     console.log(`[migration-runner] ${unit.name}: 执行 prisma migrate deploy ...`);
-    const { ok, code } = await run('pnpm', ['--filter', unit.packageName, 'exec', 'prisma', 'migrate', 'deploy']);
+    const { ok, code } = await run(prismaBinOf(root, unit), ['migrate', 'deploy'], appDirOf(root, unit));
     if (!ok) {
       console.error(`[migration-runner] ${unit.name}: 迁移失败（退出码 ${code}），本次启动停止`);
       process.exit(1);

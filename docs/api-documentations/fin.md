@@ -128,7 +128,7 @@
 | `GET` | `/finance-dict-items` | 字典列表（dictType/status 筛选 + 分页；sort/id 升序） |
 | `POST` | `/finance-dict-items` | 新增字典项（幂等；同类型同名唯一；PROGRESS 必填金额语义；业务分类不得叫“未分类”） |
 | `PUT` | `/finance-dict-items/{id}` | 更新字典项（名称/语义/排序/启停；PROGRESS 语义被引用后不可修改 `DICT_SEMANTIC_LOCKED`） |
-| `DELETE` | `/finance-dict-items/batch` | 批量硬删除（任一被项目引用整批拒绝 `DICT_REFERENCED`；停用项历史项目仍按快照展示） |
+| `DELETE` | `/finance-dict-items/batch` | 批量硬删除（幂等；任一被项目引用整批拒绝 `DICT_REFERENCED`；停用项历史项目仍按快照展示） |
 | `GET` | `/finance-settings` | 财务配置读取（F-7；MVP 无固定运行参数，返回空列表，机制保留） |
 | `PUT` | `/finance-settings` | 更新财务配置（只接受已注册键，当前为空集，任意键拒绝） |
 

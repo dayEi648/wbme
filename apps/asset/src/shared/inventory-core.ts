@@ -217,56 +217,6 @@ export async function loadWarehouseWithPath(
 }
 
 /**
- * 按「品种 + 规格 + 库位」查找或创建库存条目（A-10 唯一索引兜底并发创建归并）。
- *
- * @param tx 事务客户端
- * @param input 条目归属与库位快照
- * @returns 条目行（含当前账面）
- */
-export async function findOrCreateItem(
-  tx: Prisma.TransactionClient,
-  input: {
-    consumableId: number;
-    spec: string;
-    warehouseId: number | null;
-    warehouseName: string;
-    warehousePath: string;
-  },
-): Promise<{ id: number; bookQty: number }> {
-  const existing = await tx.inventoryItem.findFirst({
-    where: { consumableId: input.consumableId, spec: input.spec, warehouseId: input.warehouseId },
-    select: { id: true, bookQty: true },
-  });
-  if (existing) {
-    return existing;
-  }
-  try {
-    const created = await tx.inventoryItem.create({
-      data: {
-        consumableId: input.consumableId,
-        spec: input.spec,
-        warehouseId: input.warehouseId,
-        warehouseName: input.warehouseName,
-        warehousePath: input.warehousePath,
-      },
-    });
-    return { id: created.id, bookQty: 0 };
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      // 并发创建撞唯一索引：重读归并
-      const row = await tx.inventoryItem.findFirst({
-        where: { consumableId: input.consumableId, spec: input.spec, warehouseId: input.warehouseId },
-        select: { id: true, bookQty: true },
-      });
-      if (row) {
-        return row;
-      }
-    }
-    throw error;
-  }
-}
-
-/**
  * 锁读或创建库存条目（M8，主 PRD §11 / asset PRD §6：每条流水保存各自变动前后数量）。
  *
  * 与 findOrCreateItem 的差异：命中行一律 `SELECT ... FOR UPDATE` 行锁后再返回，

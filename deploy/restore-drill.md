@@ -14,6 +14,10 @@
 
 ## 演练前置（非破坏性检查）
 
+> 恢复状态目录 `/opt/wbme/persist/restore-state`（compose `RESTORE_STATE_DIR`）由
+> `release.sh` 部署时自动预建并 chown 至恢复执行器容器 uid（10001）；手工部署
+> （不经 release.sh）时须先预建：`mkdir -p /opt/wbme/persist/restore-state && chown 10001:10001 /opt/wbme/persist/restore-state`。
+
 ```bash
 # 1. 恢复执行器就绪（状态目录读写 + 控制配置；数据库不可连不阻断）
 docker compose --env-file .env.production exec -T recovery-executor node -e \
@@ -54,6 +58,27 @@ docker compose --env-file .env.production exec -T platform-core node -e '
 
 > 注：备份触发也可使用管理后台「数据备份」页（同一效果）。确认备份状态为成功后，**记录 backupId 供步骤 3 使用**。
 
+### 步骤 1.5：签发恢复控制会话 Cookie（须在停止服务前）
+
+> **时序要求（M32 复核修正）**：步骤 2 会停止 platform-core 与 web，而恢复控制 Cookie 的签发
+> （`POST /api/v1/restores/session`，需超管平台登录会话 + data_backup 权限）依赖 platform-core
+> 运行——Cookie 必须在步骤 2 **之前**签发。控制会话有效期 60 分钟，覆盖步骤 2→4 的窗口。
+
+```bash
+# 从浏览器 DevTools 复制超管登录的完整 Cookie（wbme_session=...; wbme_csrf=...，两者都要）：
+# CSRF 双提交校验要求非 GET 携带会话 Cookie 的请求同时带 X-WBME-CSRF-Token 头，
+# 头值必须与 wbme_csrf Cookie 值完全一致（主 PRD §9.7）。
+docker compose --env-file .env.production exec -T platform-core node -e '
+  const cookie = process.argv[1];
+  const csrf = /(?:^|; )wbme_csrf=([^;]+)/.exec(cookie)?.[1] ?? "";
+  fetch("http://127.0.0.1:3001/api/v1/restores/session", {
+    method: "POST",
+    headers: { cookie, "x-wbme-csrf-token": csrf },
+  }).then(r => { console.log(r.status, r.headers.get("set-cookie")); process.exit(r.ok ? 0 : 1); })
+' "<平台登录完整 Cookie>"
+# 输出中 wbme_recovery_session=... 即为步骤 3/4 所需的控制 Cookie，记录备用
+```
+
 ### 步骤 2：制造数据库损坏（演练限定在独立测试库或演练窗口）
 
 > **警示**：本步骤会破坏数据，仅可在明确演练窗口内、已确认备份成功后执行。
@@ -86,20 +111,9 @@ docker compose --env-file .env.production exec -T recovery-executor node -e '
 
 > 注：`$(date +%s)` 在单引号内不会展开，改用 node 的 `Date.now()` 生成恢复 UUID；`backupId` 取步骤 1 记录值。
 
-确认进入维护状态（控制路由在数据库不可用时仍可访问）——控制查询/触发需恢复控制会话 Cookie（backstage PRD §10 人工介入通道），两种途径：
+确认进入维护状态（控制路由在数据库不可用时仍可访问）——控制查询/触发需步骤 1.5 签发的恢复控制会话 Cookie（backstage PRD §10 人工介入通道；步骤 2 起 platform-core/web 已停止，Cookie 无法再签发），带 Cookie 调用恢复执行器控制路由：
 
 ```bash
-# 途径 A（推荐）：经管理后台「数据备份」页操作——超管登录后签发控制 Cookie（path=/recovery）随浏览器会话透传
-# 途径 B：命令行携带 Cookie——先经平台签发恢复控制 Cookie（`POST /api/v1/restores/session`，
-# 需超管平台登录会话 + data_backup 权限；演练机从浏览器 DevTools 复制登录 Cookie 后调用）：
-docker compose --env-file .env.production exec -T platform-core node -e '
-  fetch("http://127.0.0.1:3001/api/v1/restores/session", {
-    method: "POST",
-    headers: { cookie: process.argv[1] },
-  }).then(r => { console.log(r.status, r.headers.get("set-cookie")); process.exit(r.ok ? 0 : 1); })
-' "<平台登录 Cookie>"
-# 输出中 wbme_recovery_session=... 即为步骤 4 所需的控制 Cookie
-# 拿到 wbme_recovery_session=... 后，带 Cookie 调用恢复执行器控制路由：
 docker compose --env-file .env.production exec -T recovery-executor node -e '
   fetch("http://127.0.0.1:3090/recovery/status", { headers: { cookie: process.argv[1] } })
     .then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.error ? 1 : 0); })
