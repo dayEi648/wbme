@@ -32,11 +32,23 @@
 
 | 键 | 默认值 | 边界 |
 | --- | --- | --- |
+| `session.idle.timeout.seconds` | 86400 | 60～2592000 |
+| `session.idle.remember.seconds` | 2592000 | 60～15552000 |
+| `session.abs.timeout.seconds` | 604800 | 60～7776000 |
+| `session.abs.remember.seconds` | 7776000 | 60～31536000 |
+| `login.account.max.attempts` | 10 | 1～100 |
+| `login.account.lock.seconds` | 600 | 30～86400 |
+| `login.ip.window.seconds` | 3600 | 60～86400 |
+| `login.ip.max.attempts` | 120 | 1～10000 |
+| `login.ip.lock.seconds` | 3600 | 30～86400 |
+| `invitation.valid.seconds` | 604800 | 60～7776000 |
 | `query.default.window.days` | 30 | 1～365 |
 | `export.max.rows` | 100000 | 1～200000 |
 | `backup.retention.days` | 30 | 7～365 |
 | `upload.unassociated.image.retention.hours` | 24 | 1～168 |
 | `approval.timeout.cancel.days` | 30 | 1～365 |
+
+> 会话/登录保护/邀请有效期键对应 base PRD §2/§3/§4「可在系统设置中调整」；前端设置页书签化见批次 4。
 
 ### PUT `/system-settings`
 

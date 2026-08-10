@@ -9,6 +9,7 @@ import {
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
+import { calcProjectAutoFields, type ProjectCalcResult } from '../../shared/project-calc';
 import { writeProjectChange, formatCalendarDate } from './project.service';
 
 /** 金额明细类型 → Prisma 委托方法（F-2/F-3/F-4 三表同构） */
@@ -181,34 +182,63 @@ export class DetailService {
   /**
    * 明细单条物理删除（主 PRD §2.6 财务金额明细单条硬删除例外：
    * 同事务写入完整删除前快照审计，审计失败删除同步回滚，删除后不可恢复）。
+   * 幂等键重试返回原删除结果；成功后返回最新项目汇总与版本号（主 PRD §9.5）。
    *
    * @param operator 操作人
    * @param projectId 所属项目
    * @param kind 明细类型
    * @param detailId 明细 id
-   * @returns 删除结果
+   * @param idempotencyKey 幂等键（网络重试保持不变）
+   * @returns { ok, dataRevision, auto } 删除结果 + 最新项目版本号与自动字段汇总
    */
-  async remove(operator: FinOperationLogOperator, projectId: number, kind: DetailKind, detailId: number): Promise<{ ok: true }> {
-    return this.runDetailChange(operator, projectId, kind, undefined, `fin.detail.${kind}.delete`, { id: detailId }, async (tx, row) => {
-      const existing = await detailOps(tx, kind).findFirst({ where: { id: detailId, projectId } });
-      if (!existing) {
-        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      await detailOps(tx, kind).delete({ where: { id: detailId } });
-      await writeProjectChange(tx, {
-        projectId,
-        operator,
-        action: 'EDIT',
-        field: DETAIL_KIND_FIELDS[kind],
-        before: detailSnapshot(existing),
-        after: null,
-      });
-      return {
-        result: { ok: true as const },
-        actionType: 'DELETE' as const,
-        summary: `在财务数据维护中删除了项目 ${row.name} 的一条${DETAIL_KIND_NAMES[kind]}记录`,
-      };
-    });
+  async remove(
+    operator: FinOperationLogOperator,
+    projectId: number,
+    kind: DetailKind,
+    detailId: number,
+    idempotencyKey?: string,
+  ): Promise<{ ok: true; dataRevision: number; auto: ProjectCalcResult }> {
+    return this.runDetailChange(
+      operator,
+      projectId,
+      kind,
+      idempotencyKey,
+      `fin.detail.${kind}.delete`,
+      { id: detailId },
+      async (tx, row) => {
+        const existing = await detailOps(tx, kind).findFirst({ where: { id: detailId, projectId } });
+        if (!existing) {
+          throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+        }
+        await detailOps(tx, kind).delete({ where: { id: detailId } });
+        await writeProjectChange(tx, {
+          projectId,
+          operator,
+          action: 'EDIT',
+          field: DETAIL_KIND_FIELDS[kind],
+          before: detailSnapshot(existing),
+          after: null,
+        });
+        // 本事务内递增 dataRevision 并重算自动字段（changed: false 阻止外层重复递增）：
+        // 删除返回最新汇总与版本号，前端无需二次查询（主 PRD §9.5）
+        const updated = await tx.project.update({
+          where: { id: projectId },
+          data: { dataRevision: { increment: 1 }, updatedBy: operator.id },
+        });
+        const [invoices, receipts, subcontractPayments] = await Promise.all([
+          tx.invoice.findMany({ where: { projectId }, orderBy: { id: 'asc' } }),
+          tx.receipt.findMany({ where: { projectId }, orderBy: { id: 'asc' } }),
+          tx.subcontractPayment.findMany({ where: { projectId }, orderBy: { id: 'asc' } }),
+        ]);
+        const auto = calcProjectAutoFields(updated, { invoices, receipts, subcontractPayments });
+        return {
+          result: { ok: true as const, dataRevision: updated.dataRevision, auto },
+          actionType: 'DELETE' as const,
+          summary: `在财务数据维护中删除了项目 ${row.name} 的一条${DETAIL_KIND_NAMES[kind]}记录`,
+          changed: false,
+        };
+      },
+    );
   }
 
   /**

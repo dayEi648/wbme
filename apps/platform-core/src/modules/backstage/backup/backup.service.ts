@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { backupErrors, BusinessException, DATA_BACKUP_FUNCTION_CODE } from '@wbme/contracts';
+import { backupErrors, BusinessException, createPaginationResponse, DATA_BACKUP_FUNCTION_CODE } from '@wbme/contracts';
+import { assertDiskAcceptsCapacityWrites } from '@wbme/server';
 import {
   createPendingTask,
   prismaTaskWriter,
@@ -56,20 +57,22 @@ export class BackupService {
   async listBackups(dto: { page: number; pageSize: number }): Promise<unknown> {
     const skip = (dto.page - 1) * dto.pageSize;
     const [items, total] = await Promise.all([
-      this.prisma.client.backup.findMany({ orderBy: { backupTime: 'desc' }, skip, take: dto.pageSize }),
+      // 次级 id 兜底：同秒备份时分页边界稳定（主 PRD §9.5）
+      this.prisma.client.backup.findMany({ orderBy: [{ backupTime: 'desc' }, { id: 'desc' }], skip, take: dto.pageSize }),
       this.prisma.client.backup.count(),
     ]);
-    return { items, total, page: dto.page, pageSize: dto.pageSize };
+    return createPaginationResponse(items, total, dto.page, dto.pageSize);
   }
 
   /** 恢复记录列表 */
   async listRestores(dto: { page: number; pageSize: number }): Promise<unknown> {
     const skip = (dto.page - 1) * dto.pageSize;
     const [items, total] = await Promise.all([
-      this.prisma.client.restore.findMany({ orderBy: { initiatedAt: 'desc' }, skip, take: dto.pageSize }),
+      // 次级 id 兜底：同秒发起时分页边界稳定（主 PRD §9.5）
+      this.prisma.client.restore.findMany({ orderBy: [{ initiatedAt: 'desc' }, { id: 'desc' }], skip, take: dto.pageSize }),
       this.prisma.client.restore.count(),
     ]);
-    return { items, total, page: dto.page, pageSize: dto.pageSize };
+    return createPaginationResponse(items, total, dto.page, dto.pageSize);
   }
 
   /**
@@ -123,6 +126,7 @@ export class BackupService {
    * 无法重新触发（L3）。
    */
   async triggerImmediateBackup(operatorId: number, dto: ImmediateBackupDto): Promise<unknown> {
+    await assertDiskAcceptsCapacityWrites();
     await this.assertNoActiveRestore();
     const operator = await loadOperationLogOperator(this.prisma.client, operatorId);
     const fingerprint = fingerprintPayload({ operatorId });
@@ -151,6 +155,7 @@ export class BackupService {
    * @returns 备份 id 与任务 uuid
    */
   async triggerImmediateBackupInternal(caller: string, dto: ImmediateBackupDto): Promise<{ backupId: number; taskUuid: string }> {
+    await assertDiskAcceptsCapacityWrites();
     await this.assertNoActiveRestore();
     // 系统调用方使用固定 operatorId = 0（operation_logs_idempotency_unique 中 COALESCE(operator_id, 0) 与显式 0 同桶；auto-increment 从 1 开始，0 保留给系统）
     const systemOperatorId = 0;

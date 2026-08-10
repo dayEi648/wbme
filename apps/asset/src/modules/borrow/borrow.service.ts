@@ -329,6 +329,7 @@ export class BorrowService {
     const whereSql = buildBorrowWhereSql({
       recordType: query.recordType,
       userId: query.userId,
+      recipientId: query.recipientId,
       departmentId: query.departmentId,
       departmentIds,
       settlementStatus: query.settlementStatus,
@@ -490,6 +491,7 @@ export class BorrowService {
 /** 借还记录查询条件（SQL 片段；只接受白名单参数） */
 export function buildBorrowWhereSql(options: {
   userId?: number;
+  recipientId?: number;
   recordType?: 'PERSONAL' | 'AGENT';
   departmentId?: number;
   departmentIds?: ReadonlySet<number>;
@@ -503,6 +505,13 @@ export function buildBorrowWhereSql(options: {
   }
   if (options.userId !== undefined) {
     clauses.push(`user_id = ${options.userId}`);
+  }
+  if (options.recipientId !== undefined) {
+    // 受领人筛选仅对 AGENT 记录生效（个人记录无受领人）：匹配代领申请的受领人名单
+    clauses.push(`record_type = 'AGENT' AND EXISTS (
+      SELECT 1 FROM asset.agent_recipients arp
+      WHERE arp.request_id = request_id AND arp.user_id = ${options.recipientId}
+    )`);
   }
   if (options.departmentId !== undefined) {
     // 借出时部门快照包含该部门（兼容数组与单对象形状，L6：单对象快照不再被 @> 数组匹配静默漏过）

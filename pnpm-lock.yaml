@@ -331,6 +331,12 @@ importers:
       '@wbme/files':
         specifier: workspace:*
         version: link:../../packages/files
+      '@wbme/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
+      '@wbme/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@wbme/tasks':
         specifier: workspace:*
         version: link:../../packages/tasks
@@ -377,6 +383,9 @@ importers:
       antd:
         specifier: ^6.5.4
         version: 6.5.4(luxon@3.7.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      dayjs:
+        specifier: 1.11.21
+        version: 1.11.21
       react:
         specifier: ^19.2.8
         version: 19.2.8

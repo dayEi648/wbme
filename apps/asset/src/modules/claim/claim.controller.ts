@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
 import {
   CONSUMABLE_APPLY_FUNCTION_CODE,
   CONSUMABLE_APPLY_HISTORY_FUNCTION_CODE,
+  createPaginationResponse,
   ConsumableRequestCreateDto,
   ConsumableRequestQueryDto,
 } from '@wbme/contracts';
@@ -35,16 +36,18 @@ export class ClaimController {
 
   /** 本人申领历史（随「消耗品申领」权限隐含提供） */
   @Get('mine')
-  async listMine(@CurrentUser() userId: number, @Query() query: ConsumableRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listMine(@CurrentUser() userId: number, @Query() query: ConsumableRequestQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPLY_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.claims.listMine(operator, query);
+    const result = await this.claims.listMine(operator, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 范围申领历史（「消耗品申领历史记录」部门/公司档） */
   @Get()
-  async listHistory(@CurrentUser() userId: number, @Query() query: ConsumableRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listHistory(@CurrentUser() userId: number, @Query() query: ConsumableRequestQueryDto): Promise<unknown> {
     const applicantIds = await this.scopes.resolveHistoryUserIds(userId, CONSUMABLE_APPLY_HISTORY_FUNCTION_CODE);
-    return this.claims.listHistory(query, applicantIds);
+    const result = await this.claims.listHistory(query, applicantIds);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 }

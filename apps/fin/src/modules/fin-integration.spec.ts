@@ -221,6 +221,16 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     ).rejects.toMatchObject({ entry: { code: 'CELL_FIELD_NOT_ALLOWED' } });
   });
 
+  it('利润分析 cellSave：资料齐全度拒绝非 COMPLETENESS 字典项', async () => {
+    await expect(
+      profit.cellSave(OPERATOR, {
+        projectId: projectA,
+        field: 'completenessDocs',
+        value: [{ id: regionId, name: '前洲' }],
+      }),
+    ).rejects.toMatchObject({ entry: { code: 'VALIDATION_FAILED' } });
+  });
+
   it('cellSave 修改 year 撞另一项目同名同目标年度 → PROJECT_KEY_CONFLICT（而非 500）', async () => {
     // 同名跨年度项目（业务键 = 规范化名称 + 年度，合法）
     const a = await projects.create(OPERATOR, { name: '冲突项目甲', year: 2024 });

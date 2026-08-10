@@ -1,5 +1,5 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { getRequestContext, setRequestImportLockRelease } from '@wbme/server';
+import { assertDiskAcceptsCapacityWrites, getRequestContext, setRequestImportLockRelease, setRequestImportStartedAt } from '@wbme/server';
 import type { Response } from 'express';
 import { PrismaService } from '../../prisma.service';
 import { assertFinanceMaintainAccess } from '../../shared/cross-schema-auth';
@@ -12,6 +12,7 @@ import { ImportService } from './import.service';
  * 使并发请求在 Multer 缓冲 20 MiB 请求体之前即被拒绝，避免无谓内存占用；
  * 锁句柄写入请求上下文供 ImportService 复用（不再二次获取），释放挂响应关闭兜底
  * （正常完成/异常/超时/断连均触发）。
+ * 磁盘达严重阈值时拒绝新导入（主 PRD §9.13）。
  */
 @Injectable()
 export class ExcelImportLockGuard implements CanActivate {
@@ -28,9 +29,13 @@ export class ExcelImportLockGuard implements CanActivate {
     }
     // 授权断言前置到请求体读取之前
     await assertFinanceMaintainAccess(this.prisma.client, userId);
+    // 磁盘严重阈值：停止接受新 Excel 导入（主 PRD §9.13）
+    await assertDiskAcceptsCapacityWrites();
     // 互斥锁前置到 Multer 之前；同一请求内 service 经请求上下文复用同一句柄
     const release = await this.imports.acquireImportLock(userId);
     setRequestImportLockRelease(release);
+    // 总时限从取得占用并开始接收请求体时计算（fin PRD §4：覆盖上传读取阶段）
+    setRequestImportStartedAt(Date.now());
     const res = context.switchToHttp().getResponse<Response>();
     // 释放兜底：响应关闭（正常完成/异常/超时/断连）时统一释放；service 复用同一句柄幂等释放
     res.on('close', () => {

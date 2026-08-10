@@ -31,15 +31,17 @@ export class HrSettingUpdateDto extends IdempotentDto {
   value!: string;
 }
 
+/** 人事字典类型（与 hr 模块 Prisma enum 对齐；MVP 仅保留占位类型，业务引入时同步扩展） */
+export const HR_DICT_TYPES = ['PLACEHOLDER'] as const;
+
 /** 创建字典项 */
 export class HrDictCreateDto extends IdempotentDto {
   @ApiProperty({
     description: '字典类型编码',
-    maxLength: 50,
+    enum: HR_DICT_TYPES,
   })
-  @IsString()
-  @MaxLength(50)
-  dictType!: string;
+  @IsIn(HR_DICT_TYPES)
+  dictType!: (typeof HR_DICT_TYPES)[number];
 
   @ApiProperty({
     description: '字典项名称',
@@ -103,12 +105,11 @@ export class HrDictQueryDto extends PaginationQueryDto {
   @ApiProperty({
     description: '字典类型过滤',
     required: false,
-    maxLength: 50,
+    enum: HR_DICT_TYPES,
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  dictType?: string;
+  @IsIn(HR_DICT_TYPES)
+  dictType?: (typeof HR_DICT_TYPES)[number];
 
   @ApiProperty({
     description: '启停状态',

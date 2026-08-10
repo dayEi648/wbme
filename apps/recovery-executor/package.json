@@ -17,6 +17,8 @@
     "@nestjs/core": "^11.1.28",
     "@wbme/contracts": "workspace:*",
     "@wbme/files": "workspace:*",
+    "@wbme/logging": "workspace:*",
+    "@wbme/server": "workspace:*",
     "@wbme/tasks": "workspace:*",
     "cookie-parser": "^1.4.7",
     "ioredis": "^6.0.0",

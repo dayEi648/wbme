@@ -31,6 +31,14 @@
             "maxLength": 128,
             "type": "string"
           },
+          "leaders": {
+            "description": "部门负责人用户 id 列表（可多名；须为在职员工）",
+            "items": {
+              "minimum": 1,
+              "type": "number"
+            },
+            "type": "array"
+          },
           "name": {
             "description": "部门名称",
             "maxLength": 100,
@@ -94,6 +102,14 @@
             "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
             "maxLength": 128,
             "type": "string"
+          },
+          "leaders": {
+            "description": "部门负责人用户 id 列表（可多名；须为在职员工；缺省不改动既有负责人）",
+            "items": {
+              "minimum": 1,
+              "type": "number"
+            },
+            "type": "array"
           },
           "name": {
             "description": "部门名称",
@@ -192,6 +208,7 @@
                   "DINGTALK_ORG_MISMATCH",
                   "DINGTALK_STATE_INVALID",
                   "DINGTALK_UNAVAILABLE",
+                  "DISK_SPACE_CRITICAL",
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
@@ -390,7 +407,9 @@
         "properties": {
           "dictType": {
             "description": "字典类型编码",
-            "maxLength": 50,
+            "enum": [
+              "PLACEHOLDER"
+            ],
             "type": "string"
           },
           "idempotencyKey": {
@@ -1278,7 +1297,7 @@
             "description": ""
           }
         },
-        "summary": "创建部门（幂等；停用部门不能作为新建下级目标）",
+        "summary": "创建部门（幂等；停用部门不能作为新建下级目标；可设置多名负责人）",
         "tags": [
           "Department"
         ]
@@ -1312,7 +1331,7 @@
             "description": ""
           }
         },
-        "summary": "更新部门（名称/排序/启停；停用后不可作为新选择目标）",
+        "summary": "更新部门（名称/排序/启停/负责人；停用后不可作为新选择目标）",
         "tags": [
           "Department"
         ]
@@ -1411,7 +1430,51 @@
     "/api/v1/departments/tree": {
       "get": {
         "operationId": "DepartmentController_tree",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1483,7 +1546,9 @@
             "name": "dictType",
             "required": false,
             "schema": {
-              "maxLength": 50,
+              "enum": [
+                "PLACEHOLDER"
+              ],
               "type": "string"
             }
           },
@@ -2109,6 +2174,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelApprovalDto"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2608,6 +2683,49 @@
         "operationId": "PositionController_list",
         "parameters": [
           {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "includeDisabled",
             "required": false,
@@ -2628,7 +2746,7 @@
             "description": ""
           }
         },
-        "summary": "岗位列表（默认只含启用；含适用部门）",
+        "summary": "岗位列表（默认只含启用；含适用部门）。\n 只读引用对「组织架构」开放（hr PRD §7：岗位管理为独立权限，组织架构可引用岗位档案）；\n 写操作仍仅 position_manage。",
         "tags": [
           "Position"
         ]

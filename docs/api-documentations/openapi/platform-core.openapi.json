@@ -68,7 +68,8 @@
             "items": {
               "type": "number"
             },
-            "type": "array"
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
@@ -372,6 +373,7 @@
                   "DINGTALK_ORG_MISMATCH",
                   "DINGTALK_STATE_INVALID",
                   "DINGTALK_UNAVAILABLE",
+                  "DISK_SPACE_CRITICAL",
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",

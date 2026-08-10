@@ -66,8 +66,10 @@ export class OvertimeSubmissionService {
     if (!hasApply && !hasProxy) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
-    // 超管豁免 dataScope=null（全公司语义）；非 SELF 档（部门/公司）可代交
+    // 超管豁免 dataScope=null（全公司语义）；非 SELF 档（部门/公司）可代交。
+    // 公司档（COMPANY / 超管 null）代提范围为全部在职员工，不做部门闭包收缩（hr PRD §3）
     const canProxy = hasProxy && proxyAccess.dataScope !== 'SELF';
+    const proxyScope = proxyAccess.dataScope;
 
     // 本人档强制名单=本人；名单含他人且无代交权限 → 拒绝
     let userIds = dto.userIds;
@@ -91,7 +93,7 @@ export class OvertimeSubmissionService {
     }
 
     // 事务外只读校验（逐人收集失败原因；任一失败整批拒绝、零写入）
-    const failures = await this.validateBatch(operator, dto, userIds, canProxy);
+    const failures = await this.validateBatch(operator, dto, userIds, canProxy, proxyScope);
     if (failures.length > 0) {
       throw new BusinessException(hrErrors.OVERTIME_BATCH_REJECTED, { failures });
     }
@@ -152,10 +154,12 @@ export class OvertimeSubmissionService {
     dto: OvertimeSubmitDto,
     userIds: number[],
     canProxy: boolean,
+    proxyScope: string | null | undefined,
   ): Promise<OvertimeBatchFailure[]> {
     const failures: OvertimeBatchFailure[] = [];
-    // 代提范围闭包（仅非本人项；本人始终在范围内）
-    const proxyClosure = canProxy ? await this.closure.closureOfUser(operator.id) : null;
+    // 代提范围闭包：仅 DEPARTMENT 档按代提人部门闭包收缩；
+    // COMPANY / 超管（null）档为全公司范围，不做闭包限制（hr PRD §3）
+    const proxyClosure = canProxy && proxyScope === 'DEPARTMENT' ? await this.closure.closureOfUser(operator.id) : null;
     for (const targetUserId of userIds) {
       if (targetUserId === operator.id) {
         continue;
@@ -170,8 +174,8 @@ export class OvertimeSubmissionService {
         });
         continue;
       }
-      // 代提范围：代提人闭包须覆盖该员工全部当前部门
-      if (canProxy && proxyClosure) {
+      // 代提范围（DEPARTMENT 档）：代提人闭包须覆盖该员工全部当前部门
+      if (proxyClosure) {
         const targetOwnDepartments = await this.loadOwnDepartments(targetUserId);
         if (targetOwnDepartments.some((departmentId) => !proxyClosure.has(departmentId))) {
           failures.push({

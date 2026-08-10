@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
-import { AgentSettlementCreateDto, AgentSettlementQueryDto, PROXY_APPLY_FUNCTION_CODE } from '@wbme/contracts';
+import { AgentSettlementCreateDto, AgentSettlementQueryDto, createPaginationResponse, PROXY_APPLY_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess } from '../../shared/cross-schema-auth';
@@ -27,9 +27,10 @@ export class AgentSettlementController {
 
   /** 本人代领结清申请历史 */
   @Get('mine')
-  async listMine(@CurrentUser() userId: number, @Query() query: AgentSettlementQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listMine(@CurrentUser() userId: number, @Query() query: AgentSettlementQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, PROXY_APPLY_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.settlements.listMine(operator, query);
+    const result = await this.settlements.listMine(operator, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 }

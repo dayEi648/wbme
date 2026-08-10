@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
 import {
   STOCK_CHANGE_APPLY_FUNCTION_CODE,
   STOCK_CHANGE_HISTORY_FUNCTION_CODE,
+  createPaginationResponse,
   StockChangeRequestCreateDto,
   StockChangeRequestQueryDto,
 } from '@wbme/contracts';
@@ -35,16 +36,18 @@ export class StockChangeController {
 
   /** 本人库存变更申请历史（随「库存变更申请」权限隐含提供） */
   @Get('mine')
-  async listMine(@CurrentUser() userId: number, @Query() query: StockChangeRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listMine(@CurrentUser() userId: number, @Query() query: StockChangeRequestQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, STOCK_CHANGE_APPLY_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.stockChange.listMine(operator, query);
+    const result = await this.stockChange.listMine(operator, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 范围库存变更申请历史（「库存变更申请历史记录」部门/公司档） */
   @Get()
-  async listHistory(@CurrentUser() userId: number, @Query() query: StockChangeRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listHistory(@CurrentUser() userId: number, @Query() query: StockChangeRequestQueryDto): Promise<unknown> {
     const applicantIds = await this.scopes.resolveHistoryUserIds(userId, STOCK_CHANGE_HISTORY_FUNCTION_CODE);
-    return this.stockChange.listHistory(query, applicantIds);
+    const result = await this.stockChange.listHistory(query, applicantIds);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 }

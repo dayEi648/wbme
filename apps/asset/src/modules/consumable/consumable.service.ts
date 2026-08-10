@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  ASSET_CONFIG_FUNCTION_CODE,
   BusinessException,
   ConsumableQueryDto,
   frameworkErrors,
+  INVENTORY_MANAGE_FUNCTION_CODE,
   inventoryErrors,
 } from '@wbme/contracts';
 import { buildTablePrismaQuery } from '@wbme/server';
@@ -194,7 +194,7 @@ export class ConsumableService {
     this.assertTypeParams(input);
     return executeIdempotentOperation(this.prisma.client, {
       operator,
-      feature: ASSET_CONFIG_FUNCTION_CODE,
+      feature: INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.consumable.create',
       idempotencyKey: input.idempotencyKey,
       fingerprint: fingerprintPayload(input),
@@ -248,7 +248,7 @@ export class ConsumableService {
     this.assertTypeParams(input);
     return executeIdempotentOperation(this.prisma.client, {
       operator,
-      feature: ASSET_CONFIG_FUNCTION_CODE,
+      feature: INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.consumable.update',
       idempotencyKey,
       fingerprint: fingerprintPayload({ ...input, type: undefined, id }),
@@ -267,8 +267,8 @@ export class ConsumableService {
             throw new BusinessException(inventoryErrors.UNIT_LOCKED);
           }
         }
-        const category = await this.loadCategory(tx, input.categoryId);
-        const unit = await this.loadUnit(tx, input.unitId);
+        const category = await this.loadCategory(tx, input.categoryId, existing.categoryId);
+        const unit = await this.loadUnit(tx, input.unitId, existing.unitId);
         const changed: string[] = [];
         const pushChange = (label: string, before: unknown, after: unknown): void => {
           if (String(before ?? '') !== String(after ?? '')) {
@@ -322,7 +322,7 @@ export class ConsumableService {
   async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
-      feature: ASSET_CONFIG_FUNCTION_CODE,
+      feature: INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.consumable.delete',
       idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
@@ -391,16 +391,19 @@ export class ConsumableService {
   }
 
   /**
-   * 加载分类（必须是"消耗品"顶级分类下的一级子分类）。
+   * 加载分类（必须是"消耗品"顶级分类下的一级子分类且已启用；
+   * 停用分类不能作为新建业务的选择目标；编辑时原引用可往返保留，asset PRD §12）。
    *
    * @param tx 事务客户端
    * @param categoryId 分类 id
+   * @param currentId 编辑时的原分类 id（停用项仅允许原引用往返）
    * @returns 分类行；未填返回 null
-   * @throws VALIDATION_FAILED 分类不存在或不属于消耗品分类
+   * @throws VALIDATION_FAILED 分类不存在/不属于消耗品分类/已停用
    */
   private async loadCategory(
     tx: Prisma.TransactionClient,
     categoryId?: number,
+    currentId?: number | null,
   ): Promise<{ id: number; name: string } | null> {
     if (categoryId === undefined) {
       return null;
@@ -411,29 +414,38 @@ export class ConsumableService {
       INNER JOIN asset.asset_categories top ON top.id = c.parent_id
       WHERE c.id = ${categoryId}
         AND top.name = '消耗品'
+        AND (c.status = 'ACTIVE' OR c.id = ${currentId ?? -1})
       LIMIT 1
     `;
     if (rows.length === 0) {
-      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '分类不存在或不是消耗品分类' });
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '分类不存在、不是消耗品分类或已停用' });
     }
     return rows[0] ?? null;
   }
 
   /**
-   * 加载单位字典项（UNIT 类型）。
+   * 加载单位字典项（UNIT 类型且已启用；停用单位不能用于新建业务，
+   * 编辑时原引用可往返保留，asset PRD §12）。
    *
    * @param tx 事务客户端
    * @param unitId 字典项 id
+   * @param currentId 编辑时的原单位 id（停用项仅允许原引用往返）
    * @returns 单位行；未填返回 null
-   * @throws VALIDATION_FAILED 字典项不存在或不是单位
+   * @throws VALIDATION_FAILED 字典项不存在/不是单位/已停用
    */
-  private async loadUnit(tx: Prisma.TransactionClient, unitId?: number): Promise<{ id: number; name: string } | null> {
+  private async loadUnit(
+    tx: Prisma.TransactionClient,
+    unitId?: number,
+    currentId?: number | null,
+  ): Promise<{ id: number; name: string } | null> {
     if (unitId === undefined) {
       return null;
     }
-    const row = await tx.assetDictItem.findFirst({ where: { id: unitId, dictType: 'UNIT' } });
+    const row = await tx.assetDictItem.findFirst({
+      where: { id: unitId, dictType: 'UNIT', OR: [{ status: 'ACTIVE' }, { id: currentId ?? -1 }] },
+    });
     if (!row) {
-      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '单位不存在或不是单位类型' });
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '单位不存在、不是单位类型或已停用' });
     }
     return { id: row.id, name: row.name };
   }

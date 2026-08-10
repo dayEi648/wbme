@@ -3,9 +3,10 @@ import type { Response } from 'express';
 import {
   ApprovalListQueryDto,
   CancelApprovalDto,
+  createPaginationResponse,
   ProcessApprovalDto,
 } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, RequestTimeout } from '@wbme/server';
 import { AssetApprovalService } from './asset-approval.service';
 
 /**
@@ -36,13 +37,8 @@ export class ApprovalController {
    */
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: ApprovalListQueryDto): Promise<unknown> {
-    return this.approval.list(userId, query);
-  }
-
-  /** 当前用户提交或代交的申请历史；不要求审批权限，待审批项可由申请人取消。 */
-  @Get('mine')
-  async listMine(@CurrentUser() userId: number, @Query() query: ApprovalListQueryDto): Promise<unknown> {
-    return this.approval.listMine(userId, query);
+    const result = await this.approval.list(userId, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /**
@@ -65,6 +61,7 @@ export class ApprovalController {
    * @param res 流式响应
    */
   @Get('export/all')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   async exportAll(@CurrentUser() userId: number, @Query() query: ApprovalListQueryDto, @Res() res: Response): Promise<void> {
     await this.approval.exportList(userId, query, res);
   }

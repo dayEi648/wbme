@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
-import { DEPARTMENT_MANAGE_FUNCTION_CODE, DepartmentCreateDto, DepartmentDeleteDto, DepartmentMoveDto, DepartmentUpdateDto, ORG_STRUCTURE_FUNCTION_CODE } from '@wbme/contracts';
+import { createPaginationResponse, DEPARTMENT_MANAGE_FUNCTION_CODE, DepartmentCreateDto, DepartmentDeleteDto, DepartmentMoveDto, DepartmentUpdateDto, ORG_STRUCTURE_FUNCTION_CODE, PaginationQueryDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess, getFunctionAccess } from '../../shared/cross-schema-auth';
@@ -20,12 +20,15 @@ export class DepartmentController {
 
   /** 部门树（组织架构与部门管理功能任一可见；含负责人与状态） */
   @Get('tree')
-  async tree(@CurrentUser() userId: number): Promise<unknown> {
+  async tree(@CurrentUser() userId: number, @Query() query: PaginationQueryDto): Promise<unknown> {
     await this.assertEitherAccess(userId);
-    return this.departments.listTree();
+    const result = await this.departments.listTree();
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    return createPaginationResponse(result.slice((page - 1) * pageSize, page * pageSize), result.length, page, pageSize);
   }
 
-  /** 创建部门（幂等；停用部门不能作为新建下级目标） */
+  /** 创建部门（幂等；停用部门不能作为新建下级目标；可设置多名负责人） */
   @Post()
   async create(@CurrentUser() userId: number, @Body() dto: DepartmentCreateDto): Promise<{ id: number }> {
     await this.assertDepartmentManage(userId);
@@ -34,11 +37,12 @@ export class DepartmentController {
       name: dto.name,
       parentId: dto.parentId,
       sort: dto.sort,
+      leaders: dto.leaders,
       idempotencyKey: dto.idempotencyKey,
     });
   }
 
-  /** 更新部门（名称/排序/启停；停用后不可作为新选择目标） */
+  /** 更新部门（名称/排序/启停/负责人；停用后不可作为新选择目标） */
   @Put(':id')
   async update(
     @CurrentUser() userId: number,
@@ -51,6 +55,7 @@ export class DepartmentController {
       name: dto.name,
       sort: dto.sort,
       status: dto.status,
+      leaders: dto.leaders,
       idempotencyKey: dto.idempotencyKey,
     });
   }

@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
-import { POSITION_MANAGE_FUNCTION_CODE, PositionCreateDto, PositionDeleteDto, PositionDepartmentsUpdateDto, PositionUpdateDto } from '@wbme/contracts';
+import { createPaginationResponse, ORG_STRUCTURE_FUNCTION_CODE, PaginationQueryDto, POSITION_MANAGE_FUNCTION_CODE, PositionCreateDto, PositionDeleteDto, PositionDepartmentsUpdateDto, PositionUpdateDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
-import { assertFunctionAccess } from '../../shared/cross-schema-auth';
+import { assertFunctionAccess, getFunctionAccess } from '../../shared/cross-schema-auth';
 import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { PositionService } from './position.service';
 
@@ -17,11 +17,16 @@ export class PositionController {
     private readonly positions: PositionService,
   ) {}
 
-  /** 岗位列表（默认只含启用；含适用部门） */
+  /** 岗位列表（默认只含启用；含适用部门）。
+   *  只读引用对「组织架构」开放（hr PRD §7：岗位管理为独立权限，组织架构可引用岗位档案）；
+   *  写操作仍仅 position_manage。 */
   @Get()
-  async list(@CurrentUser() userId: number, @Query('includeDisabled') includeDisabled?: string): Promise<unknown> {
-    await assertFunctionAccess(this.prisma.client, userId, POSITION_MANAGE_FUNCTION_CODE);
-    return this.positions.list(includeDisabled === 'true');
+  async list(@CurrentUser() userId: number, @Query() query: PaginationQueryDto, @Query('includeDisabled') includeDisabled?: string): Promise<unknown> {
+    await this.assertEitherAccess(userId);
+    const result = await this.positions.list(includeDisabled === 'true');
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    return createPaginationResponse(result.slice((page - 1) * pageSize, page * pageSize), result.length, page, pageSize);
   }
 
   /** 创建岗位（幂等；岗位名唯一） */
@@ -88,5 +93,14 @@ export class PositionController {
     await assertFunctionAccess(this.prisma.client, userId, POSITION_MANAGE_FUNCTION_CODE);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
     return this.positions.deleteBatch(operator, dto.ids, dto.idempotencyKey);
+  }
+
+  /** 岗位管理或组织架构任一功能即可读取岗位列表（hr PRD §7 引用口径） */
+  private async assertEitherAccess(userId: number): Promise<void> {
+    const manageAccess = await getFunctionAccess(this.prisma.client, userId, POSITION_MANAGE_FUNCTION_CODE);
+    if (manageAccess.registered && manageAccess.allowed && manageAccess.systemOpen) {
+      return;
+    }
+    await assertFunctionAccess(this.prisma.client, userId, ORG_STRUCTURE_FUNCTION_CODE);
   }
 }

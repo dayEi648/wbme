@@ -52,8 +52,21 @@ export const SETTING_KEYS = {
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
 
-/** 平台设置页管理的键（PLATFORM 组） */
+/**
+ * 平台设置页管理的键（PLATFORM 组）。
+ * 含会话/登录保护/邀请有效期（base PRD §2/§3/§4）与运维参数（backstage PRD §7）。
+ */
 export const PLATFORM_SETTING_KEYS = [
+  SETTING_KEYS.SESSION_IDLE_TIMEOUT,
+  SETTING_KEYS.SESSION_IDLE_REMEMBER,
+  SETTING_KEYS.SESSION_ABS_TIMEOUT,
+  SETTING_KEYS.SESSION_ABS_REMEMBER,
+  SETTING_KEYS.LOGIN_ACCOUNT_MAX_ATTEMPTS,
+  SETTING_KEYS.LOGIN_ACCOUNT_LOCK_SECONDS,
+  SETTING_KEYS.LOGIN_IP_WINDOW_SECONDS,
+  SETTING_KEYS.LOGIN_IP_MAX_ATTEMPTS,
+  SETTING_KEYS.LOGIN_IP_LOCK_SECONDS,
+  SETTING_KEYS.INVITATION_VALID_SECONDS,
   SETTING_KEYS.QUERY_DEFAULT_WINDOW_DAYS,
   SETTING_KEYS.EXPORT_MAX_ROWS,
   SETTING_KEYS.BACKUP_RETENTION_DAYS,
@@ -78,6 +91,66 @@ export interface PlatformSettingItem extends PlatformSettingDefinition {
 }
 
 const PLATFORM_SETTING_DEFINITIONS: Readonly<Record<PlatformSettingKey, Omit<PlatformSettingDefinition, 'key'>>> = {
+  [SETTING_KEYS.SESSION_IDLE_TIMEOUT]: {
+    label: '普通会话空闲超时（秒）',
+    defaultValue: 24 * 60 * 60,
+    min: 60,
+    max: 30 * 24 * 60 * 60,
+  },
+  [SETTING_KEYS.SESSION_IDLE_REMEMBER]: {
+    label: '「记住我」会话空闲超时（秒）',
+    defaultValue: 30 * 24 * 60 * 60,
+    min: 60,
+    max: 180 * 24 * 60 * 60,
+  },
+  [SETTING_KEYS.SESSION_ABS_TIMEOUT]: {
+    label: '普通会话绝对过期（秒）',
+    defaultValue: 7 * 24 * 60 * 60,
+    min: 60,
+    max: 90 * 24 * 60 * 60,
+  },
+  [SETTING_KEYS.SESSION_ABS_REMEMBER]: {
+    label: '「记住我」会话绝对过期（秒）',
+    defaultValue: 90 * 24 * 60 * 60,
+    min: 60,
+    max: 365 * 24 * 60 * 60,
+  },
+  [SETTING_KEYS.LOGIN_ACCOUNT_MAX_ATTEMPTS]: {
+    label: '账号锁连续失败次数上限',
+    defaultValue: 10,
+    min: 1,
+    max: 100,
+  },
+  [SETTING_KEYS.LOGIN_ACCOUNT_LOCK_SECONDS]: {
+    label: '账号锁定时长（秒）',
+    defaultValue: 10 * 60,
+    min: 30,
+    max: 24 * 60 * 60,
+  },
+  [SETTING_KEYS.LOGIN_IP_WINDOW_SECONDS]: {
+    label: 'IP 锁计数窗口（秒）',
+    defaultValue: 60 * 60,
+    min: 60,
+    max: 24 * 60 * 60,
+  },
+  [SETTING_KEYS.LOGIN_IP_MAX_ATTEMPTS]: {
+    label: 'IP 锁窗口内失败次数上限',
+    defaultValue: 120,
+    min: 1,
+    max: 10_000,
+  },
+  [SETTING_KEYS.LOGIN_IP_LOCK_SECONDS]: {
+    label: 'IP 锁定时长（秒）',
+    defaultValue: 60 * 60,
+    min: 30,
+    max: 24 * 60 * 60,
+  },
+  [SETTING_KEYS.INVITATION_VALID_SECONDS]: {
+    label: '激活/重置凭证有效期（秒）',
+    defaultValue: 7 * 24 * 60 * 60,
+    min: 60,
+    max: 90 * 24 * 60 * 60,
+  },
   [SETTING_KEYS.QUERY_DEFAULT_WINDOW_DAYS]: {
     label: '默认查询时间窗口（天）',
     defaultValue: 30,

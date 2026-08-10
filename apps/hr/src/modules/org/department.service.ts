@@ -42,16 +42,16 @@ export class DepartmentService {
   }
 
   /**
-   * 创建部门（幂等）。
+   * 创建部门（幂等；hr PRD §6 一个部门可有多名负责人）。
    *
    * @param operator 操作人
-   * @param input 部门信息
+   * @param input 部门信息（leaders = 负责人用户 id 列表，须为在职员工）
    * @returns 部门 id
-   * @throws RESOURCE_NOT_FOUND 父部门不存在；VALIDATION_FAILED 父部门已停用
+   * @throws RESOURCE_NOT_FOUND 父部门不存在；VALIDATION_FAILED 父部门已停用/负责人不合法
    */
   async create(
     operator: HrOperationLogOperator,
-    input: { name: string; parentId?: number; sort?: number; idempotencyKey?: string },
+    input: { name: string; parentId?: number; sort?: number; leaders?: number[]; idempotencyKey?: string },
   ): Promise<{ id: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
@@ -69,26 +69,30 @@ export class DepartmentService {
             throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '停用部门不能作为新建下级的选择目标' });
           }
         }
+        const leaders = await this.loadLeaders(tx, input.leaders ?? []);
         const row = await tx.department.create({
           data: {
             name: input.name,
             parentId: input.parentId ?? null,
             sort: input.sort ?? 0,
             createdBy: operator.id,
+            departmentLeaders: {
+              create: leaders.map((leader) => ({ userId: leader.userId, userName: leader.userName, createdBy: operator.id })),
+            },
           },
         });
         await bumpOrgTreeVersion(tx);
         return {
           result: { id: row.id },
           actionType: 'CREATE' as const,
-          summary: `在部门管理中新增了部门：${input.name}`,
+          summary: `在部门管理中新增了部门：${input.name}${leaders.length > 0 ? `（负责人 ${leaders.length} 人）` : ''}`,
         };
       },
     });
   }
 
   /**
-   * 更新部门（名称/排序/启停）。
+   * 更新部门（名称/排序/启停/负责人；leaders 缺省 = 不改动既有负责人，显式 [] = 清空）。
    *
    * @param operator 操作人
    * @param id 部门 id
@@ -97,7 +101,7 @@ export class DepartmentService {
   async update(
     operator: HrOperationLogOperator,
     id: number,
-    input: { name?: string; sort?: number; status?: 'ACTIVE' | 'DISABLED'; idempotencyKey?: string },
+    input: { name?: string; sort?: number; status?: 'ACTIVE' | 'DISABLED'; leaders?: number[]; idempotencyKey?: string },
   ): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
@@ -119,10 +123,48 @@ export class DepartmentService {
             updatedBy: operator.id,
           },
         });
+        if (input.leaders !== undefined) {
+          const leaders = await this.loadLeaders(tx, input.leaders);
+          // 整组替换负责人关系（H-3 无唯一性外键约束问题：先删后建，事务内原子）
+          await tx.departmentLeader.deleteMany({ where: { departmentId: id } });
+          if (leaders.length > 0) {
+            await tx.departmentLeader.createMany({
+              data: leaders.map((leader) => ({ departmentId: id, userId: leader.userId, userName: leader.userName, createdBy: operator.id })),
+            });
+          }
+        }
         await bumpOrgTreeVersion(tx);
         return { result: { ok: true }, actionType: 'UPDATE' as const, summary: `更新了部门：${existing.name}` };
       },
     });
+  }
+
+  /**
+   * 加载并校验负责人（须为在职员工；名称快照落库，注销后负责人名单仍按快照展示）。
+   *
+   * @param tx 事务客户端
+   * @param userIds 负责人用户 id 列表
+   * @returns 负责人快照（去重）
+   * @throws VALIDATION_FAILED 任一负责人不存在或已注销
+   */
+  private async loadLeaders(
+    tx: Prisma.TransactionClient,
+    userIds: number[],
+  ): Promise<Array<{ userId: number; userName: string }>> {
+    if (userIds.length === 0) {
+      return [];
+    }
+    const uniqueIds = [...new Set(userIds)];
+    const rows = await tx.$queryRaw<Array<{ user_id: number; name: string }>>`
+      SELECT user_id, name
+      FROM backstage.user_accounts
+      WHERE user_id = ANY(${uniqueIds as number[]})
+        AND status = 'ACTIVE' AND deleted_at IS NULL
+    `;
+    if (rows.length !== uniqueIds.length) {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '负责人必须为在职员工' });
+    }
+    return rows.map((row) => ({ userId: row.user_id, userName: row.name }));
   }
 
   /**
@@ -189,21 +231,39 @@ export class DepartmentService {
     let assetUnavailable = false;
     for (const id of ids) {
       const [activeEmployees, pendingRequests, titleRuleRefs, assetCount] = await Promise.all([
+        // 在职员工数口径：user_org 保留已注销行，须 JOIN 账号状态过滤（hr PRD §6）
         this.prisma.client.$queryRaw<Array<{ c: number }>>`
           SELECT COUNT(*)::int AS c
-          FROM hr.user_org
-          WHERE department_id = ${id}
+          FROM hr.user_org uo
+          INNER JOIN backstage.user_accounts ua ON ua.user_id = uo.user_id
+            AND ua.status = 'ACTIVE' AND ua.deleted_at IS NULL
+          WHERE uo.department_id = ${id}
         `,
-        // 申请人部门快照为 JSON 数组 [{id, name}]：jsonb_array_elements 逐元素匹配
+        // 待审批申请口径：
+        // 1) 岗位变更（POSITION_CHANGE）按申请人部门快照 [{id, name}] 匹配（申请发起地）；
+        // 2) 加班批次（OVERTIME）按明细部门快照匹配（hr PRD §3：加班明细快照为逐人部门）
         this.prisma.client.$queryRaw<Array<{ c: number }>>`
           SELECT COUNT(*)::int AS c
-          FROM hr.approval_requests r
-          WHERE r.request_type = 'POSITION_CHANGE'
-            AND r.status = 'PENDING'
-            AND EXISTS (
-              SELECT 1 FROM jsonb_array_elements(r.applicant_department_snapshot) el
-              WHERE (el->>'id')::int = ${id}
-            )
+          FROM (
+            SELECT r.id
+            FROM hr.approval_requests r
+            WHERE r.request_type = 'POSITION_CHANGE'
+              AND r.status = 'PENDING'
+              AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements(r.applicant_department_snapshot) el
+                WHERE (el->>'id')::int = ${id}
+              )
+            UNION
+            SELECT r.id
+            FROM hr.approval_requests r
+            INNER JOIN hr.overtime_items oi ON oi.request_id = r.id
+            WHERE r.request_type = 'OVERTIME'
+              AND r.status = 'PENDING'
+              AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements(oi.department_snapshot) el
+                WHERE (el->>'id')::int = ${id}
+              )
+          ) pending
         `,
         this.prisma.client.titleRule.count({ where: { departmentId: id, deletedAt: null } }),
         this.assetDepartments.countAssets(id),
@@ -227,6 +287,8 @@ export class DepartmentService {
    * 有未删除下级时禁止删除；同一事务物理删除并递增 org_tree_version。
    * 引用清理由外键级联完成：user_departments（H-7 CASCADE）、department_leaders（H-3 CASCADE）、
    * position_departments（H-5 CASCADE）——员工变为无部门员工、岗位适用范围同步收缩；
+   * 部门负责人关系随部门物理删除而消失，即 hr PRD §6「把部门负责人关系置空」语义
+   * （部门已不存在，负责人不再属于任何被删部门；负责人用户本身不受影响）；
    * 历史审批快照等不受影响（快照展示原名称）。
    *
    * @param operator 操作人
@@ -271,7 +333,8 @@ export class DepartmentService {
   }
 
   /**
-   * 判断 candidateId 是否是 ancestorId 的后代（沿父链上溯）。
+   * 判断 candidateId 是否是 ancestorId 的后代（沿父链上溯；visited 集合防环，
+   * 不依赖深度上限——部门树深度超过 20 层时同样正确判定）。
    *
    * @param tx 事务客户端
    * @param candidateId 候选后代
@@ -280,17 +343,17 @@ export class DepartmentService {
    */
   private async isDescendant(tx: Prisma.TransactionClient, candidateId: number, ancestorId: number): Promise<boolean> {
     let current: number | null = candidateId;
-    let guard = 0;
-    while (current !== null && guard < 20) {
+    const visited = new Set<number>();
+    while (current !== null && !visited.has(current)) {
       if (current === ancestorId) {
         return true;
       }
+      visited.add(current);
       const row: { parentId: number | null } | null = await tx.department.findUnique({
         where: { id: current },
         select: { parentId: true },
       });
       current = row?.parentId ?? null;
-      guard += 1;
     }
     return false;
   }

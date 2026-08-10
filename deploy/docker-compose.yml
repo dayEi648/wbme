@@ -171,12 +171,16 @@ services:
       RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
       # 维护标记/恢复状态目录（只读：标记由恢复执行器写入）
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
-      # 健康状态页服务探针（L37）：三个部署单元的探针 URL 统一注入本服务
-      # （健康状态页在 platform-core 内运行，从自身环境读取；worker 探针经容器私网 3105 可达）
+      # 健康状态页服务探针（backstage PRD §11）：各部署单元探针 URL 统一注入本服务
       PLATFORM_CORE_HEALTH_URL: http://platform-core:3001
+      ASSET_HEALTH_URL: http://asset:3002
+      HR_HEALTH_URL: http://hr:3003
+      FIN_HEALTH_URL: http://fin:3004
       WORKER_HEALTH_URL: http://worker:3105
       RECOVERY_EXECUTOR_HEALTH_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}/recovery
-      HEALTH_DISK_USAGE_RATIO: ${HEALTH_DISK_USAGE_RATIO:-0.85}
+      # 集中磁盘探针：恢复执行器只读测量 PostgreSQL/Redis 数据卷与恢复状态目录。
+      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      DISK_STATUS_CALLER: platform-core
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
@@ -202,6 +206,10 @@ services:
       OSS_REGION: ${OSS_REGION}
       OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
       OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
+      # 维护标记由恢复执行器写入；asset 仅读取并在应用层拒绝业务流量
+      RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:
@@ -221,6 +229,10 @@ services:
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
       # M12：部门删除预览/置空资产归属调用 asset 内部接口
       ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
+      # 维护标记由恢复执行器写入；hr 仅读取并在应用层拒绝业务流量
+      RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:
@@ -238,6 +250,12 @@ services:
       <<: *backend-env
       FIN_PORT: "3004"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
+      # Excel 导入的容量门禁读取恢复执行器的统一真实磁盘状态
+      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      DISK_STATUS_CALLER: fin
+      RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3004/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:
@@ -269,6 +287,12 @@ services:
       # L37：最小健康探针（/healthz 存活、/readyz 就绪）供健康状态页探测；
       # 探针 URL（WORKER_HEALTH_URL）由 platform-core 注入（健康状态页在该服务内运行）
       WORKER_HEALTH_PORT: "3105"
+      # 定时任务与备份容量门禁读取统一状态；维护期间停止新任务投递
+      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      DISK_STATUS_CALLER: worker
+      RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     # 存活探针：进程存活即健康（Redis 连接已在启动强检中校验；§9.8）；
     # 就绪探针（Redis 失效时为 503）只供健康状态页与发布检查，不 kill 容器（§9.8）
     healthcheck:
@@ -302,8 +326,16 @@ services:
       OSS_REGION: ${OSS_REGION}
       OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
       OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
+      # 仅本基础设施容器读取数据卷；所有容量门禁调用其受内部令牌保护的聚合探针。
+      HEALTH_DISK_PATHS: /opt/wbme/disk-volumes/postgres,/opt/wbme/disk-volumes/redis,/opt/wbme/persist/restore-state
+      HEALTH_DISK_WARN_RATIO: ${HEALTH_DISK_WARN_RATIO:-0.8}
+      HEALTH_DISK_CRITICAL_RATIO: ${HEALTH_DISK_CRITICAL_RATIO:-0.9}
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state
+      - postgres_data:/opt/wbme/disk-volumes/postgres:ro
+      - redis_data:/opt/wbme/disk-volumes/redis:ro
+    # 只增加目录搜索能力以对只读命名卷执行 df；不授予写入、Docker Socket 或 host 网络。
+    cap_add: [DAC_READ_SEARCH]
     # 就绪检查：状态目录读写 + 控制通道可达；数据库/OSS 不可用时报告依赖失败但不阻断控制路由
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['RECOVERY_EXECUTOR_PORT']||'3090')+'/recovery/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
@@ -343,6 +375,8 @@ services:
     security_opt:
       - no-new-privileges:true
     networks: [wbme-net]
+    volumes:
+      - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     mem_limit: 64m
     cpus: "0.1"
     depends_on:

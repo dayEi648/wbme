@@ -128,7 +128,7 @@ export class ProjectCreateDto extends IdempotentDto {
   @MaxLength(PROJECT_SHORT_TEXT_MAX_LENGTH)
   managementFee?: string;
 
-  @ApiProperty({ description: '分包方（手输数组）', required: false, type: [String], maxItems: PROJECT_SUBCONTRACTORS_MAX_ITEMS })
+  @ApiProperty({ description: '分包方名称数组（编辑时未提交保持原值，显式空数组清空）', required: false, type: [String], maxItems: PROJECT_SUBCONTRACTORS_MAX_ITEMS })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(PROJECT_SUBCONTRACTORS_MAX_ITEMS)

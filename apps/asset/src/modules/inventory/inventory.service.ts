@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  ASSET_CONFIG_FUNCTION_CODE,
   BatchCorrectionDto,
   BatchQueryDto,
   BusinessException,
   InventoryItemQueryDto,
+  INVENTORY_MANAGE_FUNCTION_CODE,
   frameworkErrors,
   inventoryErrors,
 } from '@wbme/contracts';
@@ -265,7 +265,7 @@ export class InventoryService {
   async correctBatch(operator: AssetOperationLogOperator, batchId: number, input: BatchCorrectionDto): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
-      feature: ASSET_CONFIG_FUNCTION_CODE,
+      feature: INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.batch.correct',
       idempotencyKey: input.idempotencyKey,
       fingerprint: fingerprintPayload({ ...input, batchId }),
@@ -560,17 +560,23 @@ export class InventoryService {
   }
 
   /** 加载字典项名称（未填返回 null） */
+  /** 批次纠正字典加载（显式选择的字典项必须启用；停用值不能作为纠正目标，asset PRD §12）。
+   *  0 = 显式清空标记（调用方以 `value || null` 归一），不触发校验。 */
   private async loadDictName(
     tx: Prisma.TransactionClient,
     dictId: number | null | undefined,
     dictType: string,
   ): Promise<{ id: number; name: string } | null> {
-    if (dictId === null || dictId === undefined) {
+    if (dictId === null || dictId === undefined || dictId === 0) {
       return null;
     }
-    return tx.assetDictItem.findFirst({
-      where: { id: dictId, dictType: dictType as Prisma.AssetDictItemWhereInput['dictType'] },
+    const row = await tx.assetDictItem.findFirst({
+      where: { id: dictId, dictType: dictType as Prisma.AssetDictItemWhereInput['dictType'], status: 'ACTIVE' },
       select: { id: true, name: true },
     });
+    if (!row) {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: `字典项不存在或已停用（${dictType}）` });
+    }
+    return row;
   }
 }

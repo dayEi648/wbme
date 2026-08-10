@@ -1,7 +1,7 @@
 import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { SYSTEM_LOG_VIEW_FUNCTION_CODE, PaginationQueryDto } from '@wbme/contracts';
-import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, RateLimit, RateLimitGuard, RequestTimeout } from '@wbme/server';
 import type { Response } from 'express';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
@@ -81,6 +81,7 @@ export class SystemLogController {
 
   /** 错误日志导出（脱敏摘要白名单，受单次行数上限与单用户并发约束） */
   @Post('errors/export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'system-log-errors-export', keyType: 'user', limit: 20, windowSeconds: 3600 })
   exportErrors(
@@ -99,6 +100,7 @@ export class SystemLogController {
 
   /** 安全日志导出（字段白名单，含来源 IP） */
   @Post('security/export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'system-log-security-export', keyType: 'user', limit: 20, windowSeconds: 3600 })
   exportSecurity(

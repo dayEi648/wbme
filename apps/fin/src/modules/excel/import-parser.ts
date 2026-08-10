@@ -77,16 +77,66 @@ export function stripXmlTagPrefixes(text: string): string {
   return text.replace(/<(\/)?x:/g, '<$1');
 }
 
-/** ZIP 条目名合法性检查（拒绝绝对路径、路径穿越、Windows 盘符、符号链接形态） */
+/** 宏/外部链接/嵌入对象等 V2 模板不需要的非法部件（fin PRD §4：按非法内容拒绝，不静默丢弃） */
+const FORBIDDEN_XLSX_PARTS = ['xl/vbaProject.bin', 'xl/externalLinks/', 'xl/embeddings/'] as const;
+
+/** Unix 文件类型位掩码（ZIP external attributes 中的高 16 位）。 */
+const UNIX_FILE_TYPE_MASK = 0o170000;
+
+/** Unix 符号链接文件类型。 */
+const UNIX_SYMBOLIC_LINK = 0o120000;
+
+/** ZIP 条目名合法性检查（拒绝绝对路径、路径穿越、Windows 盘符、宏/外部链接/嵌入对象）。 */
 function assertSafeEntryName(name: string): boolean {
-  if (name.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(name) || name.includes('..')) {
+  if (name.startsWith('/') || name.startsWith('\\') || /^[a-zA-Z]:[\\/]/.test(name) || name.includes('..')) {
     return false;
   }
-  // 符号链接/特殊文件形态：unix 模式由 external attr 表达，JSZip 不暴露；名称层面拒绝隐藏文件
+  // 名称层面拒绝 macOS 归档产生的隐藏目录；符号链接由 Unix 权限位另行校验。
   if (name.includes('__MACOSX')) {
     return false;
   }
+  // 宏（VBA 项目）、外部链接、嵌入对象（OLE）是 V2 模板不需要的危险部件：
+  // 带宏文件直接整文件拒绝（fin PRD §4 安全拒绝要求），不允许静默丢弃宏后导入
+  if (FORBIDDEN_XLSX_PARTS.some((part) => name === part || name.startsWith(part))) {
+    return false;
+  }
   return true;
+}
+
+/**
+ * 判断 ZIP 条目的 Unix 属性是否声明为符号链接。
+ *
+ * @param unixPermissions JSZip 从中央目录解析出的 Unix 权限位
+ * @returns 是否为符号链接
+ */
+function isUnixSymbolicLink(unixPermissions: number | string | null): boolean {
+  if (unixPermissions === null) {
+    return false;
+  }
+  const mode = typeof unixPermissions === 'string' ? Number.parseInt(unixPermissions, 8) : unixPermissions;
+  return Number.isInteger(mode) && (mode & UNIX_FILE_TYPE_MASK) === UNIX_SYMBOLIC_LINK;
+}
+
+/**
+ * 校验 ZIP 条目安全性。
+ *
+ * JSZip 会净化 `name` 中的相对路径组件，并把原始名称保存在
+ * `unsafeOriginalName`；两个名称都必须校验，避免 Zip Slip 被静默掩盖。
+ *
+ * @param entry JSZip 已读取的条目
+ * @returns 条目是否安全
+ */
+function assertSafeEntry(entry: {
+  name: string;
+  unsafeOriginalName?: string;
+  unixPermissions: number | string | null;
+}): boolean {
+  const originalName = entry.unsafeOriginalName ?? entry.name;
+  return (
+    assertSafeEntryName(entry.name) &&
+    assertSafeEntryName(originalName) &&
+    !isUnixSymbolicLink(entry.unixPermissions)
+  );
 }
 
 /** 单元格取值 → 文本（数值/日期/布尔/富文本统一转文本；公式取缓存结果） */
@@ -134,11 +184,11 @@ export async function parseImportBuffer(buffer: Buffer): Promise<ParseResult | P
   let totalBytes = 0;
   const pending = new Map<string, string>();
   for (const entry of entries) {
+    if (!assertSafeEntry(entry)) {
+      return { kind: 'ARCHIVE_LIMIT', reason: `存在非法压缩条目：${entry.unsafeOriginalName ?? entry.name}` };
+    }
     if (entry.dir) {
       continue;
-    }
-    if (!assertSafeEntryName(entry.name)) {
-      return { kind: 'ARCHIVE_LIMIT', reason: `存在非法压缩条目：${entry.name}` };
     }
     // 实际读取累计解压字节（不能只信任 ZIP 声明值）
     let content: Buffer;
@@ -186,6 +236,7 @@ export async function parseImportBuffer(buffer: Buffer): Promise<ParseResult | P
 
   // 第 1 行标题合并（签名）与第 2 行表头（签名）
   const titleMerge = sheet.model.merges?.find((m) => m.includes('A1:')) ?? null;
+  const titleCells = readRowCells(sheet, 1);
   const headerCells = readRowCells(sheet, 2);
   if (!matchesTemplateSignature(sheet.name, headerCells.map((c) => c.text), titleMerge)) {
     return { kind: 'SHEET_INVALID', reason: '工作表结构或表头与利润分析 V2 模板不匹配' };
@@ -194,7 +245,12 @@ export async function parseImportBuffer(buffer: Buffer): Promise<ParseResult | P
   stripDataRowMerges(workbook);
 
   const rows: ParsedRow[] = [];
-  const errors: RowError[] = [];
+  // 标题/表头属于模板结构，不允许在任何列使用公式；数据区自动计算列的公式白名单
+  // 不适用于此处，避免借缓存值伪造通过模板签名后再导入。
+  const errors: RowError[] = [
+    ...validateTemplateRowFormulas(1, titleCells.map((cell) => cell.formula)),
+    ...validateTemplateRowFormulas(2, headerCells.map((cell) => cell.formula)),
+  ];
   let projectCount = 0;
 
   for (let r = 3; r <= sheet.rowCount; r++) {
@@ -202,8 +258,9 @@ export async function parseImportBuffer(buffer: Buffer): Promise<ParseResult | P
     const formulas = cells.map((c) => c.formula);
     const texts = cells.map((c) => c.text);
 
-    // 空行跳过
+    // 空行跳过；视觉为空但携带公式的行仍执行公式白名单校验（不放过隐藏公式）
     if (texts.every((t) => t === null || t === '')) {
+      errors.push(...validateRowFormulas(r, formulas));
       continue;
     }
 
@@ -271,6 +328,23 @@ function validateRowFormulas(rowNumber: number, formulas: boolean[]): RowError[]
   return errors;
 }
 
+/**
+ * 校验标题或表头行不含任何公式。
+ *
+ * @param rowNumber Excel 行号
+ * @param formulas 各列是否含公式
+ * @returns 公式错误列表
+ */
+function validateTemplateRowFormulas(rowNumber: number, formulas: boolean[]): RowError[] {
+  const errors: RowError[] = [];
+  for (let c = 1; c <= COLUMN_COUNT; c++) {
+    if (formulas[c - 1] ?? false) {
+      errors.push({ rowNumber, field: headerName(c), reason: '标题或表头不允许包含公式' });
+    }
+  }
+  return errors;
+}
+
 /** 项目数据行校验（金额/日期/年度/多值列/公式白名单） */
 function validateProjectRow(rowNumber: number, texts: Array<string | null>, formulas: boolean[]): RowError[] {
   const errors: RowError[] = [];
@@ -317,6 +391,19 @@ function validateProjectRow(rowNumber: number, texts: Array<string | null>, form
         const norm = part.replace(/\s+/g, ' ').trim();
         if (seen.has(norm)) {
           errors.push({ rowNumber, field: headerName(c), reason: `分包方“${part}”与同行其他项重复` });
+          break;
+        }
+        seen.add(norm);
+      }
+    }
+    if (c === COL.COMPLETENESS) {
+      // 资料齐全度：规范化（空白归一）后完全相同的重复项拒绝导入（fin PRD §4「每项必须精确匹配且不得重复」）
+      const parts = splitMultiValue(text, true);
+      const seen = new Set<string>();
+      for (const part of parts) {
+        const norm = part.replace(/\s+/g, ' ').trim();
+        if (seen.has(norm)) {
+          errors.push({ rowNumber, field: headerName(c), reason: `资料齐全度“${part}”与同行其他项重复` });
           break;
         }
         seen.add(norm);

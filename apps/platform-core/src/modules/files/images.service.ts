@@ -7,6 +7,7 @@ import {
   type PresignDownloadResult,
   type PresignUploadResult,
 } from '@wbme/files';
+import { assertDiskAcceptsCapacityWrites } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 
 /**
@@ -21,6 +22,7 @@ import { PrismaService } from '../../prisma.service';
  * 上传者权限：本服务校验登录身份与对象归属；业务场景功能权限（如资产主图）由
  * 引用该对象的业务保存接口守卫，图片上传本身为平台通用能力。下载放行已登记正式对象
  * （业务记录引用的共享查看场景不误伤；未 finalize 的临时对象一律拒绝，M5）。
+ * 磁盘达严重阈值时拒绝新上传（主 PRD §9.13）。
  */
 
 /** 服务端生成的图片对象键结构：images/{userId}/{uuid}{ext} */
@@ -39,8 +41,10 @@ export class ImagesService {
    * @param userId 上传用户（对象键隔离）
    * @param originalFilename 原始文件名（仅扩展名提示）
    * @returns 预签名 PUT 结果
+   * @throws DISK_SPACE_CRITICAL 磁盘使用率达严重阈值
    */
-  presignUpload(userId: number, originalFilename?: string): Promise<PresignUploadResult> {
+  async presignUpload(userId: number, originalFilename?: string): Promise<PresignUploadResult> {
+    await assertDiskAcceptsCapacityWrites();
     return this.storage.presignImageUpload(userId, originalFilename);
   }
 
@@ -51,8 +55,10 @@ export class ImagesService {
    * @param pendingObjectKey 客户端已上传的临时对象键
    * @returns 正式对象信息（objectKey/mime/size）
    * @throws VALIDATION_FAILED 对象键不属于当前用户或图片格式/体积不合法
+   * @throws DISK_SPACE_CRITICAL 磁盘使用率达严重阈值
    */
   async finalizeUpload(userId: number, pendingObjectKey: string): Promise<FinalizeImageResult> {
+    await assertDiskAcceptsCapacityWrites();
     const ownerPrefix = `${OSS_PREFIX_IMAGES}${userId}/`;
     if (!pendingObjectKey.startsWith(ownerPrefix)) {
       throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {

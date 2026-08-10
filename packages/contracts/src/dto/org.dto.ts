@@ -54,6 +54,21 @@ export class DepartmentCreateDto extends IdempotentDto {
   @Min(0)
   @Max(9999)
   sort?: number;
+
+  @ApiProperty({
+    description: '部门负责人用户 id 列表（可多名；须为在职员工）',
+    required: false,
+    type: 'array',
+    items: { type: 'number', minimum: 1 },
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  leaders?: number[];
 }
 
 /** 更新部门（名称/排序/启停；移动用 move 接口） */
@@ -89,6 +104,21 @@ export class DepartmentUpdateDto extends IdempotentDto {
   @IsOptional()
   @IsIn(['ACTIVE', 'DISABLED'])
   status?: 'ACTIVE' | 'DISABLED';
+
+  @ApiProperty({
+    description: '部门负责人用户 id 列表（可多名；须为在职员工；缺省不改动既有负责人）',
+    required: false,
+    type: 'array',
+    items: { type: 'number', minimum: 1 },
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  leaders?: number[];
 }
 
 /** 移动部门节点（换父级；页面展示受影响子树并二次确认） */

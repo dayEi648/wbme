@@ -7,7 +7,7 @@ import {
   ProcessApprovalDto,
   USER_MANAGE_FUNCTION_CODE,
 } from '@wbme/contracts';
-import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, RateLimit, RateLimitGuard, RequestTimeout } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from '../../backstage/permission/function-permission.guard';
 import { ApprovalCenterService } from './approval-center.service';
 import { ProfileChangeService } from './profile-change.service';
@@ -41,6 +41,7 @@ export class ApprovalController {
 
   /** 审批列表导出（导出所有/导出已筛选；xlsx 附件） */
   @Post('export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   @RequireFunction(USER_MANAGE_FUNCTION_CODE)
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'approval-export', keyType: 'user', limit: 20, windowSeconds: 3600 })

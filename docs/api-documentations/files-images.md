@@ -6,6 +6,16 @@
 
 上传者权限：三个端点均仅要求登录（平台通用能力）；**业务场景功能权限**（如资产主图 `asset_*`）由引用该图片的业务保存接口守卫校验，不在本服务重复校验。
 
+限流（主 PRD §9.7，均可经 `RATE_LIMIT_<PREFIX>_LIMIT` / `_WINDOW_SECONDS` 覆盖）：
+
+| 端点 | 维度 | 默认 |
+| --- | --- | --- |
+| presign | 用户 / IP | 60/min · 120/min（`IMAGE_PRESIGN` / `IMAGE_PRESIGN_IP`） |
+| finalize | 用户 | 60/min（`IMAGE_FINALIZE`） |
+| download | 用户 / IP | 120/min · 240/min（`IMAGE_DOWNLOAD` / `IMAGE_DOWNLOAD_IP`） |
+
+磁盘达严重阈值时 `presign`/`finalize` 返回 `DISK_SPACE_CRITICAL`（主 PRD §9.13）。
+
 ## 端点
 
 | 方法 | 路径 | 说明 |
@@ -40,7 +50,7 @@
 
 响应：`{ objectKey, mime, size }`。返回的 `objectKey` 供业务记录引用。
 
-错误码：`VALIDATION_FAILED`（键不属于当前用户 / 格式不合法 / 超过体积上限）。
+错误码：`VALIDATION_FAILED`（键不属于当前用户 / 格式不合法 / 超过体积上限）、`DISK_SPACE_CRITICAL`（磁盘严重阈值）。
 
 ## GET /files/images/download
 

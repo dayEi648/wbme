@@ -362,7 +362,7 @@ export class AssetService {
         if (existing.usageStatus === 'PENDING_REPAIR' || existing.usageStatus === 'REPAIRING') {
           throw new BusinessException(assetErrors.ASSET_STATUS_INVALID);
         }
-        const prepared = await this.prepareSnapshot(tx, dto);
+        const prepared = await this.prepareSnapshot(tx, dto, existing);
         // A-5 变更记录（只追加；记录前后值与操作人）
         const changes: Array<[string, unknown, unknown]> = [
           ['name', existing.name, prepared.name],
@@ -446,11 +446,14 @@ export class AssetService {
         if (existing.departmentId === dto.toDepartmentId && existing.responsibleUserId === dto.toUserId) {
           throw new BusinessException(assetErrors.ASSET_TRANSFER_NO_CHANGE);
         }
-        // 目标责任人必须属于目标部门（hr.user_org 直接归属）
+        // 目标责任人必须属于目标部门且账号在职（hr.user_org 直接归属；
+        // 已注销员工不能作为调度目标，主 PRD §2.6）
         const belong = await tx.$queryRaw<Array<{ cnt: bigint }>>`
           SELECT COUNT(*) AS cnt
-          FROM hr.user_org
-          WHERE user_id = ${dto.toUserId} AND department_id = ${dto.toDepartmentId}
+          FROM hr.user_org uo
+          INNER JOIN backstage.user_accounts ua ON ua.user_id = uo.user_id
+            AND ua.status = 'ACTIVE' AND ua.deleted_at IS NULL
+          WHERE uo.user_id = ${dto.toUserId} AND uo.department_id = ${dto.toDepartmentId}
         `;
         if (Number(belong[0]?.cnt ?? 0) === 0) {
           throw new BusinessException(assetErrors.ASSIGNEE_DEPARTMENT_MISMATCH);
@@ -673,10 +676,13 @@ export class AssetService {
     }
   }
 
-  /** 建档/编辑快照准备（分类名称/部门名称/用户姓名快照；金额在调用方转换） */
+  /** 建档/编辑快照准备（分类名称/部门名称/用户姓名快照；金额在调用方转换）。
+   *  受控选项与责任人的启用校验口径（asset PRD §12 / 主 PRD §2.6）：
+   *  新建严格只允许启用值；编辑时原引用可往返保留（停用分类/已注销责任人原值未变不拒绝）。 */
   private async prepareSnapshot(
     tx: Prisma.TransactionClient,
     dto: AssetCreateDto | AssetUpdateDto,
+    existing?: { categoryId: number | null; responsibleUserId: number | null; currentUserId: number | null },
   ): Promise<{
     name: string;
     categoryId: number | null;
@@ -691,8 +697,8 @@ export class AssetService {
     let categoryName: string | null = null;
     if (dto.categoryId !== undefined) {
       // 固定资产只能归入固定资产顶级分类（与消耗品侧校验对称，asset PRD §3）
-      const rows = await tx.$queryRaw<Array<{ name: string; topName: string }>>`
-        SELECT c.name, COALESCE(p.name, c.name) AS "topName"
+      const rows = await tx.$queryRaw<Array<{ id: number; name: string; topName: string; status: string }>>`
+        SELECT c.id, c.name, COALESCE(p.name, c.name) AS "topName", c.status
         FROM asset.asset_categories c
         LEFT JOIN asset.asset_categories p ON p.id = c.parent_id
         WHERE c.id = ${dto.categoryId}
@@ -705,6 +711,10 @@ export class AssetService {
       if (category.topName !== '固定资产') {
         throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '固定资产只能归入固定资产分类' });
       }
+      // 停用分类不能作为新建/改选的目标；编辑时原引用可往返保留（asset PRD §12）
+      if (category.status !== 'ACTIVE' && category.id !== existing?.categoryId) {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '分类已停用，不能选择' });
+      }
       categoryName = category.name;
     }
     let departmentName: string | null = null;
@@ -715,14 +725,29 @@ export class AssetService {
       `;
       departmentName = rows[0]?.name ?? '';
     }
-    const userName = async (userId: number | undefined): Promise<string | null> => {
+    // 责任人/当前使用人：已注销员工不能新分配（主 PRD §2.6「注销用户不再出现在责任人分配选择器」）；
+    // 编辑时原引用未变则保留（快照按注销前姓名展示）
+    const userName = async (userId: number | undefined, currentId?: number | null): Promise<string | null> => {
       if (userId === undefined) {
         return null;
       }
-      const rows = await tx.$queryRaw<Array<{ name: string }>>`
-        SELECT name FROM backstage.user_accounts WHERE user_id = ${userId} LIMIT 1
+      const rows = await tx.$queryRaw<Array<{ name: string; status: string; deletedAt: Date | null }>>`
+        SELECT name, status, deleted_at AS "deletedAt"
+        FROM backstage.user_accounts
+        WHERE user_id = ${userId}
+        LIMIT 1
       `;
-      return rows[0]?.name ?? '';
+      const user = rows[0];
+      if (!user) {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '用户不存在' });
+      }
+      if (user.status !== 'ACTIVE' || user.deletedAt !== null) {
+        if (userId !== currentId) {
+          throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '该员工已注销，不能设为责任人或当前使用人' });
+        }
+        return user.name ?? '';
+      }
+      return user.name ?? '';
     };
     const purchaseAt = dto.purchaseAt ? toDbDate(dto.purchaseAt) : null;
     return {
@@ -734,7 +759,7 @@ export class AssetService {
       departmentId: 'departmentId' in dto ? (dto.departmentId ?? null) : null,
       departmentName,
       responsibleUserName: 'responsibleUserId' in dto ? await userName(dto.responsibleUserId) : null,
-      currentUserName: await userName(dto.currentUserId),
+      currentUserName: await userName(dto.currentUserId, existing?.currentUserId),
     };
   }
 }

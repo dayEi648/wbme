@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   ANNOUNCEMENT_MANAGE_FUNCTION_CODE,
   BusinessException,
+  createPaginationResponse,
   frameworkErrors,
 } from '@wbme/contracts';
 import { Prisma } from '../../../generated/prisma/client';
@@ -38,13 +39,14 @@ export class AnnouncementService {
     const [items, total] = await Promise.all([
       this.prisma.client.announcement.findMany({
         where,
-        orderBy: { updatedAt: 'desc' },
+        // 次级 id 兜底：同秒更新时分页边界稳定（主 PRD §9.5）
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
         skip,
         take: dto.pageSize,
       }),
       this.prisma.client.announcement.count({ where }),
     ]);
-    return { items, total, page: dto.page, pageSize: dto.pageSize };
+    return createPaginationResponse(items, total, dto.page, dto.pageSize);
   }
 
   /** 创建草稿公告 */

@@ -53,11 +53,11 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/departments/tree` | 部门树（含负责人/状态；`org_structure` 或 `department_manage` 任一可见） |
-| `POST` | `/departments` | 创建部门（幂等；停用部门不能作为新建下级目标；`org_tree_version++`） |
-| `PUT` | `/departments/{id}` | 更新部门（名称/排序/启停） |
+| `GET` | `/departments/tree` | 部门树节点列表（含负责人/状态 + 分页；`org_structure` 或 `department_manage` 任一可见） |
+| `POST` | `/departments` | 创建部门（幂等；停用部门不能作为新建下级目标；可设置多名负责人 `leaders`（须为在职员工，名称快照落库）；`org_tree_version++`） |
+| `PUT` | `/departments/{id}` | 更新部门（名称/排序/启停/负责人 `leaders`；leaders 缺省不改动既有负责人、显式 `[]` 清空） |
 | `PUT` | `/departments/{id}/move` | 移动部门节点（环校验 `ORGANIZATION_CYCLE`；页面展示受影响子树并二次确认） |
-| `GET` | `/departments/delete-preview?ids=` | 删除前引用确认（在职员工数/待审批申请数/职称规则引用数/固定资产归属数；资产数经 asset 内部接口统计，asset 不可用时降级为 0 并返回 `assetUnavailable: true`） |
+| `GET` | `/departments/delete-preview?ids=` | 删除前引用确认（在职员工数〔过滤已注销账号〕/待审批申请数〔岗位变更按申请人部门快照 + 加班批次按明细部门快照〕/职称规则引用数/固定资产归属数；资产数经 asset 内部接口统计，asset 不可用时降级为 0 并返回 `assetUnavailable: true`） |
 | `DELETE` | `/departments/delete` | 批量硬删除（幂等；有未删除下级整批不变更；同一事务清理员工/负责人/岗位适用引用并置空固定资产部门归属——经 asset 内部接口，asset 不可用则整批回滚；`org_tree_version++`） |
 
 ## 岗位管理（hr PRD §7）
@@ -66,7 +66,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/positions` | 岗位列表（含适用部门；`includeDisabled=true` 含停用） |
+| `GET` | `/positions` | 岗位列表（含适用部门 + 分页；`includeDisabled=true` 含停用；`position_manage` 或 `org_structure` 任一可见——组织架构可引用岗位档案，写操作仍仅 `position_manage`） |
 | `POST` | `/positions` | 创建岗位（幂等；岗位名唯一；可带 departmentIds） |
 | `PUT` | `/positions/{id}` | 更新岗位（名称/说明/启停/排序/是否允许自助申请） |
 | `PUT` | `/positions/{id}/departments` | 更新适用部门（修改前校验全部在岗员工兼容性，不兼容整次拒绝并返回 affectedUserIds） |
@@ -102,8 +102,8 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/overtime/applications` | 提交加班批次（幂等；`OvertimeSubmitDto`：overtimeDate YYYY-MM-DD、startMinute 0-1439、endMinute 1-1440（24:00=1440）、reason≤500、userIds 1~100 去重；全有或全无——任一失败 `OVERTIME_BATCH_REJECTED` + 逐人原因，零写入；日期窗口=人事配置提前申请/补交窗口；节假日快照随明细保存） |
-| `POST` | `/overtime/applications/{id}/cancel` | 取消本人/代提待审批批次（批准或驳回后不能取消） |
+| `POST` | `/overtime/applications` | 提交加班批次（幂等；`OvertimeSubmitDto`：overtimeDate YYYY-MM-DD、startMinute 0-1439、endMinute 1-1440（24:00=1440）、reason≤500、userIds 1~100 去重且至少 1 人；全有或全无——任一失败 `OVERTIME_BATCH_REJECTED` + 逐人原因，零写入；代交公司档范围为全部在职员工（不做部门闭包收缩）、部门档为代提人部门闭包；日期窗口=人事配置提前申请/补交窗口；节假日快照随明细保存） |
+| `POST` | `/overtime/applications/{id}/cancel` | 取消本人/代提待审批批次（批准或驳回后不能取消；幂等键重试返回原结果，取消写操作日志） |
 | `GET` | `/overtime/applications/mine` | 本人提交或代交的待审批加班批次（month 筛选 + 分页；无审批权限也可查看并通过上述取消接口完成闭环） |
 | `GET` | `/overtime/mine` | 个人已批准记录（month 筛选 + 分页；含日期类型/时长） |
 | `GET` | `/overtime/mine/summary` | 个人月度汇总（分钟精度；小时=分钟÷60 两位小数） |

@@ -56,6 +56,7 @@ export class StockInService {
           applicantId: operator.id,
           applicantName: operator.name,
           applicantDepartmentSnapshot: deptSnapshot,
+          remark: dto.remark,
         });
         const receivedAt = dto.receivedAt ? new Date(dto.receivedAt) : new Date();
         for (const line of prepared) {
@@ -143,7 +144,7 @@ export class StockInService {
             warehouseName: line.warehouseName,
             warehousePath: line.warehousePath,
           });
-      await tx.batch.create({
+      const batch = await tx.batch.create({
         data: {
           inventoryItemId: item.id,
           consumableId: line.consumableId,
@@ -164,6 +165,7 @@ export class StockInService {
         where: { id: item.id },
         data: { bookQty: { increment: line.qty } },
       });
+      // 入库流水必须携带刚创建的批次 id（批次追溯链：按批次查流水须含原始入库记录）
       await writeStockFlow(tx, {
         flowType: 'STOCK_IN',
         direction: 'IN',
@@ -178,7 +180,7 @@ export class StockInService {
           bookQty: item.bookQty,
           reservedQty: 0,
         },
-        batchId: null,
+        batchId: batch.id,
         qty: line.qty,
         bookBefore: item.bookQty,
         bookAfter: item.bookQty + line.qty,
@@ -339,18 +341,18 @@ export class StockInService {
     return lines;
   }
 
-  /** 加载字典项（类型校验；不存在返回 null 并抛业务异常） */
+  /** 加载字典项（类型 + 启用状态校验；停用值不能用于新建业务，asset PRD §12） */
   private async loadDictName(
     tx: Prisma.TransactionClient,
     dictId: number,
     dictType: string,
   ): Promise<{ id: number; name: string } | null> {
     const row = await tx.assetDictItem.findFirst({
-      where: { id: dictId, dictType: dictType as Prisma.AssetDictItemWhereInput['dictType'] },
+      where: { id: dictId, dictType: dictType as Prisma.AssetDictItemWhereInput['dictType'], status: 'ACTIVE' },
       select: { id: true, name: true },
     });
     if (!row) {
-      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: `字典项不存在（${dictType}）` });
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: `字典项不存在或已停用（${dictType}）` });
     }
     return row;
   }

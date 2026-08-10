@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query, Res } from '@nestjs/common';
 import {
   BusinessException,
+  CancelApprovalDto,
   DateTypeQueryDto,
   OvertimeManageQueryDto,
   OvertimeManageSummaryDto,
@@ -10,7 +11,7 @@ import {
   OVERTIME_HISTORY_FUNCTION_CODE,
   frameworkErrors,
 } from '@wbme/contracts';
-import { CurrentUser, filterAndSortTableRows } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, filterAndSortTableRows, RequestTimeout } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
@@ -57,8 +58,12 @@ export class OvertimeController {
 
   /** 取消本人/代提的待审批加班批次（批准或驳回后不能取消；断言目标为加班申请，L12） */
   @Post('applications/:id/cancel')
-  async cancel(@CurrentUser() userId: number, @Param('id', ParseIntPipe) id: number): Promise<{ ok: true }> {
-    await this.approval.cancel(id, userId, 'OVERTIME');
+  async cancel(
+    @CurrentUser() userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CancelApprovalDto,
+  ): Promise<{ ok: true }> {
+    await this.approval.cancel(id, userId, 'OVERTIME', dto.idempotencyKey);
     return { ok: true };
   }
 
@@ -204,6 +209,7 @@ export class OvertimeController {
 
   /** 管理视图导出（runExport 流式；导出完成写 EXPORT 操作日志） */
   @Get('records/export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   async exportRecords(
     @CurrentUser() userId: number,
     @Query() query: OvertimeManageQueryDto,

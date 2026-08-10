@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import {
   INVENTORY_MANAGE_FUNCTION_CODE,
+  createPaginationResponse,
   InventoryTransferCreateDto,
   InventoryTransferQueryDto,
 } from '@wbme/contracts';
@@ -35,9 +36,10 @@ export class TransferController {
 
   /** 调拨记录列表（按时间倒序） */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: InventoryTransferQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async list(@CurrentUser() userId: number, @Query() query: InventoryTransferQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
-    return this.transfers.list(query);
+    const result = await this.transfers.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 调拨详情（批次分配明细 + 成对流水） */

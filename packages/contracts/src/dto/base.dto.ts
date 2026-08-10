@@ -188,3 +188,32 @@ export class PaginationQueryDto {
   @MaxLength(4000)
   sorts?: string;
 }
+
+/**
+ * 平台统一分页响应（主 PRD §9.5）。
+ *
+ * 列表接口只返回这一种结构，避免客户端根据历史接口猜测 `items/total` 或
+ * `data/pagination` 两种不同形状。无结果时 totalPages 为 0。
+ *
+ * @param data 当前页数据
+ * @param totalItems 符合查询条件的总条数
+ * @param page 当前页码（从 1 开始）
+ * @param pageSize 当前每页条数
+ * @returns 标准 `data + pagination` 响应
+ */
+export function createPaginationResponse<T>(
+  data: T[],
+  totalItems: number,
+  page: number,
+  pageSize: number,
+): { data: T[]; pagination: { page: number; pageSize: number; totalItems: number; totalPages: number } } {
+  return {
+    data,
+    pagination: {
+      page,
+      pageSize,
+      totalItems,
+      totalPages: Math.ceil(totalItems / pageSize),
+    },
+  };
+}

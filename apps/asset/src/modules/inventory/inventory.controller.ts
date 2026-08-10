@@ -5,10 +5,11 @@ import {
   INVENTORY_MANAGE_FUNCTION_CODE,
   BatchCorrectionDto,
   BatchQueryDto,
+  createPaginationResponse,
   InventoryItemQueryDto,
   StockFlowQueryDto,
 } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, RequestTimeout } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess } from '../../shared/cross-schema-auth';
 import { loadAssetOperationLogOperator } from '../../shared/asset-operation-log.util';
@@ -29,20 +30,22 @@ export class InventoryController {
 
   /** 库存条目列表（库存管理；availableOnly=true 时为员工申领目录） */
   @Get('items')
-  async listItems(@CurrentUser() userId: number, @Query() query: InventoryItemQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listItems(@CurrentUser() userId: number, @Query() query: InventoryItemQueryDto): Promise<unknown> {
     await assertFunctionAccess(
       this.prisma.client,
       userId,
       query.availableOnly ? CONSUMABLE_APPLY_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE,
     );
-    return this.inventory.listItems(query);
+    const result = await this.inventory.listItems(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 批次列表（条目/品种/库位筛选；含剩余数量与追溯来源） */
   @Get('batches')
-  async listBatches(@CurrentUser() userId: number, @Query() query: BatchQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listBatches(@CurrentUser() userId: number, @Query() query: BatchQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
-    return this.inventory.listBatches(query);
+    const result = await this.inventory.listBatches(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 批次资料纠正（供应商/品牌/单价/备注直接纠正；规格/库位条件纠正并归并账面） */
@@ -59,13 +62,15 @@ export class InventoryController {
 
   /** 库存流水列表（只追加；按品种/类型/来源/时间查询） */
   @Get('stock-flows')
-  async listStockFlows(@CurrentUser() userId: number, @Query() query: StockFlowQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async listStockFlows(@CurrentUser() userId: number, @Query() query: StockFlowQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
-    return this.stockFlows.list(query);
+    const result = await this.stockFlows.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 库存流水导出（runExport；导出全部筛选结果） */
   @Get('stock-flows/export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   async exportStockFlows(
     @CurrentUser() userId: number,
     @Query() query: StockFlowQueryDto,

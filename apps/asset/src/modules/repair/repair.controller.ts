@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import {
   FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
+  createPaginationResponse,
   RepairCancelDto,
   RepairOrderCreateDto,
   RepairOrderQueryDto,
@@ -66,8 +67,9 @@ export class RepairController {
 
   /** 维修单列表（按资产/状态筛选） */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: RepairOrderQueryDto): Promise<{ items: unknown[]; total: number }> {
-    return this.repairs.list(userId, query);
+  async list(@CurrentUser() userId: number, @Query() query: RepairOrderQueryDto): Promise<unknown> {
+    const result = await this.repairs.list(userId, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 维修单详情（含状态流转历史） */

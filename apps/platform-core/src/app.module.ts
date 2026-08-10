@@ -92,7 +92,7 @@ export class AppModule {
         },
         { provide: APP_GUARD, useClass: SessionGuard },
         { provide: APP_GUARD, useClass: CsrfGuard },
-        // 恢复维护状态写拦截（backstage PRD §10）：维护标记存在时写请求 503
+        // 恢复维护状态拦截（backstage PRD §10）：维护标记存在时除健康探针外全部 503（Nginx 层见批次 8）
         { provide: APP_INTERCEPTOR, useClass: MaintenanceInterceptor },
         // 迁移版本就绪检查（主 PRD §9.9）：base 元数据表代表 base+backstage 合并迁移序列
         {

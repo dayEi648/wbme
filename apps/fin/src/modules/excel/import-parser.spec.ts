@@ -100,6 +100,17 @@ describe('parseImportBuffer（导入解析）', () => {
     expect(result.rows[0]?.kind).toBe('project');
   });
 
+  it('标题或表头中的公式即使带有正确缓存值也会被拒绝', async () => {
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(2, COL.NAME).value = { formula: '"项目名称"', result: '项目名称' };
+    const buffer = workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+    const result = await parseOk(await buffer);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ rowNumber: 2, field: '项目名称', reason: '标题或表头不允许包含公式' }),
+    );
+  });
+
   it('文本单元格超长（超过页面 DTO 长度上限）→ 行级错误（L22）', async () => {
     const buffer = await buildTestWorkbook([{ A: 1, B: 'x'.repeat(201), D: 2020 }]);
     const result = await parseOk(buffer);
@@ -180,12 +191,35 @@ describe('parseImportBuffer（导入解析）', () => {
   });
 
   it('非法条目（__MACOSX 隐藏文件形态）→ ARCHIVE_LIMIT', async () => {
-    // JSZip 会自动清理 ../ 穿越名称，无法用它构造；__MACOSX 条目名不被清理且为非法条目
     const JSZip = await import('jszip').then((m) => m.default);
     const zip = new JSZip();
     zip.file('__MACOSX/.DS_Store', 'x');
     const buffer = await zip.generateAsync({ type: 'nodebuffer' });
     const failure = await parseFail(Buffer.from(buffer));
+    expect(failure.kind).toBe('ARCHIVE_LIMIT');
+  });
+
+  it('中央目录声明 Unix 符号链接 → ARCHIVE_LIMIT', async () => {
+    const JSZip = await import('jszip').then((m) => m.default);
+    const zip = new JSZip();
+    zip.file('link-to-anywhere', 'target', { unixPermissions: 0o120777 });
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', platform: 'UNIX' });
+    const failure = await parseFail(Buffer.from(buffer));
+    expect(failure.kind).toBe('ARCHIVE_LIMIT');
+  });
+
+  it('JSZip 净化后的路径穿越原名仍会被拒绝', async () => {
+    const JSZip = await import('jszip').then((m) => m.default);
+    const zip = new JSZip();
+    // “safe”与“../x”等长，替换本地头及中央目录中的名称即可构造原始路径穿越条目。
+    zip.file('safe', 'x');
+    const buffer = Buffer.from(await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' }));
+    for (let index = 0; index <= buffer.length - 4; index += 1) {
+      if (buffer.subarray(index, index + 4).toString('ascii') === 'safe') {
+        buffer.write('../x', index, 'ascii');
+      }
+    }
+    const failure = await parseFail(buffer);
     expect(failure.kind).toBe('ARCHIVE_LIMIT');
   });
 });

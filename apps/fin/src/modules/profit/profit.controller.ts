@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
-import { ProfitCellSaveDto, ProjectQueryDto } from '@wbme/contracts';
+import { createPaginationResponse, ProfitCellSaveDto, ProjectQueryDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFinanceMaintainAccess, assertFinanceReadAccess } from '../../shared/cross-schema-auth';
@@ -21,7 +21,8 @@ export class ProfitController {
   @Get('projects')
   async list(@CurrentUser() userId: number, @Query() query: ProjectQueryDto): Promise<unknown> {
     await assertFinanceReadAccess(this.prisma.client, userId);
-    return this.profit.list(query);
+    const result = await this.profit.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 总计汇总（当前筛选结果；不受当前页分页影响，随筛选实时计算） */

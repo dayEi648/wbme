@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
   INVENTORY_MANAGE_FUNCTION_CODE,
+  createPaginationResponse,
   WarehouseBatchDeleteDto,
   WarehouseCreateDto,
   WarehouseQueryDto,
@@ -25,13 +26,15 @@ export class WarehouseController {
 
   /** 库位树全量列表（状态过滤） */
   @Get('tree')
-  async tree(@CurrentUser() userId: number, @Query() query: WarehouseQueryDto): Promise<{ items: unknown[] }> {
+  async tree(@CurrentUser() userId: number, @Query() query: WarehouseQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const result = await this.warehouses.tree();
     if (query.status) {
       result.items = result.items.filter((node: { status: string }) => node.status === query.status);
     }
-    return result;
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    return createPaginationResponse(result.items.slice((page - 1) * pageSize, page * pageSize), result.items.length, page, pageSize);
   }
 
   /** 创建库位（幂等；禁止形成父子循环） */
@@ -54,11 +57,26 @@ export class WarehouseController {
     return this.warehouses.update(operator, id, dto, dto.idempotencyKey);
   }
 
-  /** 批量硬删除（存在子库位或库存/业务引用时整批拒绝） */
+  /** 删除前引用预览（现存库存条目/未结清借还/待审批引用数；引用不阻断删除，确认后物理删除） */
+  @Get('delete-preview')
+  async deletePreview(@CurrentUser() userId: number, @Query('ids') idsRaw: string): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
+    return this.warehouses.deletePreview(this.parseIds(idsRaw));
+  }
+
+  /** 批量硬删除（主 PRD §2.6 确认式删除；存在未删除子库位时整批拒绝） */
   @Delete('batch')
   async batchDelete(@CurrentUser() userId: number, @Body() dto: WarehouseBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
     return this.warehouses.batchDelete(operator, dto.ids, dto.idempotencyKey);
+  }
+
+  /** query 逗号分隔 ids → number[] */
+  private parseIds(idsRaw: string): number[] {
+    return idsRaw
+      .split(',')
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 1);
   }
 }

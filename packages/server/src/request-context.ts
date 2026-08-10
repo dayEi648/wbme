@@ -36,6 +36,8 @@ export interface RequestContext {
   grantedFunction?: GrantedFunctionContext;
   /** 请求级互斥锁（守卫在读取上传请求体前取得后写入；业务服务复用，响应结束统一释放） */
   importLockRelease?: () => Promise<void>;
+  /** 单用户导入占用取得时刻（fin PRD §4：总时限从取得占用并开始接收请求体时计算） */
+  importStartedAt?: number;
 }
 
 /** 全局请求上下文存储 */
@@ -118,4 +120,20 @@ export function setRequestImportLockRelease(release: () => Promise<void>): void 
 /** 读取当前请求已持有的导入互斥锁；守卫未获取时返回 undefined */
 export function getRequestImportLockRelease(): (() => Promise<void>) | undefined {
   return getRequestContext()?.importLockRelease;
+}
+
+/**
+ * 写入单用户导入占用取得时刻（由导入互斥守卫在取得占用后写入；fin PRD §4：
+ * 总时限从取得占用并开始接收请求体时计算，覆盖上传读取阶段）。
+ */
+export function setRequestImportStartedAt(startedAt: number): void {
+  const context = REQUEST_CONTEXT_STORAGE.getStore();
+  if (context) {
+    context.importStartedAt = startedAt;
+  }
+}
+
+/** 读取导入占用取得时刻；守卫未写入时返回 undefined（兜底用当前时刻） */
+export function getRequestImportStartedAt(): number | undefined {
+  return getRequestContext()?.importStartedAt;
 }

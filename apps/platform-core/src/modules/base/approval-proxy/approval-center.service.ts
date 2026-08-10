@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ApprovalListQueryDto } from '@wbme/contracts';
-import { BusinessException, frameworkErrors, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
+import { BusinessException, createPaginationResponse, frameworkErrors, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { runExport, RedisService } from '@wbme/server';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import type { Response } from 'express';
@@ -43,9 +43,12 @@ export class ApprovalCenterService {
    * 分页列表。
    *
    * @param query 筛选与分页
-   * @returns items + total
+   * @returns 统一 `data + pagination` 分页响应
    */
-  async list(query: ApprovalListQueryDto): Promise<{ items: ApprovalListItem[]; total: number }> {
+  async list(query: ApprovalListQueryDto): Promise<{
+    data: ApprovalListItem[];
+    pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
+  }> {
     const where = this.buildWhere(query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -58,7 +61,7 @@ export class ApprovalCenterService {
         take: pageSize,
       }),
     ]);
-    return { total, items: rows.map(toListItem) };
+    return createPaginationResponse(rows.map(toListItem), total, page, pageSize);
   }
 
   /**

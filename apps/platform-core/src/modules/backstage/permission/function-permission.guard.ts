@@ -32,8 +32,9 @@ export function RequireFunction(functionCode: string): MethodDecorator & ClassDe
  * 5. 数据范围上下文：有效数据范围（多档位按最宽合并；超管为 null 不受限）写入请求上下文，
  *    业务层据此做行级过滤，范围外记录视为不存在（404 呈现，主 PRD §3.1）。
  *
- * 授权每次请求实时读取数据库（无授权缓存）：撤权、功能移除、范围定义变更即时生效
- *（base PRD §3 的版本校验缓存机制在引入授权缓存时再行接入，当前无缓存即无失效窗口）。
+ * 授权每次请求经 AuthorizationService 取得：优先复用 Redis 授权上下文缓存，
+ * 仅当账号授权版本 + 权限目录版本 + 用户组织版本 + 组织树版本四项与快照一致时命中
+ * （base PRD §3）；版本不一致或缓存不可用时实时读库重建。
  */
 @Injectable()
 export class FunctionPermissionGuard implements CanActivate {

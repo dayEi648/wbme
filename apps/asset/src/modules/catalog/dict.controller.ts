@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
   ASSET_CONFIG_FUNCTION_CODE,
+  createPaginationResponse,
   AssetDictItemBatchDeleteDto,
   AssetDictItemCreateDto,
   AssetDictItemQueryDto,
@@ -25,9 +26,10 @@ export class DictController {
 
   /** 字典列表（分页；类型/状态筛选） */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: AssetDictItemQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async list(@CurrentUser() userId: number, @Query() query: AssetDictItemQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
-    return this.dict.list(query);
+    const result = await this.dict.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 创建字典项（幂等；同类型同名唯一） */
@@ -50,11 +52,26 @@ export class DictController {
     return this.dict.update(operator, id, dto, dto.idempotencyKey);
   }
 
-  /** 批量硬删除（任一项被业务引用则整批回滚） */
+  /** 删除前引用预览（对应业务表当前引用数；引用不阻断删除，确认后物理删除） */
+  @Get('delete-preview')
+  async deletePreview(@CurrentUser() userId: number, @Query('ids') idsRaw: string): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    return this.dict.deletePreview(this.parseIds(idsRaw));
+  }
+
+  /** 批量硬删除（主 PRD §2.6 确认式删除） */
   @Delete('batch')
   async batchDelete(@CurrentUser() userId: number, @Body() dto: AssetDictItemBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
     return this.dict.batchDelete(operator, dto.ids, dto.idempotencyKey);
+  }
+
+  /** query 逗号分隔 ids → number[] */
+  private parseIds(idsRaw: string): number[] {
+    return idsRaw
+      .split(',')
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 1);
   }
 }

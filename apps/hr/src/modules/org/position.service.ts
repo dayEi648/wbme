@@ -176,7 +176,12 @@ export class PositionService {
         if (!existing) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
-        await this.assertDepartmentsExist(tx, departmentIds);
+        // 既有适用部门中的停用部门可随更新往返保留（hr PRD §6「既有业务引用继续有效」）
+        const currentDepartments = await tx.positionDepartment.findMany({
+          where: { positionId: id },
+          select: { departmentId: true },
+        });
+        await this.assertDepartmentsExist(tx, departmentIds, currentDepartments.map((row) => row.departmentId));
         const targetSet = new Set(departmentIds);
         // 当前分配该岗位的全部员工（在职视角：user_positions 行即分配事实）
         const holders = await tx.userPosition.findMany({
@@ -213,6 +218,10 @@ export class PositionService {
    *
    * 待审批申请数口径（L13）：按「目标岗位」匹配——岗位是申请的**变更目标**，
    * 与部门删除预览（按申请人部门快照）维度不同，两者对各自删除场景语义均合理。
+   *
+   * 分配员工数口径（批次 3 核对）：user_positions 为分配事实表，员工注销时
+   * lifecycle 流程已把 positionId 置空（hr PRD §5），按 positionId 统计天然
+   * 排除已注销员工，无需再过滤账号状态。
    *
    * @param ids 岗位 id 列表
    * @returns 逐岗位引用统计
@@ -269,14 +278,19 @@ export class PositionService {
     });
   }
 
-  /** 断言适用部门均存在（创建/更新适用部门前置校验） */
-  private async assertDepartmentsExist(tx: Prisma.TransactionClient, departmentIds: number[]): Promise<void> {
+  /** 断言适用部门均存在且启用（创建/更新适用部门前置校验；
+   *  停用部门不得作为新业务归属选择目标，hr PRD §6；既有引用可随更新往返保留） */
+  private async assertDepartmentsExist(tx: Prisma.TransactionClient, departmentIds: number[], currentDepartmentIds: number[] = []): Promise<void> {
     if (departmentIds.length === 0) {
       return;
     }
     const found = await tx.department.findMany({ where: { id: { in: departmentIds } } });
     if (found.length !== departmentIds.length) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const currentSet = new Set(currentDepartmentIds);
+    if (found.some((department) => department.status !== 'ACTIVE' && !currentSet.has(department.id))) {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '停用部门不能作为岗位适用部门' });
     }
   }
 }

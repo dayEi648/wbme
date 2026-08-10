@@ -1,7 +1,12 @@
 import { Body, Controller, Get, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { RestoreDeliveryTaskRef } from '@wbme/tasks';
-import { InternalTokenGuard } from './internal-token.guard';
+import { readLocalDiskStatus, type DiskStatusSummary } from '@wbme/server';
+import {
+  DiskStatusInternalTokenGuard,
+  PlatformCoreInternalTokenGuard,
+  WorkerInternalTokenGuard,
+} from './internal-token.guard';
 import { RECOVERY_COOKIE_NAME, RecoveryExecutorService } from './recovery-executor.service';
 
 /**
@@ -33,6 +38,17 @@ export class RecoveryControlController {
     res.json({ status: 'ok' });
   }
 
+  /**
+   * 集中磁盘探针：测量恢复执行器只读挂载的 PostgreSQL、Redis 与恢复持久化目录。
+   *
+   * 仅容量型写入的部署单元可调用，响应不暴露主机路径或卷名。
+   */
+  @Get('disk')
+  @UseGuards(DiskStatusInternalTokenGuard)
+  diskStatus(): Promise<DiskStatusSummary> {
+    return readLocalDiskStatus();
+  }
+
   @Get('status')
   async status(@Req() req: Request): Promise<unknown> {
     this.assertRecoverySession(req);
@@ -48,7 +64,7 @@ export class RecoveryControlController {
 
   /** Worker 内部投递 RESTORE_DELIVERY（内部令牌 + 调用方白名单） */
   @Post('delivery')
-  @UseGuards(new InternalTokenGuard(['worker']))
+  @UseGuards(WorkerInternalTokenGuard)
   async delivery(@Body() ref: RestoreDeliveryTaskRef): Promise<{ accepted: true }> {
     await this.recovery.acceptDelivery(ref);
     return { accepted: true };
@@ -56,7 +72,7 @@ export class RecoveryControlController {
 
   /** platform-core 内部签发恢复控制会话 Cookie（超管已登录验证后调用） */
   @Post('session')
-  @UseGuards(new InternalTokenGuard(['platform-core']))
+  @UseGuards(PlatformCoreInternalTokenGuard)
   issueSession(@Body() body: { userId: number }, @Res({ passthrough: true }) res: Response): { ok: true } {
     const secret = process.env.RECOVERY_SESSION_SECRET?.trim();
     if (!secret) {

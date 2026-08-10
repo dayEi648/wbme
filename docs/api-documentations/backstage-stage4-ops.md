@@ -37,9 +37,18 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/health-status` | `health_status` | 服务探针 + 任务概览 + 磁盘 stub |
+| GET | `/health-status` | `health_status` | 服务探针 + 任务概览（含按模块+类型的 failed24h/lastFailureAt）+ 真实磁盘使用率 |
 
-环境变量（注入 platform-core，健康状态页在该服务内运行）：`PLATFORM_CORE_HEALTH_URL`（本服务）、`WORKER_HEALTH_URL`（worker 探针，`http://worker:3105`）、`RECOVERY_EXECUTOR_HEALTH_URL`（恢复执行器，含 `/recovery` 前缀）、`HEALTH_DISK_USAGE_RATIO`。
+环境变量（注入 platform-core）：
+
+| 变量 | 说明 |
+| --- | --- |
+| `PLATFORM_CORE_HEALTH_URL` / `ASSET_HEALTH_URL` / `HR_HEALTH_URL` / `FIN_HEALTH_URL` / `WORKER_HEALTH_URL` / `RECOVERY_EXECUTOR_HEALTH_URL` | 各部署单元探针基址（追加 `/healthz`、`/readyz`） |
+| `HEALTH_DISK_STATUS_URL` / `DISK_STATUS_CALLER` | platform-core、fin、Worker 调用恢复执行器的受令牌保护聚合磁盘探针；调用方固定为部署单元名 |
+| `HEALTH_DISK_PATHS` | 仅注入 recovery-executor，固定为 PostgreSQL 数据卷、Redis 数据卷与恢复状态目录的只读挂载点 |
+| `HEALTH_DISK_WARN_RATIO` / `HEALTH_DISK_CRITICAL_RATIO` | 预警/严重阈值（默认 0.8 / 0.9） |
+
+磁盘达严重阈值时，平台拒绝新的图片上传、Excel 导入与备份任务（`DISK_SPACE_CRITICAL`，主 PRD §9.13）；任一目标卷无法测量时健康页显示严重且容量型写入返回 `DEPENDENCY_UNAVAILABLE`，不会按正常状态放行。
 
 ## 操作日志导出
 
@@ -80,6 +89,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 | GET | `/recovery/health` | 存活摘要 |
 | GET | `/recovery/healthz` | 存活探针（免登录恒 200，Docker/Nginx 使用） |
 | GET | `/recovery/readyz` | 就绪探针（免登录；状态目录读写 + 控制配置完整，否则 503） |
+| GET | `/recovery/disk` | 聚合磁盘状态（内部令牌；仅 platform-core / fin / worker） |
 | GET | `/recovery/status` | 恢复状态（恢复 Cookie） |
 | POST | `/recovery/retry` | 重试 |
 | POST | `/recovery/delivery` | Worker 投递 RESTORE_DELIVERY（内部令牌 + `X-WBME-Caller: worker`） |
@@ -89,7 +99,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 恢复管道阶段（外部控制清单为唯一事实来源，原子替换写入）：PRECHECK（备份记录/校验和/对象可达）→ MAINTENANCE（维护标记 + 停写等待）→ RESTORING（下载 → SHA-256 校验 → `pg_restore --list` → `pg_restore -Fc --clean`）→ MIGRATE_FORWARD（`RECOVERY_MIGRATE_CMD` 正向迁移）→ CANCEL_TASKS（历史非终态任务标记"因整库恢复取消"）→ REINSTATE_BACKUPS（OSS 清单校验 + 幂等补回备份记录）→ CLEAR_REDIS（`flushdb`，`RECOVERY_SKIP_REDIS_FLUSH=1` 跳过）→ READINESS（迁移元数据 + 至少一名可用超管）→ DONE（退出维护）。
 
-任一阶段失败保持维护状态并保存脱敏原因，由超管经恢复控制会话手动重试；`backstage.restores` 为镜像尽力同步（数据库可能被覆盖，失败不阻塞）。维护标记存在时 platform-core 写请求返回 503 `SYSTEM_MAINTENANCE`（应用层兜底，生产由 Nginx 只读挂载先行拦截）。pg 工具路径可经 `PG_RESTORE_PATH` 注入（macOS EDB 安装不在 PATH）。
+任一阶段失败保持维护状态并保存脱敏原因，由超管经恢复控制会话手动重试；`backstage.restores` 为镜像尽力同步（数据库可能被覆盖，失败不阻塞）。维护标记存在时 Nginx 在公网入口先行返回 503；platform-core、asset、hr、fin 的应用层对除 `/healthz`、`/readyz` 外的全部请求返回 `SYSTEM_MAINTENANCE`，Worker 也停止投递新任务。pg 工具路径可经 `PG_RESTORE_PATH` 注入（macOS EDB 安装不在 PATH）。
 
 ## 迁移前备份
 

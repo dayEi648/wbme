@@ -28,7 +28,13 @@ RUN pnpm -r build
 
 # ---- 前端 + Nginx ----
 FROM nginx:1.27-alpine AS web
+# Nginx worker 与后端容器共用受限 uid，仅读取恢复维护标记（宿主目录保持 0700，
+# 不因网关探测而放宽目录权限）。
+RUN addgroup -g 10001 -S wbme \
+  && adduser -S -D -H -u 10001 -G wbme wbme \
+  && sed -i 's/^user .*/user wbme;/' /etc/nginx/nginx.conf
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/nginx-maintenance.conf /etc/nginx/maintenance.conf
 COPY --from=builder /wbme/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
 # 官方 nginx 镜像 master 进程（PID 1）以 root 运行、worker 降权 nginx（镜像固定行为）；

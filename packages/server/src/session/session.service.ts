@@ -8,9 +8,10 @@ import { SESSION_ID_BYTES } from './session-constants';
 /**
  * 服务端会话数据（Redis 值）。
  *
- * 只保存用户标识与必要会话状态；授权上下文每次请求按当前账号状态与版本重新取得，
+ * 只保存用户标识与必要会话状态；授权上下文经 Redis 四版本缓存取得，
  * 不把登录时的授权当作整个会话期内不变的授权事实（base PRD §3）。
- * pv/ov/otv/dv 预留字段，未参与会话校验：守卫仅比较 sv/iat，授权每次请求实时读库。
+ * pv/ov/otv/dv 为会话侧预留字段；授权复用校验以 Redis `auth:context:{userId}`
+ * 快照内的四版本为准（与账号/目录/组织当前版本比对）。
  */
 export interface SessionData {
   /** 用户 ID */

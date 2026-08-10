@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, exportErrors, financeErrors, FINANCE_MAINTAIN_FUNCTION_CODE, frameworkErrors, type ImportChoiceDto } from '@wbme/contracts';
 import type { Redis } from '@wbme/server';
 import { createHash, randomUUID } from 'node:crypto';
-import { getRequestImportLockRelease, REDIS_CLIENT, REDIS_NAMESPACE, redisKey } from '@wbme/server';
+import { getRequestImportLockRelease, getRequestImportStartedAt, REDIS_CLIENT, REDIS_NAMESPACE, redisKey } from '@wbme/server';
 import { Prisma, type Project } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
@@ -24,10 +24,12 @@ const CREATE_BATCH_SIZE = 500;
  * 取消或超时抛错使整批回滚（全有或全无，不留部分导入）。
  *
  * @param signal 客户端/响应取消信号
- * @returns 检查函数（从创建时刻起计算 deadline）
+ * @returns 检查函数（从取得导入占用并开始接收请求体时计算 deadline，fin PRD §4；
+ *   守卫未记录时兜底从创建时刻起算）
  */
 function makeImportTimeoutCheck(signal?: AbortSignal): () => void {
-  const deadline = Date.now() + IMPORT_TIMEOUT_MS;
+  const startedAt = getRequestImportStartedAt() ?? Date.now();
+  const deadline = startedAt + IMPORT_TIMEOUT_MS;
   return () => {
     if (signal?.aborted) {
       throw new BusinessException(frameworkErrors.REQUEST_TIMEOUT);
@@ -939,7 +941,7 @@ async function loadDictContext(tx: Prisma.TransactionClient): Promise<DictContex
       context.progresses.set(normalizeProjectName(item.name), { ...ref, semantic: item.semantic });
     } else if (item.dictType === 'BIZ_CATEGORY') {
       context.categories.set(normalizeProjectName(item.name), ref);
-    } else {
+    } else if (item.dictType === 'COMPLETENESS') {
       context.completeness.set(normalizeProjectName(item.name), ref);
     }
   }
@@ -984,6 +986,7 @@ async function buildProjectDataFromInput(
   const currentDocs = Array.isArray(existing?.completenessDocs)
     ? (existing?.completenessDocs as Array<{ id: number }>)
     : [];
+  const seenCompleteness = new Set<string>();
   const completeness = input.completenessDocs.map((name) => {
     const item = dicts.completeness.get(normalizeProjectName(name));
     if (!item) {
@@ -991,6 +994,13 @@ async function buildProjectDataFromInput(
         fields: [{ rowNumber: input.rowNumber, field: '资料齐全度', reason: `字典项“${name}”不存在` }],
       });
     }
+    // 每项必须精确匹配且不得重复（fin PRD §4）：解析层已校验，写入层兜底
+    if (seenCompleteness.has(item.name)) {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+        fields: [{ rowNumber: input.rowNumber, field: '资料齐全度', reason: `字典项“${item.name}”重复` }],
+      });
+    }
+    seenCompleteness.add(item.name);
     if (item.status === 'DISABLED' && !currentDocs.some((doc) => doc.id === item.id)) {
       throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
         fields: [{ rowNumber: input.rowNumber, field: '资料齐全度', reason: `停用项“${name}”不能新增引用` }],

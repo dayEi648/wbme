@@ -63,12 +63,31 @@ export interface ProjectWithDetails {
   auto: ProjectCalcResult;
 }
 
+/**
+ * 合并项目编辑输入中的分包方字段。
+ *
+ * @param dto 客户端本次提交的项目数据
+ * @param existingSubcontractors 数据库已保存的分包方数组
+ * @returns 未提交分包方时保留旧值、显式空数组时保留清空意图的编辑数据
+ */
+export function mergeProjectUpdateDto(
+  dto: ProjectCreateDto,
+  existingSubcontractors: unknown,
+): ProjectCreateDto {
+  return {
+    ...dto,
+    subcontractors: dto.subcontractors ?? (existingSubcontractors as string[]),
+  };
+}
+
 /** 字典快照解析结果 */
 interface DictSnapshots {
   regionName: string | null;
   progressName: string | null;
   progressSemantic: 'TENTATIVE' | 'AUDITED' | null;
   bizCategoryName: string | null;
+  /** 资料齐全度解析结果（id + 名称快照；页面新建/编辑与导入/cellSave 同口径校验） */
+  completenessDocs: Array<{ id: number; name: string }>;
 }
 
 /**
@@ -145,9 +164,12 @@ export class ProjectService {
         if (!existing) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
-        const snapshots = await this.resolveDictSnapshots(tx, dto, existing);
-        const businessKey = normalizeProjectName(dto.name);
-        const diff = diffProject(existing, dto, businessKey, snapshots);
+        // 编辑接口允许分包方字段未提交：未提交表示不改动，显式 [] 才表示清空。
+        // 这样旧客户端只改其它字段时不会把已保存的分包方静默覆盖为空数组。
+        const effectiveDto = mergeProjectUpdateDto(dto, existing.subcontractors);
+        const snapshots = await this.resolveDictSnapshots(tx, effectiveDto, existing);
+        const businessKey = normalizeProjectName(effectiveDto.name);
+        const diff = diffProject(existing, effectiveDto, businessKey, snapshots);
         if (diff.changed.size === 0) {
           // 提交前后无实际差异：不产生项目操作记录（fin PRD §5），直接返回
           return { result: { id }, actionType: 'UPDATE' as const, summary: `更新了项目 ${dto.name}` };
@@ -156,7 +178,7 @@ export class ProjectService {
           await tx.project.update({
             where: { id },
             data: {
-              ...buildProjectData(dto, businessKey, snapshots, operator.id, existing),
+              ...buildProjectData(effectiveDto, businessKey, snapshots, operator.id, existing),
               // 每次成功变更递增 dataRevision（fin PRD §4）；预览快照以此校验导入覆盖过期
               dataRevision: { increment: 1 },
             },
@@ -354,7 +376,7 @@ export class ProjectService {
    */
   private async resolveDictSnapshots(
     tx: Prisma.TransactionClient,
-    dto: Pick<ProjectCreateDto, 'regionId' | 'progressId' | 'bizCategoryId'>,
+    dto: Pick<ProjectCreateDto, 'regionId' | 'progressId' | 'bizCategoryId' | 'completenessDocs'>,
     existing?: Project,
   ): Promise<DictSnapshots> {
     const refs: Array<{ id?: number; currentId?: number | null; kind: keyof DictSnapshots }> = [
@@ -362,12 +384,12 @@ export class ProjectService {
       { id: dto.progressId, currentId: existing?.progressId, kind: 'progressName' },
       { id: dto.bizCategoryId, currentId: existing?.bizCategoryId, kind: 'bizCategoryName' },
     ];
-    const result: DictSnapshots = { regionName: null, progressName: null, progressSemantic: null, bizCategoryName: null };
+    const result: DictSnapshots = { regionName: null, progressName: null, progressSemantic: null, bizCategoryName: null, completenessDocs: [] };
     const dictIds = [...new Set(refs.filter((ref) => ref.id !== undefined && ref.id !== null).map((ref) => ref.id as number))];
-    if (dictIds.length === 0) {
-      return result;
-    }
-    const items = await tx.financeDictItem.findMany({ where: { id: { in: dictIds } } });
+    const completenessIds = [...new Set((dto.completenessDocs ?? []).map((doc) => doc.id))];
+    const items = dictIds.length + completenessIds.length > 0
+      ? await tx.financeDictItem.findMany({ where: { id: { in: [...dictIds, ...completenessIds] } } })
+      : [];
     const byId = new Map(items.map((item) => [item.id, item]));
     for (const ref of refs) {
       if (ref.id === undefined || ref.id === null) {
@@ -394,6 +416,36 @@ export class ProjectService {
         result.bizCategoryName = item.name;
       }
     }
+    // 资料齐全度（多选）：与 cellSave/导入同口径——存在性、不得重复、停用项仅允许原引用往返
+    const currentDocIds = Array.isArray(existing?.completenessDocs)
+      ? new Set((existing?.completenessDocs as Array<{ id: number }>).map((doc) => doc.id))
+      : new Set<number>();
+    const seenDocs = new Set<number>();
+    for (const doc of dto.completenessDocs ?? []) {
+      if (seenDocs.has(doc.id)) {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+          fields: [{ field: 'completenessDocs', reason: '资料齐全度不得重复' }],
+        });
+      }
+      seenDocs.add(doc.id);
+      const item = byId.get(doc.id);
+      if (!item) {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+          fields: [{ field: 'completenessDocs', reason: '字典项不存在' }],
+        });
+      }
+      if (item.dictType !== 'COMPLETENESS') {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+          fields: [{ field: 'completenessDocs', reason: '只能选择资料齐全度字典项' }],
+        });
+      }
+      if (item.status === 'DISABLED' && !currentDocIds.has(item.id)) {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+          fields: [{ field: 'completenessDocs', reason: '字典项已停用，不能新选择' }],
+        });
+      }
+      result.completenessDocs.push({ id: item.id, name: item.name });
+    }
     return result;
   }
 }
@@ -410,7 +462,7 @@ function buildProjectData(
     name: dto.name,
     year: dto.year,
     businessKey,
-    completenessDocs: dto.completenessDocs as unknown as Prisma.InputJsonValue,
+    completenessDocs: snapshots.completenessDocs as unknown as Prisma.InputJsonValue,
     regionId: dto.regionId ?? null,
     regionName: snapshots.regionName,
     progressId: dto.progressId ?? null,
@@ -473,7 +525,8 @@ function diffProject(
   const dtoValues: Record<string, FieldValue> = {
     name: dto.name,
     year: dto.year,
-    completenessDocs: dto.completenessDocs ?? null,
+    // 与库中 {id, name} 快照同形比较（解析结果已校验字典）
+    completenessDocs: snapshots.completenessDocs.length > 0 ? snapshots.completenessDocs : null,
     regionId: dto.regionId ?? null,
     progressId: dto.progressId ?? null,
     bizCategoryId: dto.bizCategoryId ?? null,

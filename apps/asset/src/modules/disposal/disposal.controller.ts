@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
-import { CONSUMABLE_APPROVAL_FUNCTION_CODE, DirectDisposalDto, DisposalQueryDto } from '@wbme/contracts';
+import { CONSUMABLE_APPROVAL_FUNCTION_CODE, createPaginationResponse, DirectDisposalDto, DisposalQueryDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess } from '../../shared/cross-schema-auth';
@@ -20,11 +20,11 @@ export class DisposalController {
 
   /** 待处置 / 处置记录（PENDING / RECORDS 两个视图） */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: DisposalQueryDto): Promise<{ items: unknown[]; total: number }> {
-    if (query.tab === 'RECORDS') {
-      return this.disposals.listRecords(userId, query);
-    }
-    return this.disposals.listPending(userId, query);
+  async list(@CurrentUser() userId: number, @Query() query: DisposalQueryDto): Promise<unknown> {
+    const result = query.tab === 'RECORDS'
+      ? await this.disposals.listRecords(userId, query)
+      : await this.disposals.listPending(userId, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 直接处置（幂等；RETURN 回库 / WRITE_OFF 核销 / AGENT_SETTLE 整单结清） */

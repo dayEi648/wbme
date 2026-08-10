@@ -301,6 +301,7 @@
 结构遵循 backstage.md §S-16 通用审批契约；asset 独立服务，用户引用不建外键（存 ID + 姓名/部门快照）。
 
 - `request_type`：`STOCK_IN / STOCK_CHANGE / CONSUMABLE_REQUEST / AGENT_REQUEST / RETURN / WRITE_OFF / AGENT_SETTLEMENT`
+- `remark`（`text`，NULL）：申请人整单备注（入库/库存变更提交时填写，随审批详情展示；迁移 `20260810100000_add_approval_requests_remark`）
 - 待审批数量限制（本模块）：部分唯一索引 `(ref_request_id) WHERE request_type = 'AGENT_SETTLEMENT' AND status = 'PENDING'`——同一代领清单最多一条待审批结清申请
 - 入库/库存变更/申领/归还/核销允许多张待审批（库存占用与额度约束在应用层事务保证）
 

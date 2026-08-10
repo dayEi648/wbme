@@ -8,7 +8,7 @@ import {
   PaginationQueryDto,
   PositionApplicationSubmitDto,
 } from '@wbme/contracts';
-import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, RateLimit, RateLimitGuard, RequestTimeout } from '@wbme/server';
 import type { Response } from 'express';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PrismaService } from '../../../prisma.service';
@@ -131,6 +131,7 @@ export class MeController {
 
   /** P6 我的操作日志导出（仅当前用户记录；结构化筛选与列表一致；M2 补限流）。 */
   @Get('operation-logs/export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'me-operation-log-export', keyType: 'user', limit: 20, windowSeconds: 3600, envPrefix: 'ME_EXPORT' })
   async exportMyOperationLogs(

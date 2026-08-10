@@ -94,6 +94,8 @@ export interface CreateRequestHeadInput {
   refRequestId?: number;
   proxyId?: number;
   proxyName?: string;
+  /** 申请人整单备注（入库/库存变更提交时填写；审批详情展示） */
+  remark?: string;
 }
 
 /**
@@ -142,6 +144,7 @@ export class AssetApprovalService {
           proxyId: input.proxyId ?? null,
           proxyName: input.proxyName ?? null,
           refRequestId: input.refRequestId ?? null,
+          remark: input.remark ?? null,
           status: 'PENDING',
           submittedAt: new Date(),
           createdBy: input.applicantId,
@@ -407,64 +410,6 @@ export class AssetApprovalService {
   }
 
   /**
-   * 当前用户发起或代交的资产审批历史。
-   *
-   * 该视图不要求审批功能：申请人必须能查看并取消自己的待审批业务单；可见范围仅限
-   * applicantId/proxyId，不能借此读取其它员工申请。
-   *
-   * @param userId 当前用户
-   * @param query 分页与状态/类型/关键字筛选
-   * @returns 当前用户申请历史
-   */
-  async listMine(userId: number, query: ApprovalListQueryDto): Promise<{ items: AssetApprovalListItem[]; total: number }> {
-    const conditions: Prisma.ApprovalRequestWhereInput[] = [
-      { OR: [{ applicantId: userId }, { proxyId: userId }] },
-    ];
-    if (query.requestType) {
-      if (query.requestType === 'CONSUMABLE_REQUEST') {
-        conditions.push({ requestType: { in: ['CONSUMABLE_REQUEST', 'AGENT_REQUEST'] } });
-      } else if (ALL_ASSET_TYPES.includes(query.requestType as AssetRequestType)) {
-        conditions.push({ requestType: query.requestType as AssetRequestType });
-      } else {
-        conditions.push({ id: -1 });
-      }
-    }
-    if (query.status === 'PENDING') {
-      conditions.push({ status: 'PENDING' });
-    } else if (query.status === 'PROCESSED') {
-      conditions.push({ status: { in: ['APPROVED', 'REJECTED', 'CANCELLED'] } });
-    } else if (query.status === 'DRAFT' || query.status === 'APPROVED' || query.status === 'REJECTED' || query.status === 'CANCELLED') {
-      conditions.push({ status: query.status });
-    }
-    if (query.keyword) {
-      conditions.push({
-        OR: [
-          { applicationNo: { contains: query.keyword } },
-          { applicantName: { contains: query.keyword } },
-          { proxyName: { contains: query.keyword } },
-        ],
-      });
-    }
-    const where: Prisma.ApprovalRequestWhereInput = { AND: conditions };
-    const tableQuery = buildAssetApprovalRequestTableQuery(query);
-    const effectiveWhere: Prisma.ApprovalRequestWhereInput = tableQuery.where
-      ? { AND: [where, tableQuery.where as Prisma.ApprovalRequestWhereInput] }
-      : where;
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-    const [total, rows] = await Promise.all([
-      this.prisma.client.approvalRequest.count({ where: effectiveWhere }),
-      this.prisma.client.approvalRequest.findMany({
-        where: effectiveWhere,
-        orderBy: (tableQuery.orderBy as Prisma.ApprovalRequestOrderByWithRelationInput[] | undefined) ?? [{ submittedAt: 'desc' }, { id: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-    ]);
-    return { total, items: rows.map((row) => this.toListItem(row)) };
-  }
-
-  /**
    * 详情；范围外/不存在 → 404。
    *
    * @param userId 当前用户
@@ -477,6 +422,7 @@ export class AssetApprovalService {
       proxyName: string | null;
       cancelSource: string | null;
       cancelledAt: Date | null;
+      remark: string | null;
     };
     actions: Array<{
       id: number;
@@ -505,6 +451,7 @@ export class AssetApprovalService {
         proxyName: head.proxyName,
         cancelSource: head.cancelSource,
         cancelledAt: head.cancelledAt,
+        remark: head.remark,
       },
       actions: head.actions.map((action) => ({
         id: action.id,

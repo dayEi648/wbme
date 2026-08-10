@@ -60,14 +60,13 @@ describe('AnnouncementService', () => {
       const prisma = prismaMock();
       vi.mocked(prisma.client.announcement.findMany).mockResolvedValue([draftRow]);
       vi.mocked(prisma.client.announcement.count).mockResolvedValue(5);
-      const result = (await new AnnouncementService(prisma as never).list({ page: 2, pageSize: 10 })) as {
-        items: unknown[];
-        total: number;
+      const result = await new AnnouncementService(prisma as never).list({ page: 2, pageSize: 10 }) as {
+        pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
       };
       expect(prisma.client.announcement.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { deletedAt: null }, skip: 10, take: 10 }),
       );
-      expect(result.total).toBe(5);
+      expect(result.pagination).toEqual({ page: 2, pageSize: 10, totalItems: 5, totalPages: 1 });
     });
 
     it('status 过滤透传', async () => {

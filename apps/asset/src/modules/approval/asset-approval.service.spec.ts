@@ -205,23 +205,18 @@ describeDb('asset 审批头（T5-3）', () => {
     });
   });
 
-  it('申请人可在无审批授权时仅查看自己的申请历史', async () => {
-    const applicantId = BASE_APPLICANT + 25;
-    const otherApplicantId = BASE_APPLICANT + 26;
-    await service.submitTestHeader({
+  it('申请人可在无审批授权时取消自己的待审批（本人取消入口回归历史记录视图，主 PRD §3.2）', async () => {
+    const applicantId = processorId;
+    const { requestId } = await service.submitTestHeader({
       requestType: 'CONSUMABLE_REQUEST',
       applicantId,
       applicantName: '我的资产申请人',
     });
-    await service.submitTestHeader({
-      requestType: 'STOCK_IN',
-      applicantId: otherApplicantId,
-      applicantName: '其他资产申请人',
-    });
 
-    const mine = await service.listMine(applicantId, { page: 1, pageSize: 20, status: 'PENDING' });
-    expect(mine.items).toHaveLength(1);
-    expect(mine.items[0]).toMatchObject({ applicantId, requestType: 'CONSUMABLE_REQUEST', status: 'PENDING' });
+    await service.cancel(requestId, applicantId);
+    const header = await prisma.client.approvalRequest.findUnique({ where: { id: requestId } });
+    expect(header?.status).toBe('CANCELLED');
+    expect(header?.cancelledBy).toBe(applicantId);
   });
 
   it('process 幂等（M7）：同键重试重放原结果且不重复写审批动作', async () => {

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
   CONSUMABLE_APPLY_FUNCTION_CODE,
+  createPaginationResponse,
   ConsumableBatchDeleteDto,
   ConsumableCreateDto,
   ConsumableQueryDto,
@@ -26,13 +27,14 @@ export class ConsumableController {
 
   /** 品种列表（配置管理；hasAvailableStock=true 时供申领页展示品种汇总） */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: ConsumableQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async list(@CurrentUser() userId: number, @Query() query: ConsumableQueryDto): Promise<unknown> {
     await assertFunctionAccess(
       this.prisma.client,
       userId,
       query.hasAvailableStock ? CONSUMABLE_APPLY_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE,
     );
-    return this.consumables.list(query);
+    const result = await this.consumables.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 创建品种（幂等；名称唯一；类型创建后不可变） */

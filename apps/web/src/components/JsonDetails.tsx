@@ -2,6 +2,7 @@ import { Alert, Card, Descriptions, Spin, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useFeedback } from '../request/feedback';
 import { http, type ApiService } from '../request/http';
+import { displayLabel, formatDetailValue, formatDisplayValue } from './display-format';
 
 type RecordValue = Record<string, unknown>;
 
@@ -9,22 +10,17 @@ function isRecord(value: unknown): value is RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function display(value: unknown): string {
-  if (value === null || value === undefined || value === '') {
-    return '—';
-  }
-  return typeof value === 'object' ? JSON.stringify(value) : String(value);
-}
-
 interface JsonDetailsProps {
   title: string;
   service: ApiService;
   endpoint: string;
   description?: string;
+  /** 业务详情的字段中文名；通用字段使用共享映射。 */
+  labelMap?: Readonly<Record<string, string>>;
 }
 
 /** 只读详情/状态页共用加载器，动态字段以安全文本呈现。 */
-export function JsonDetails({ title, service, endpoint, description }: JsonDetailsProps) {
+export function JsonDetails({ title, service, endpoint, description, labelMap }: JsonDetailsProps) {
   const feedback = useFeedback();
   const [data, setData] = useState<RecordValue | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +45,11 @@ export function JsonDetails({ title, service, endpoint, description }: JsonDetai
       <Typography.Title level={3}>{title}</Typography.Title>
       {description ? <Typography.Paragraph type="secondary">{description}</Typography.Paragraph> : null}
       <Card>
-        {loading ? <Spin tip="正在加载..." /> : data ? <Descriptions bordered column={1} items={Object.entries(data).map(([label, value]) => ({ key: label, label, children: display(value) }))} /> : <Alert type="error" message="数据暂不可用" />}
+        {loading ? <Spin tip="正在加载..." /> : data ? <Descriptions bordered column={1} items={Object.entries(data).map(([key, value]) => ({
+          key,
+          label: displayLabel(key, labelMap),
+          children: <span style={{ whiteSpace: 'pre-wrap' }}>{typeof value === 'object' && value !== null ? JSON.stringify(formatDetailValue(value, labelMap), null, 2) : formatDisplayValue(value, key)}</span>,
+        }))} /> : <Alert type="error" message="数据暂不可用" />}
       </Card>
     </>
   );

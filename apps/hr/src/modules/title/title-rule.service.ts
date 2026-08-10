@@ -137,10 +137,12 @@ export class TitleRuleService {
         if (!existing) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
+        // 未显式提交的条件保留原引用（既有停用部门引用不阻断其它字段编辑，hr PRD §6）
         await this.assertConditionsExist(
           tx,
           input.departmentId ?? existing.departmentId ?? undefined,
           input.positionId ?? existing.positionId ?? undefined,
+          existing.departmentId ?? undefined,
         );
         await tx.titleRule.update({
           where: { id },
@@ -192,16 +194,21 @@ export class TitleRuleService {
     });
   }
 
-  /** 断言条件目标存在（部门/岗位被物理删除后条件永不命中，创建/更新时校验） */
+  /** 断言条件目标存在且启用（部门被物理删除或停用后条件不再合法，创建/更新时校验；
+   *  停用部门不得作为新业务归属选择目标，hr PRD §6；编辑时原引用可往返保留） */
   private async assertConditionsExist(
     tx: Prisma.TransactionClient,
     departmentId?: number,
     positionId?: number,
+    currentDepartmentId?: number,
   ): Promise<void> {
     if (departmentId !== undefined) {
       const department = await tx.department.findUnique({ where: { id: departmentId } });
       if (!department) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+      }
+      if (department.status !== 'ACTIVE' && departmentId !== currentDepartmentId) {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '停用部门不能作为职称规则条件' });
       }
     }
     if (positionId !== undefined) {

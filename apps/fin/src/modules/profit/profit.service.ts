@@ -300,7 +300,8 @@ export class ProfitService {
         return { write, displayValue: text };
       }
       case 'year': {
-        const year = value;
+        // 兼容字符串与数字两种提交形态（前端输入框提交字符串；统一规范化为整数，批次 3-24）
+        const year = typeof value === 'string' && /^\d{4}$/.test(value) ? Number(value) : value;
         if (typeof year !== 'number' || !Number.isInteger(year) || year < 1000 || year > 9999) {
           throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { fields: [{ field, reason: '年度必须是 1000～9999 的整数' }] });
         }
@@ -341,7 +342,12 @@ export class ProfitService {
         if (value.length > 20 || value.some((item) => typeof item !== 'object' || item === null || typeof (item as { id: unknown }).id !== 'number')) {
           throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { fields: [{ field, reason: '数组长度或引用格式非法' }] });
         }
-        const ids = [...new Set((value as Array<{ id: number }>).map((item) => item.id))];
+        // 每项必须精确匹配且不得重复（fin PRD §4）：重复引用拒绝保存
+        const rawIds = (value as Array<{ id: number }>).map((item) => item.id);
+        if (new Set(rawIds).size !== rawIds.length) {
+          throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { fields: [{ field, reason: '字典引用不得重复' }] });
+        }
+        const ids = [...new Set(rawIds)];
         const items = await tx.financeDictItem.findMany({ where: { id: { in: ids } } });
         const byId = new Map(items.map((item) => [item.id, item]));
         // 停用项仅允许原引用往返：当前项目已引用同一字典项时保留
@@ -352,6 +358,9 @@ export class ProfitService {
           const dict = byId.get(item.id);
           if (!dict) {
             throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { fields: [{ field, reason: '字典项不存在' }] });
+          }
+          if (dict.dictType !== 'COMPLETENESS') {
+            throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { fields: [{ field, reason: '只能选择资料齐全度字典项' }] });
           }
           if (dict.status === 'DISABLED' && !currentDocs.some((doc) => doc.id === dict.id)) {
             throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { fields: [{ field, reason: '字典项已停用，不能新选择' }] });

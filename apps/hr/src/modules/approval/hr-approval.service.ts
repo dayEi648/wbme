@@ -27,6 +27,7 @@ import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
+import { executeIdempotentOperation, fingerprintPayload, loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { buildHrApprovalRequestTableQuery } from '../../shared/table-query';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
 import type { ApprovalSideEffect } from './approval-side-effect';
@@ -208,12 +209,14 @@ export class HrApprovalService {
   }
 
   /**
-   * 审批处理（内核状态迁移 + 批准业务副作用 + DEPARTMENT 闭包范围断言）。
+   * 审批处理（内核状态迁移 + 批准业务副作用 + DEPARTMENT 闭包范围断言；
+   * 幂等键重试返回原结果，处理结果写入 hr 操作日志）。
    *
    * @param id 审批头 id
    * @param action APPROVE | REJECT
    * @param processorId 处理人
    * @param opinion 意见（驳回必填）
+   * @param idempotencyKey 幂等键（网络重试保持不变）
    * @throws RESOURCE_NOT_FOUND 无权/不存在；STATUS_CONFLICT 并发冲突；SCOPE_NOT_COVERED 范围未覆盖
    */
   async process(
@@ -221,109 +224,167 @@ export class HrApprovalService {
     action: 'APPROVE' | 'REJECT',
     processorId: number,
     opinion?: string,
+    idempotencyKey?: string,
   ): Promise<void> {
     const transition = resolveProcessTransition(action);
     assertOpinionIfRequired(transition.requiresOpinion, opinion);
+    const operator = await loadHrOperationLogOperator(this.prisma.client, processorId);
+    // 事务外轻读申请类型以确定操作日志功能归属（run 内重读并做全部校验）
+    const probe = await this.prisma.client.hrApprovalRequest.findUnique({
+      where: { id },
+      select: { requestType: true },
+    });
+    if (!probe) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const feature = probe.requestType === 'OVERTIME' ? OVERTIME_APPROVAL_FUNCTION_CODE : ORG_STRUCTURE_FUNCTION_CODE;
+    await executeIdempotentOperation<void>(this.prisma.client, {
+      operator,
+      feature,
+      scope: `hr.approval.process/${id}`,
+      idempotencyKey,
+      fingerprint: fingerprintPayload({ action, opinion: opinion ?? null, id }),
+      run: async (tx) => {
+        await this.processInner(tx, id, action, transition, processorId, opinion);
+        return {
+          result: undefined as unknown as void,
+          actionType: 'UPDATE' as const,
+          summary: `处理了${probe.requestType === 'OVERTIME' ? '加班' : '岗位变更'}审批（${action === 'APPROVE' ? '批准' : '驳回'}）`,
+        };
+      },
+    });
+  }
 
-    await this.prisma.client.$transaction(async (tx) => {
-      const head = await tx.hrApprovalRequest.findUnique({ where: { id } });
-      if (!head) {
-        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      const access = await this.assertCanAccessType(processorId, head.requestType);
-      if (head.status !== 'PENDING') {
-        throw new BusinessException(approvalErrors.STATUS_CONFLICT);
-      }
-      assertTransitionAllowed(head.status, transition.status);
+  /** process 业务主体（幂等 run 内执行；依赖数据库状态的校验全部在此） */
+  private async processInner(
+    tx: Prisma.TransactionClient,
+    id: number,
+    action: 'APPROVE' | 'REJECT',
+    transition: ReturnType<typeof resolveProcessTransition>,
+    processorId: number,
+    opinion?: string,
+  ): Promise<void> {
+    const head = await tx.hrApprovalRequest.findUnique({ where: { id } });
+    if (!head) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const access = await this.assertCanAccessType(processorId, head.requestType);
+    if (head.status !== 'PENDING') {
+      throw new BusinessException(approvalErrors.STATUS_CONFLICT);
+    }
+    assertTransitionAllowed(head.status, transition.status);
 
-      // DEPARTMENT 档须覆盖批次全部申请对象（加班明细部门快照/岗位申请部门快照）；
-      // 批准与驳回统一断言（主 PRD §3.2：列表、详情与处理接口执行相同的权限与范围校验）
-      await this.assertScopeCovers(tx, head, access, processorId);
+    // DEPARTMENT 档须覆盖批次全部申请对象（加班明细部门快照/岗位申请部门快照）；
+    // 批准与驳回统一断言（主 PRD §3.2：列表、详情与处理接口执行相同的权限与范围校验）
+    await this.assertScopeCovers(tx, head, access, processorId);
 
-      // 批准前校验申请人账号未注销（backstage PRD §3）——注销与生命周期任务消费之间的
-      // 窗口内，岗位审批发现目标账号已注销必须拒绝批准（APPLICANT_DEACTIVATED），不得产生
-      // 组织变更；申请保持 PENDING，最终由任务写入统一的已取消终态。
-      await this.assertApplicantActive(tx, head, action);
+    // 批准前校验申请人账号未注销（backstage PRD §3）——注销与生命周期任务消费之间的
+    // 窗口内，岗位审批发现目标账号已注销必须拒绝批准（APPLICANT_DEACTIVATED），不得产生
+    // 组织变更；申请保持 PENDING，最终由任务写入统一的已取消终态。
+    await this.assertApplicantActive(tx, head, action);
 
-      const processorName = await loadUserName(tx, processorId);
-      const now = new Date();
-      const updated = await tx.hrApprovalRequest.updateMany({
-        where: { id, status: 'PENDING', version: head.version },
-        data: {
-          status: transition.status,
-          version: { increment: 1 },
-          processorId,
-          processorName,
-          processedAt: now,
-          opinion: opinion ?? null,
-        },
-      });
-      throwIfTransitionLost(updated.count);
+    const processorName = await loadUserName(tx, processorId);
+    const now = new Date();
+    const updated = await tx.hrApprovalRequest.updateMany({
+      where: { id, status: 'PENDING', version: head.version },
+      data: {
+        status: transition.status,
+        version: { increment: 1 },
+        processorId,
+        processorName,
+        processedAt: now,
+        opinion: opinion ?? null,
+      },
+    });
+    throwIfTransitionLost(updated.count);
 
-      // 批准业务副作用（POSITION_CHANGE 组织生效；OVERTIME 无副作用）。
-      // 副作用校验抛错 → 事务回滚 → 申请保持待审批（主 PRD §3.2 批准前重校验）。
-      if (action === 'APPROVE' && this.sideEffect) {
-        await this.sideEffect.apply(tx, head, processorId);
-      }
+    // 批准业务副作用（POSITION_CHANGE 组织生效；OVERTIME 无副作用）。
+    // 副作用校验抛错 → 事务回滚 → 申请保持待审批（主 PRD §3.2 批准前重校验）。
+    if (action === 'APPROVE' && this.sideEffect) {
+      await this.sideEffect.apply(tx, head, processorId);
+    }
 
-      await tx.hrApprovalAction.create({
-        data: {
-          requestId: id,
-          action: transition.action,
-          actorId: processorId,
-          actorName: processorName,
-          opinion: opinion ?? null,
-        },
-      });
+    await tx.hrApprovalAction.create({
+      data: {
+        requestId: id,
+        action: transition.action,
+        actorId: processorId,
+        actorName: processorName,
+        opinion: opinion ?? null,
+      },
     });
   }
 
   /**
-   * 申请人/代交人取消待审批（cancelSource=USER）。
+   * 申请人/代交人取消待审批（cancelSource=USER；幂等键重试返回原结果，
+   * 取消结果写入 hr 操作日志）。
    *
    * @param id 审批头 id
    * @param actorId 操作人
    * @param expectedType 预期申请类型（L12：加班路由传入 'OVERTIME'，
    *   防止通用取消接口被跨类型误用；不传则不做类型断言）
+   * @param idempotencyKey 幂等键（网络重试保持不变）
    */
-  async cancel(id: number, actorId: number, expectedType?: string): Promise<void> {
+  async cancel(id: number, actorId: number, expectedType?: string, idempotencyKey?: string): Promise<void> {
     const transition = resolveProcessTransition('CANCEL', 'USER');
-    await this.prisma.client.$transaction(async (tx) => {
-      const head = await tx.hrApprovalRequest.findUnique({ where: { id } });
-      if (!head) {
-        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      if (expectedType !== undefined && head.requestType !== expectedType) {
-        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      if (head.applicantId !== actorId && head.proxyId !== actorId) {
-        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      assertPending(head.status);
-      assertTransitionAllowed(head.status, transition.status);
+    const operator = await loadHrOperationLogOperator(this.prisma.client, actorId);
+    // 事务外轻读申请类型以确定操作日志功能归属（run 内重读并做全部校验）
+    const probe = await this.prisma.client.hrApprovalRequest.findUnique({
+      where: { id },
+      select: { requestType: true },
+    });
+    if (!probe) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const feature = probe.requestType === 'OVERTIME' ? OVERTIME_APPROVAL_FUNCTION_CODE : ORG_STRUCTURE_FUNCTION_CODE;
+    await executeIdempotentOperation<void>(this.prisma.client, {
+      operator,
+      feature,
+      scope: `hr.approval.cancel/${id}`,
+      idempotencyKey,
+      fingerprint: fingerprintPayload({ id, expectedType: expectedType ?? null }),
+      run: async (tx) => {
+        const head = await tx.hrApprovalRequest.findUnique({ where: { id } });
+        if (!head) {
+          throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+        }
+        if (expectedType !== undefined && head.requestType !== expectedType) {
+          throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+        }
+        if (head.applicantId !== actorId && head.proxyId !== actorId) {
+          throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+        }
+        assertPending(head.status);
+        assertTransitionAllowed(head.status, transition.status);
 
-      const actorName = await loadUserName(tx, actorId);
-      const now = new Date();
-      const updated = await tx.hrApprovalRequest.updateMany({
-        where: { id, status: 'PENDING', version: head.version },
-        data: {
-          status: 'CANCELLED',
-          version: { increment: 1 },
-          cancelledBy: actorId,
-          cancelledAt: now,
-          cancelSource: 'USER',
-        },
-      });
-      throwIfTransitionLost(updated.count);
-      await tx.hrApprovalAction.create({
-        data: {
-          requestId: id,
-          action: 'CANCEL',
-          actorId,
-          actorName,
-          cancelSource: 'USER',
-        },
-      });
+        const actorName = await loadUserName(tx, actorId);
+        const now = new Date();
+        const updated = await tx.hrApprovalRequest.updateMany({
+          where: { id, status: 'PENDING', version: head.version },
+          data: {
+            status: 'CANCELLED',
+            version: { increment: 1 },
+            cancelledBy: actorId,
+            cancelledAt: now,
+            cancelSource: 'USER',
+          },
+        });
+        throwIfTransitionLost(updated.count);
+        await tx.hrApprovalAction.create({
+          data: {
+            requestId: id,
+            action: 'CANCEL',
+            actorId,
+            actorName,
+            cancelSource: 'USER',
+          },
+        });
+        return {
+          result: undefined as unknown as void,
+          actionType: 'UPDATE' as const,
+          summary: `取消了${probe.requestType === 'OVERTIME' ? '加班' : '岗位变更'}审批`,
+        };
+      },
     });
   }
 

@@ -91,6 +91,16 @@ export const frameworkErrors = {
     httpStatus: 503,
     message: '系统维护中，请稍后再试',
   },
+  /**
+   * 磁盘使用率达严重阈值：停止接受新的文件上传、Excel 导入及备份任务
+   * （主 PRD §9.13；不暴露主机路径，仅提示空间不足）
+   */
+  DISK_SPACE_CRITICAL: {
+    code: 'DISK_SPACE_CRITICAL',
+    type: 'DEPENDENCY',
+    httpStatus: 503,
+    message: '磁盘空间不足，暂不可执行此操作',
+  },
   /** 目标系统未开放（product_status ≠ OPEN）：入口可见不等于可进入（主 PRD §9.6 系统可用性校验、base PRD §5） */
   SYSTEM_NOT_OPEN: {
     code: 'SYSTEM_NOT_OPEN',

@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
-import { FINANCE_CONFIG_FUNCTION_CODE, FinDictItemBatchDeleteDto, FinDictItemCreateDto, FinDictItemQueryDto, FinDictItemUpdateDto } from '@wbme/contracts';
+import { createPaginationResponse, FINANCE_CONFIG_FUNCTION_CODE, FinDictItemBatchDeleteDto, FinDictItemCreateDto, FinDictItemQueryDto, FinDictItemUpdateDto } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess } from '../../shared/cross-schema-auth';
@@ -21,7 +21,8 @@ export class DictController {
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: FinDictItemQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, FINANCE_CONFIG_FUNCTION_CODE);
-    return this.dict.list(query);
+    const result = await this.dict.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 创建字典项（PROGRESS 必填金额语义；业务分类不得叫“未分类”） */

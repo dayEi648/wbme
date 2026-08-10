@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { of } from 'rxjs';
@@ -14,7 +14,7 @@ function mockContext(method: string, path: string): never {
   } as never;
 }
 
-describe('MaintenanceInterceptor（backstage PRD §10 维护状态写拦截）', () => {
+describe('MaintenanceInterceptor（backstage PRD §10 维护状态拦截）', () => {
   let stateDir: string;
   let interceptor: MaintenanceInterceptor;
 
@@ -42,15 +42,28 @@ describe('MaintenanceInterceptor（backstage PRD §10 维护状态写拦截）',
     ).rejects.toMatchObject({ entry: { code: 'SYSTEM_MAINTENANCE', httpStatus: 503 } });
   });
 
-  it('维护期间读请求放行', async () => {
+  it('维护期间读请求同样拒绝（应用层兜底，与 Nginx 口径一致）', async () => {
     await expect(
       interceptor.intercept(mockContext('GET', '/demo/read'), { handle: () => of({ ok: true }) } as never),
-    ).resolves.toBeDefined();
+    ).rejects.toMatchObject({ entry: { code: 'SYSTEM_MAINTENANCE', httpStatus: 503 } });
   });
 
   it('维护期间健康探针放行', async () => {
     await expect(
+      interceptor.intercept(mockContext('GET', '/readyz'), { handle: () => of({ ok: true }) } as never),
+    ).resolves.toBeDefined();
+    await expect(
       interceptor.intercept(mockContext('POST', '/readyz'), { handle: () => of({ ok: true }) } as never),
     ).resolves.toBeDefined();
+  });
+
+  it('维护标记读取异常时失败安全地拒绝业务请求', async () => {
+    const markerPath = join(stateDir, 'maintenance.marker');
+    await rm(markerPath, { force: true });
+    await mkdir(markerPath);
+    await expect(
+      interceptor.intercept(mockContext('GET', '/demo/read'), { handle: () => of({ ok: true }) } as never),
+    ).rejects.toMatchObject({ entry: { code: 'SYSTEM_MAINTENANCE', httpStatus: 503 } });
+    await rm(markerPath, { recursive: true, force: true });
   });
 });

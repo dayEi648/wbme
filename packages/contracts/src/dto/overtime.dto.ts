@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsInt,
@@ -92,6 +93,7 @@ export class OvertimeSubmitDto extends IdempotentDto {
     items: { type: 'number', minimum: 1 },
   })
   @IsArray()
+  @ArrayMinSize(1)
   @ArrayMaxSize(BATCH_LIMIT)
   @ArrayUnique()
   @IsInt({ each: true })

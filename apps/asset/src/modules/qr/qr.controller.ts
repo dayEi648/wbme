@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query, UseGua
 import {
   FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
   INVENTORY_MANAGE_FUNCTION_CODE,
+  createPaginationResponse,
   QrActionDto,
   QrCodeCreateDto,
   QrCodeQueryDto,
@@ -38,12 +39,13 @@ export class QrController {
 
   /** 二维码列表（按用户管理权限过滤目标类型：资产→固定资产维护，库存/目录→消耗品库存管理） */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: QrCodeQueryDto): Promise<{ items: unknown[]; total: number }> {
+  async list(@CurrentUser() userId: number, @Query() query: QrCodeQueryDto): Promise<unknown> {
     const allowed = await this.visibleTargetTypes(userId);
     if (allowed.length === 0) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
-    return this.qr.list(userId, query, allowed);
+    const result = await this.qr.list(userId, query, allowed);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 二维码管理动作（停用 / 恢复 / 作废并重新生成） */

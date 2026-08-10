@@ -56,6 +56,7 @@ function makePrisma(overrides: Record<string, unknown> = {}): {
   client: {
     hrApprovalRequest: { findUnique: MockFn; findMany: MockFn; count: MockFn; groupBy: MockFn; updateMany: MockFn; create: MockFn };
     hrApprovalAction: { create: MockFn };
+    hrOperationLog: { create: MockFn; findFirst: MockFn };
     overtimeItem: { findMany: MockFn };
     positionChangeRequest: { findUnique: MockFn };
     $queryRaw: MockFn;
@@ -72,6 +73,8 @@ function makePrisma(overrides: Record<string, unknown> = {}): {
       create: vi.fn(),
     },
     hrApprovalAction: { create: vi.fn() },
+    // 审批处理/取消写入 hr 操作日志与幂等记录（批次 3：条目 10/11）
+    hrOperationLog: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue(null) },
     overtimeItem: { findMany: vi.fn().mockResolvedValue([]) },
     positionChangeRequest: { findUnique: vi.fn().mockResolvedValue(null) },
     $queryRaw: vi.fn().mockResolvedValue([]),

@@ -15,7 +15,9 @@ import { AgentSettlementService } from './borrow/agent-settlement.service';
 import { BorrowService } from './borrow/borrow.service';
 import { AgentClaimService } from './claim/agent-claim.service';
 import { ClaimService } from './claim/claim.service';
+import { CategoryService } from './catalog/category.service';
 import { DictService } from './catalog/dict.service';
+import { WarehouseService } from './warehouse/warehouse.service';
 import { DisposalService } from './disposal/disposal.service';
 import { DisposalQueryDto } from '@wbme/contracts';
 import { ConsumableController } from './consumable/consumable.controller';
@@ -47,7 +49,10 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
   const BASE = 8_902_000;
   const [deptA, deptB] = [BASE + 1, BASE + 2];
   const [adminId, deptApproverId, inventoryManagerId, assetMaintainerId, applicantId] = [BASE + 10, BASE + 11, BASE + 12, BASE + 13, BASE + 14];
-  const [topFixedId, subFixedId, topConsumableId, subConsumableId] = [BASE + 20, BASE + 21, BASE + 22, BASE + 23];
+  // 顶级分类复用系统内置（ensureDefaults 产物，幂等）；子分类使用测试段 id
+  let topFixedId = BASE + 20;
+  let topConsumableId = BASE + 22;
+  const [subFixedId, subConsumableId] = [BASE + 21, BASE + 23];
   const [reusableId, disposableId] = [BASE + 30, BASE + 31];
   const [warehouseId, reusableItemId, disposableItemId] = [BASE + 40, BASE + 41, BASE + 42];
   const [reusableBatchFirstId, reusableBatchSecondId] = [BASE + 43, BASE + 44];
@@ -66,6 +71,8 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
   let stockIn: StockInService;
   let qr: QrService;
   let dict: DictService;
+  let categoryService: CategoryService;
+  let warehouseService: WarehouseService;
   let assetService: AssetService;
   let inventoryController: InventoryController;
   let consumableController: ConsumableController;
@@ -128,13 +135,24 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
         ON CONFLICT DO NOTHING
       `;
     }
-    // 分类（顶级 + 一级子类）
+    // 分类：顶级分类复用系统内置（同名唯一索引冲突时保留既有行），一级子类使用测试段 id。
+    // 幂等重跑：先清测试段残留（子分类引用测试段顶级分类时一并删除）
+    await prisma.client.$executeRaw`DELETE FROM asset.asset_categories WHERE id IN (${BASE + 20}, ${BASE + 21}, ${BASE + 22}, ${BASE + 23})`;
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.asset_categories (parent_id, name, sort, created_at, updated_at)
+      VALUES (NULL, '固定资产', 0, NOW(), NOW()), (NULL, '消耗品', 1, NOW(), NOW())
+      ON CONFLICT (COALESCE(parent_id, 0), name) DO NOTHING
+    `;
+    const topRows = await prisma.client.$queryRaw<Array<{ id: number; name: string }>>`
+      SELECT id, name FROM asset.asset_categories
+      WHERE parent_id IS NULL AND name IN ('固定资产', '消耗品')
+    `;
+    topFixedId = topRows.find((row) => row.name === '固定资产')!.id;
+    topConsumableId = topRows.find((row) => row.name === '消耗品')!.id;
     await prisma.client.$executeRaw`
       INSERT INTO asset.asset_categories (id, parent_id, name, sort, created_at, updated_at)
       VALUES
-        (${topFixedId}, NULL, '固定资产', 0, NOW(), NOW()),
         (${subFixedId}, ${topFixedId}, '测试设备', 0, NOW(), NOW()),
-        (${topConsumableId}, NULL, '消耗品', 1, NOW(), NOW()),
         (${subConsumableId}, ${topConsumableId}, '办公用品', 0, NOW(), NOW())
       ON CONFLICT (id) DO NOTHING
     `;
@@ -233,6 +251,8 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
         AssetApprovalService,
         QrService,
         DictService,
+        CategoryService,
+        WarehouseService,
         AssetService,
         RepairService,
         InventoryService,
@@ -249,6 +269,8 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     stockIn = moduleRef.get(StockInService);
     qr = moduleRef.get(QrService);
     dict = moduleRef.get(DictService);
+    categoryService = moduleRef.get(CategoryService);
+    warehouseService = moduleRef.get(WarehouseService);
     assetService = moduleRef.get(AssetService);
     inventoryController = moduleRef.get(InventoryController);
     consumableController = moduleRef.get(ConsumableController);
@@ -285,7 +307,8 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     await prisma.client.$executeRaw`DELETE FROM asset.inventory_items WHERE id IN (${reusableItemId}, ${disposableItemId}, ${stockInItemId})`;
     await prisma.client.$executeRaw`DELETE FROM asset.warehouses WHERE id = ${warehouseId}`;
     await prisma.client.$executeRaw`DELETE FROM asset.consumables WHERE id IN (${reusableId}, ${disposableId}, ${consumableIdForStockIn})`;
-    await prisma.client.$executeRaw`DELETE FROM asset.asset_categories WHERE id IN (${topFixedId}, ${subFixedId}, ${topConsumableId}, ${subConsumableId})`;
+    // 顶级分类为系统内置（ensureDefaults 幂等管理），只清理测试子分类
+    await prisma.client.$executeRaw`DELETE FROM asset.asset_categories WHERE id IN (${subFixedId}, ${subConsumableId})`;
     await prisma.client.$executeRaw`DELETE FROM backstage.employee_grants WHERE user_id IN (${deptApproverId}, ${inventoryManagerId}, ${assetMaintainerId}, ${applicantId})`;
     await prisma.client.$executeRaw`DELETE FROM hr.user_departments WHERE user_id IN (${deptApproverId}, ${assetMaintainerId}, ${applicantId})`;
     await prisma.client.$executeRaw`DELETE FROM hr.departments WHERE id IN (${deptA}, ${deptB})`;
@@ -305,6 +328,69 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     });
     expect(row).not.toBeNull();
     expect(row?.status).toBe('ACTIVE');
+  });
+
+  it('配置类删除预览（批次3-1）：被引用时返回逐目标引用数，确认后物理删除且名称快照保留', async () => {
+    const operator = await loadAssetOperationLogOperator(prisma.client, inventoryManagerId);
+    const tempCategoryId = BASE + 800;
+    const tempItemId = BASE + 803;
+    let createdCategoryId = -1;
+    let createdWarehouseId = -1;
+    let createdDictId = -1;
+    try {
+      // 分类：被品种引用时预览返回逐目标数字；确认删除物理成功；品种名称快照保留
+      const category = await categoryService.create(operator, { parentId: topConsumableId, name: '批次3临时分类' });
+      createdCategoryId = category.id;
+      await prisma.client.$executeRaw`
+        INSERT INTO asset.consumables (id, name, category_id, category_name, unit_name, type, quota_cycle, quota_limit, safety_stock, status, created_at, updated_at)
+        VALUES (${tempCategoryId}, '批次3临时品种', ${category.id}, '批次3临时分类', '个', 'DISPOSABLE', 'MONTH', 10, 0, 'ACTIVE', NOW(), NOW())
+      `;
+      const categoryPreview = await categoryService.deletePreview([category.id]);
+      expect(categoryPreview.items).toEqual([{ id: category.id, assetCount: 0, consumableCount: 1 }]);
+      await categoryService.batchDelete(operator, [category.id]);
+      const categorySnapshot = await prisma.client.consumable.findUnique({
+        where: { id: tempCategoryId },
+        select: { categoryId: true, categoryName: true },
+      });
+      expect(categorySnapshot).toEqual({ categoryId: category.id, categoryName: '批次3临时分类' });
+
+      // 库位：被库存条目引用时预览三组数字；确认删除物理成功
+      const warehouse = await warehouseService.create(operator, { name: '批次3临时库位' });
+      createdWarehouseId = warehouse.id;
+      await prisma.client.$executeRaw`
+        INSERT INTO asset.inventory_items (id, consumable_id, spec, warehouse_id, warehouse_name, warehouse_path, book_qty, reserved_qty, created_at, updated_at)
+        VALUES (${tempItemId}, ${tempCategoryId}, '标准', ${warehouse.id}, '批次3临时库位', '批次3临时库位', 5, 0, NOW(), NOW())
+      `;
+      const warehousePreview = await warehouseService.deletePreview([warehouse.id]);
+      expect(warehousePreview.items).toEqual([
+        { id: warehouse.id, inventoryItemCount: 1, borrowCount: 0, pendingCount: 0 },
+      ]);
+      await warehouseService.batchDelete(operator, [warehouse.id]);
+
+      // 字典：无业务引用时预览 0；确认删除物理成功
+      const dictItem = await dict.create(operator, { dictType: 'CHANGE_TYPE', name: '批次3临时变更类型' });
+      createdDictId = dictItem.id;
+      const dictPreview = await dict.deletePreview([dictItem.id]);
+      expect(dictPreview.items).toEqual([{ id: dictItem.id, referencedCount: 0 }]);
+      await dict.batchDelete(operator, [dictItem.id]);
+
+      // 删除后目标不存在：预览返回 RESOURCE_NOT_FOUND（幂等删除不静默吞掉错误目标）
+      await expect(categoryService.deletePreview([category.id])).rejects.toMatchObject({
+        entry: { code: 'RESOURCE_NOT_FOUND' },
+      });
+    } finally {
+      await prisma.client.$executeRaw`DELETE FROM asset.inventory_items WHERE id = ${tempItemId}`;
+      await prisma.client.$executeRaw`DELETE FROM asset.consumables WHERE id = ${tempCategoryId}`;
+      if (createdCategoryId >= 0) {
+        await prisma.client.$executeRaw`DELETE FROM asset.asset_categories WHERE id = ${createdCategoryId}`;
+      }
+      if (createdWarehouseId >= 0) {
+        await prisma.client.$executeRaw`DELETE FROM asset.warehouses WHERE id = ${createdWarehouseId}`;
+      }
+      if (createdDictId >= 0) {
+        await prisma.client.$executeRaw`DELETE FROM asset.asset_dict_items WHERE id = ${createdDictId}`;
+      }
+    }
   });
 
   it('H2 借出批次追溯：申领批准后记录部门快照，并按原批次 LIFO 归还', async () => {
@@ -396,13 +482,17 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
   });
 
   it('新增关口：申领权限可读取携带 inventoryItemId 的可用库存目录，不能读取完整库存台账', async () => {
-    const catalog = await inventoryController.listItems(applicantId, { availableOnly: true, page: 1, pageSize: 50 });
-    expect(catalog.items).toContainEqual(expect.objectContaining({ id: reusableItemId, availableQty: expect.any(Number) }));
+    const catalog = await inventoryController.listItems(applicantId, { availableOnly: true, page: 1, pageSize: 50 }) as {
+      data: Array<{ id: number; availableQty: number }>;
+    };
+    expect(catalog.data).toContainEqual(expect.objectContaining({ id: reusableItemId, availableQty: expect.any(Number) }));
     await expect(inventoryController.listItems(applicantId, { page: 1, pageSize: 50 })).rejects.toMatchObject({
       entry: { code: 'RESOURCE_NOT_FOUND' },
     });
-    const summary = await consumableController.list(applicantId, { hasAvailableStock: true, page: 1, pageSize: 50 });
-    expect(summary.items).toContainEqual(expect.objectContaining({ id: reusableId }));
+    const summary = await consumableController.list(applicantId, { hasAvailableStock: true, page: 1, pageSize: 50 }) as {
+      data: Array<{ id: number }>;
+    };
+    expect(summary.data).toContainEqual(expect.objectContaining({ id: reusableId }));
   });
 
   it('M1 代领结清夹带非本清单借还记录 → RESOURCE_NOT_FOUND', async () => {

@@ -13,7 +13,7 @@ export class ProjectOperationService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
-   * 操作记录列表（按时间倒序；可按项目过滤）。
+   * 操作记录列表（按时间倒序；可按项目过滤；携带项目名称，fin PRD §5）。
    *
    * @param query 查询参数
    * @returns items + total
@@ -29,9 +29,18 @@ export class ProjectOperationService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        // 项目列：join 项目名（含已软删项目——操作记录展示删除前名称）
+        include: { project: { select: { name: true } } },
       }),
     ]);
-    return { total, items: rows };
+    return {
+      total,
+      items: rows.map((row) => ({
+        ...row,
+        projectName: row.project?.name ?? null,
+        project: undefined,
+      })),
+    };
   }
 
   /**

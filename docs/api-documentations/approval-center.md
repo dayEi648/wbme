@@ -86,6 +86,9 @@
 - 批准副作用：`POSITION_CHANGE` 批准时事务内重校验（员工仍无/单部门、目标部门有效、
   目标岗位有效且允许自助申请且适用）→ 组织生效 + `user_org_version++`；任一条件不成立
   → `POSITION_APPLY_STALE`(422) 保持待审批；`OVERTIME` 批准无副作用。
+- 处理/取消幂等：`POST /approval-requests/{id}/process` 与 `{id}/cancel` 支持 `idempotencyKey`，
+  同键重试返回原结果（主 PRD §3.2）；处理与取消结果写入 hr 操作日志（feature 按申请类型：
+  `overtime_approval` / `org_structure`）。
 - 审批中心导出：`POST /api/v1/approval-requests/export`（查询参数与列表同构；runExport 流式；
   行数上限=平台设置 export.max.rows；导出完成写 EXPORT 操作日志）。
 
@@ -114,8 +117,10 @@
 
 - T7：DEPARTMENT 档按部门闭包裁剪（申请人/受领人名单/借出时部门快照全部 ∈ 闭包，快照形状兼容数组与单对象）；批准/驳回/取消业务副作用与终态同一事务（入库建批次、变更/申领 FIFO 出库与额度转换、归还回库、核销、代领结清；驳回/取消释放占用）
 - 审批中心导出：`GET /approval-requests/export/all`（runExport，可见性与列表一致）
-- 我的申请：`GET /approval-requests/mine` 仅返回当前申请人或代交人的资产审批历史，不要求
-  `consumable_approval`；待审批项仍通过 `POST /approval-requests/{id}/cancel` 由申请人/代交人取消。
+- 我的申请：不设独立的个人记录汇集页（asset PRD §9），申请人取消待审批的入口在各功能
+  「历史记录」视图；待审批项通过 `POST /approval-requests/{id}/cancel` 由申请人/代交人取消
+  （幂等键重试返回原结果）。
+- 审批详情返回 `request.remark`（入库/库存变更申请提交时填写的整单备注）。
 - 「注销员工借还处置」非审批类型（`GET/POST /disposals`），见 asset.md，不在本中心待办
 
 ### 内部接口

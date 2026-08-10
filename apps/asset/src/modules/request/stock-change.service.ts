@@ -105,6 +105,7 @@ export class StockChangeService {
           applicantId: operator.id,
           applicantName: operator.name,
           applicantDepartmentSnapshot: operator.departments as Prisma.InputJsonValue,
+          remark: dto.remark,
         });
         for (const line of lines) {
           await tx.stockChangeItem.create({
@@ -267,18 +268,18 @@ export class StockChangeService {
     return { total, items: rows };
   }
 
-  /** 加载字典项（类型校验） */
+  /** 加载字典项（类型 + 启用状态校验；停用值不能用于新建业务，asset PRD §12） */
   private async loadDictName(
     tx: Prisma.TransactionClient,
     dictId: number,
     dictType: string,
   ): Promise<{ id: number; name: string }> {
     const row = await tx.assetDictItem.findFirst({
-      where: { id: dictId, dictType: dictType as Prisma.AssetDictItemWhereInput['dictType'] },
+      where: { id: dictId, dictType: dictType as Prisma.AssetDictItemWhereInput['dictType'], status: 'ACTIVE' },
       select: { id: true, name: true },
     });
     if (!row) {
-      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: `字典项不存在（${dictType}）` });
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: `字典项不存在或已停用（${dictType}）` });
     }
     return row;
   }

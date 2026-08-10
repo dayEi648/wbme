@@ -608,6 +608,8 @@ model ApprovalRequest {
   processorName               String?             @map("processor_name")
   processedAt                 DateTime?           @map("processed_at") @db.Timestamptz(3)
   opinion                     String?
+  /** 申请人整单备注（入库/库存变更等提交时填写；随审批详情展示） */
+  remark                      String?             @map("remark")
   createdBy                   Int?                @map("created_by")
   createdAt                   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedBy                   Int?                @map("updated_by")

@@ -134,7 +134,8 @@ describeDb('hr 审批头（T5-3）', () => {
   });
 
   it('cancel 携带预期类型时类型不匹配拒绝（L12：加班取消接口只接受 OVERTIME）', async () => {
-    const applicantId = BASE_APPLICANT + 2;
+    // 取消人须为真实用户（cancel 写操作日志与幂等记录，需在职账号上下文）
+    const applicantId = processorId;
     const { requestId } = await service.submitTestHeader({
       requestType: 'OVERTIME',
       applicantId,
@@ -169,6 +170,31 @@ describeDb('hr 审批头（T5-3）', () => {
       status: 'rejected',
       reason: { entry: { code: 'STATUS_CONFLICT' } },
     });
+  });
+
+  it('process 幂等（批次 3-10）：同键重试重放原结果且不重复写审批动作与操作日志', async () => {
+    const applicantId = processorId;
+    const { requestId } = await service.submitTestHeader({
+      requestType: 'OVERTIME',
+      applicantId,
+      applicantName: '幂等处理申请人',
+    });
+    const key = 'hr-approval-process-batch3';
+    await service.process(requestId, 'APPROVE', processorId, '同意', key);
+    // 同键重试：重放原结果（主 PRD §3.2），不抛 STATUS_CONFLICT
+    await expect(service.process(requestId, 'APPROVE', processorId, '同意', key)).resolves.toBeUndefined();
+
+    const header = await prisma.client.hrApprovalRequest.findUnique({ where: { id: requestId } });
+    expect(header?.status).toBe('APPROVED');
+    // 审批动作仅一条 APPROVE（无重复副作用写入）
+    const actions = await prisma.client.hrApprovalAction.findMany({ where: { requestId } });
+    expect(actions.filter((a) => a.action === 'APPROVE')).toHaveLength(1);
+    // 处理写 hr 操作日志（批次 3-11）：首次执行一条、重放不重复写入
+    const logs = await prisma.client.hrOperationLog.findMany({
+      where: { operatorId: processorId, idempotencyScope: `hr.approval.process/${requestId}`, idempotencyKey: key },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.actionType).toBe('UPDATE');
   });
 
   it('POSITION_CHANGE 批准时申请人已注销 → APPLICANT_DEACTIVATED 且申请保持 PENDING', async () => {

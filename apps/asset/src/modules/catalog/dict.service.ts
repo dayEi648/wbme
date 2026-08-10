@@ -3,7 +3,6 @@ import {
   ASSET_CONFIG_FUNCTION_CODE,
   BusinessException,
   AssetDictItemQueryDto,
-  assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
 import { buildTablePrismaQuery } from '@wbme/server';
@@ -176,12 +175,42 @@ export class DictService {
   }
 
   /**
-   * 字典项批量硬删除（引用检查：任一项被业务或历史记录引用则整批回滚）。
+   * 字典项批量删除前引用预览（asset PRD §12；主 PRD §2.6）：
+   * 返回每个目标仍被引用的情况（按类型落到对应业务表的当前引用数），
+   * 引用本身不阻断删除；前端展示并要求确认后调用 batchDelete 物理删除。
+   * 规格/资产规格/资产型号为文字快照无 id 引用，恒为 0。
+   *
+   * @param ids 字典项 id 列表
+   * @returns 逐字典项引用统计
+   * @throws RESOURCE_NOT_FOUND 任一目标不存在
+   */
+  async deletePreview(ids: readonly number[]): Promise<{ items: Array<{ id: number; referencedCount: number }> }> {
+    const rows = await this.prisma.client.assetDictItem.findMany({ where: { id: { in: [...ids] } } });
+    if (rows.length !== ids.length) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const counts = await this.prisma.client.$queryRaw<Array<{ id: number; referenced: bigint }>>`
+      SELECT d.id,
+        ((SELECT COUNT(*) FROM asset.consumables co WHERE co.unit_id = d.id)
+         + (SELECT COUNT(*) FROM asset.batches b WHERE b.supplier_id = d.id OR b.brand_id = d.id)
+         + (SELECT COUNT(*) FROM asset.stock_in_items si WHERE si.supplier_id = d.id OR si.brand_id = d.id)
+         + (SELECT COUNT(*) FROM asset.stock_change_items sci WHERE sci.change_type_id = d.id)) AS referenced
+      FROM asset.asset_dict_items d
+      WHERE d.id = ANY(${ids as number[]})
+    `;
+    const byId = new Map(counts.map((row) => [Number(row.id), row]));
+    return {
+      items: ids.map((id) => ({ id, referencedCount: Number(byId.get(id)?.referenced ?? 0) })),
+    };
+  }
+
+  /**
+   * 字典项批量硬删除（主 PRD §2.6 确认式删除：引用预览后确认执行；
+   * 业务与历史记录按删除前名称快照展示，删除不阻断也不追溯改写）。
    *
    * @param operator 操作人
    * @param ids 字典项 id 列表
    * @returns 删除结果
-   * @throws DICT_REFERENCED 任一字典项被引用
    */
   async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
@@ -195,10 +224,6 @@ export class DictService {
         if (rows.length !== ids.length) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
-        const referenced = await this.countReferenced(tx, ids);
-        if (referenced > 0) {
-          throw new BusinessException(assetErrors.DICT_REFERENCED, { referenced });
-        }
         const result = await tx.assetDictItem.deleteMany({ where: { id: { in: [...ids] } } });
         return {
           result: { deleted: result.count },
@@ -207,26 +232,5 @@ export class DictService {
         };
       },
     });
-  }
-
-  /**
-   * 统计字典项引用数（按类型落到对应业务表；规格/资产规格/资产型号为文字快照无 id 引用）。
-   *
-   * @param tx 事务客户端
-   * @param ids 字典项 id 集合
-   * @returns 引用总数
-   */
-  private async countReferenced(tx: Prisma.TransactionClient, ids: readonly number[]): Promise<number> {
-    const rows = await tx.$queryRaw<Array<{ total: bigint }>>`
-      SELECT (
-        (SELECT COUNT(*) FROM asset.consumables WHERE unit_id = ANY(${ids as number[]})) +
-        (SELECT COUNT(*) FROM asset.batches WHERE supplier_id = ANY(${ids as number[]})) +
-        (SELECT COUNT(*) FROM asset.batches WHERE brand_id = ANY(${ids as number[]})) +
-        (SELECT COUNT(*) FROM asset.stock_in_items WHERE supplier_id = ANY(${ids as number[]})) +
-        (SELECT COUNT(*) FROM asset.stock_in_items WHERE brand_id = ANY(${ids as number[]})) +
-        (SELECT COUNT(*) FROM asset.stock_change_items WHERE change_type_id = ANY(${ids as number[]}))
-      ) AS total
-    `;
-    return Number(rows[0]?.total ?? 0);
   }
 }

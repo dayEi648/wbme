@@ -1,9 +1,11 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
   BusinessException,
+  createPaginationResponse,
   FinanceDetailCreateDto,
   FinanceDetailUpdateDto,
   frameworkErrors,
+  IdempotentDto,
   ProjectBatchDeleteDto,
   ProjectBatchRestoreDto,
   ProjectCreateDto,
@@ -35,7 +37,8 @@ export class ProjectController {
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: ProjectQueryDto): Promise<unknown> {
     await assertFinanceReadAccess(this.prisma.client, userId);
-    return this.projects.list(query, query.view === 'deleted');
+    const result = await this.projects.list(query, query.view === 'deleted');
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 项目新建 */
@@ -108,17 +111,19 @@ export class ProjectController {
     return this.details.update(operator, projectId, assertDetailKind(kind), detailId, dto);
   }
 
-  /** 金额明细单条物理删除（删除前完整快照审计同事务；删除后不可恢复） */
+  /** 金额明细单条物理删除（删除前完整快照审计同事务；删除后不可恢复；
+   *  幂等键重试返回原删除结果，成功后返回最新项目汇总与版本号） */
   @Delete(':projectId/details/:kind/:detailId')
   async removeDetail(
     @CurrentUser() userId: number,
     @Param('projectId', ParseIntPipe) projectId: number,
     @Param('kind') kind: string,
     @Param('detailId', ParseIntPipe) detailId: number,
-  ): Promise<{ ok: true }> {
+    @Body() dto: IdempotentDto,
+  ): Promise<{ ok: true; dataRevision: number; auto: unknown }> {
     await assertFinanceMaintainAccess(this.prisma.client, userId);
     const operator = await loadFinOperationLogOperator(this.prisma.client, userId);
-    return this.details.remove(operator, projectId, assertDetailKind(kind), detailId);
+    return this.details.remove(operator, projectId, assertDetailKind(kind), detailId, dto.idempotencyKey);
   }
 }
 
@@ -137,7 +142,8 @@ export class ProjectOperationController {
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: ProjectOperationQueryDto): Promise<unknown> {
     await assertFinanceReadAccess(this.prisma.client, userId);
-    return this.operations.list(query);
+    const result = await this.operations.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 操作记录详情（按字段展示变更前后内容） */

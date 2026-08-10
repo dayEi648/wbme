@@ -17,7 +17,7 @@ import {
   TASK_QUEUE_NAME,
   type SqlClient,
 } from '@wbme/tasks';
-import { REDIS_NAMESPACE } from '@wbme/server';
+import { isMaintenanceActive, REDIS_NAMESPACE, readDiskStatus } from '@wbme/server';
 import { DEFAULT_JOB_OPTIONS, RESTORE_DELIVERY_JOB_OPTIONS } from './job-options';
 
 /** 每日备份调度内存状态（进程内，重启后靠 stable uuid 去重） */
@@ -41,6 +41,14 @@ export async function ensureDailyScheduledBackup(sql: SqlClient, now: Date = new
   }
   const cycleDate = beijingDateString(now);
   if (lastScheduledBackupCycleDate === cycleDate) {
+    return;
+  }
+  // 磁盘严重阈值：停止接受新备份任务（主 PRD §9.13）；当日不置位 cycle 记忆，空间恢复后可补建
+  const disk = await readDiskStatus();
+  if (disk.status === 'CRITICAL') {
+    console.error(
+      `[scheduler] 磁盘使用率达严重阈值（usageRatio=${disk.usageRatio ?? 'unknown'}），跳过当日定时备份创建`,
+    );
     return;
   }
   // 遇运行中备份（立即/定时）不跳过：保留当日任务记录，由 Worker 按创建时间串行执行
@@ -129,6 +137,7 @@ export class OutboxScheduler {
     private readonly sql: SqlClient,
     private readonly queue: Queue,
     private readonly schedulerId: string,
+    private readonly readMaintenanceState: () => Promise<boolean> = isMaintenanceActive,
   ) {}
 
   /**
@@ -163,6 +172,9 @@ export class OutboxScheduler {
     }
     this.running = true;
     try {
+      if (await this.shouldPauseForMaintenance()) {
+        return;
+      }
       const now = new Date();
       await ensureDailyScheduledBackup(this.sql, now);
       await ensureDailyImageCleanup(this.sql, now);
@@ -198,6 +210,21 @@ export class OutboxScheduler {
       }
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * 读取维护状态；无法可靠读取时同样停止投递，避免恢复期间新任务进入队列。
+   *
+   * @returns 是否应暂停调度
+   */
+  private async shouldPauseForMaintenance(): Promise<boolean> {
+    try {
+      return await this.readMaintenanceState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[outbox] 无法读取维护标记，按维护中停止投递: ${message}`);
+      return true;
     }
   }
 }

@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   ASSET_CONFIG_FUNCTION_CODE,
   BusinessException,
-  assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
@@ -158,12 +157,43 @@ export class CategoryService {
   }
 
   /**
-   * 分类批量硬删除（引用检查：任一分类仍被资产或品种引用则整批回滚，asset PRD §3）。
+   * 分类批量删除前引用预览（asset PRD §3/§12；主 PRD §2.6）：
+   * 返回每个目标仍被引用的情况（现存资产数/品种数），引用本身不阻断删除；
+   * 前端展示并要求确认后调用 batchDelete 物理删除。
+   *
+   * @param ids 分类 id 列表
+   * @returns 逐分类引用统计
+   * @throws RESOURCE_NOT_FOUND 任一目标不存在
+   */
+  async deletePreview(ids: readonly number[]): Promise<{ items: Array<{ id: number; assetCount: number; consumableCount: number }> }> {
+    const rows = await this.prisma.client.assetCategory.findMany({ where: { id: { in: [...ids] } } });
+    if (rows.length !== ids.length) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const counts = await this.prisma.client.$queryRaw<Array<{ id: number; asset_count: bigint; consumable_count: bigint }>>`
+      SELECT c.id,
+        (SELECT COUNT(*) FROM asset.assets a WHERE a.category_id = c.id AND a.deleted_at IS NULL) AS asset_count,
+        (SELECT COUNT(*) FROM asset.consumables co WHERE co.category_id = c.id) AS consumable_count
+      FROM asset.asset_categories c
+      WHERE c.id = ANY(${ids as number[]})
+    `;
+    const byId = new Map(counts.map((row) => [Number(row.id), row]));
+    return {
+      items: ids.map((id) => {
+        const row = byId.get(id);
+        return { id, assetCount: Number(row?.asset_count ?? 0), consumableCount: Number(row?.consumable_count ?? 0) };
+      }),
+    };
+  }
+
+  /**
+   * 分类批量硬删除（主 PRD §2.6 确认式删除：引用预览后确认执行；
+   * 资产与品种只保存分类名称快照，删除不阻断也不追溯改写历史）。
    *
    * @param operator 操作人
    * @param ids 分类 id 列表
    * @returns 删除结果
-   * @throws CATEGORY_REFERENCED 任一分类被引用
+   * @throws VALIDATION_FAILED 目标含顶级分类
    */
   async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
@@ -179,10 +209,6 @@ export class CategoryService {
         }
         if (rows.some((row) => row.parentId === null)) {
           throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '顶级分类为系统内置，不允许删除' });
-        }
-        const referenced = await this.countReferenced(tx, ids);
-        if (referenced > 0) {
-          throw new BusinessException(assetErrors.CATEGORY_REFERENCED, { referenced });
         }
         const result = await tx.assetCategory.deleteMany({ where: { id: { in: [...ids] } } });
         return {
@@ -218,21 +244,4 @@ export class CategoryService {
     return parent;
   }
 
-  /**
-   * 统计分类引用数（资产 category_id + 品种 category_id；历史引用不在删除检查内——
-   * 物理删除前要求确认，确认后历史快照不受影响）。
-   *
-   * @param tx 事务客户端
-   * @param ids 分类 id 集合
-   * @returns 引用总数
-   */
-  private async countReferenced(tx: Prisma.TransactionClient, ids: readonly number[]): Promise<number> {
-    const rows = await tx.$queryRaw<Array<{ total: bigint }>>`
-      SELECT (
-        (SELECT COUNT(*) FROM asset.assets WHERE category_id = ANY(${ids as number[]}) AND deleted_at IS NULL) +
-        (SELECT COUNT(*) FROM asset.consumables WHERE category_id = ANY(${ids as number[]}))
-      ) AS total
-    `;
-    return Number(rows[0]?.total ?? 0);
-  }
 }

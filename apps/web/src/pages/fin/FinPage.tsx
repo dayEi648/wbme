@@ -53,22 +53,23 @@ const PROJECT_COLUMNS = [
 ];
 
 const PROJECT_FORM_FIELDS: FormField[] = [
-  { key: 'name', label: '项目名称', required: true, maxLength: 200 },
-  { key: 'year', label: '年度', type: 'number', required: true },
-  { key: 'partyA', label: '甲方', maxLength: 200 },
-  { key: 'generalContractor', label: '总包方', maxLength: 200 },
-  { key: 'managementFee', label: '管理费', maxLength: 200 },
-  { key: 'contractStartDate', label: '合同开始日期', type: 'date' },
-  { key: 'contractEndDate', label: '合同完工日期', type: 'date' },
-  { key: 'contractAmount', label: '合同金额', type: 'number' },
-  { key: 'paymentNode', label: '主合同付款节点', type: 'textarea', maxLength: 500 },
-  { key: 'tentativeAuditedAmount', label: '暂定/审定金额', type: 'number' },
-  { key: 'settlement', label: '分包结算', type: 'number' },
-  { key: 'miscExpense', label: '零星费用', type: 'number' },
-  { key: 'regionId', label: '地区 ID', type: 'number' },
-  { key: 'progressId', label: '项目进度 ID', type: 'number' },
-  { key: 'bizCategoryId', label: '业务分类 ID', type: 'number' },
-  { key: 'remark', label: '项目备注', type: 'textarea', maxLength: 1000 },
+  { key: 'name', label: '项目名称', required: true, maxLength: 200, group: '基本信息' },
+  { key: 'year', label: '年度', type: 'number', required: true, group: '基本信息' },
+  { key: 'partyA', label: '甲方', maxLength: 200, group: '基本信息' },
+  { key: 'generalContractor', label: '总包方', maxLength: 200, group: '基本信息' },
+  { key: 'managementFee', label: '管理费', maxLength: 200, group: '基本信息' },
+  { key: 'subcontractors', label: '分包方', type: 'tags', group: '基本信息', maxLength: 200, placeholder: '输入分包方名称后按回车添加' },
+  { key: 'contractStartDate', label: '合同开始日期', type: 'date', group: '合同信息' },
+  { key: 'contractEndDate', label: '合同完工日期', type: 'date', group: '合同信息' },
+  { key: 'contractAmount', label: '合同金额', type: 'number', group: '合同信息' },
+  { key: 'paymentNode', label: '主合同付款节点', type: 'textarea', maxLength: 500, group: '合同信息' },
+  { key: 'tentativeAuditedAmount', label: '暂定/审定金额', type: 'number', group: '财务信息' },
+  { key: 'settlement', label: '分包结算', type: 'number', group: '财务信息' },
+  { key: 'miscExpense', label: '零星费用', type: 'number', group: '财务信息' },
+  { key: 'regionId', label: '地区 ID', type: 'number', group: '分类与备注' },
+  { key: 'progressId', label: '项目进度 ID', type: 'number', group: '分类与备注' },
+  { key: 'bizCategoryId', label: '业务分类 ID', type: 'number', group: '分类与备注' },
+  { key: 'remark', label: '项目备注', type: 'textarea', maxLength: 1000, group: '分类与备注' },
 ];
 
 const MONEY_FIELDS = new Set(['contractAmount', 'tentativeAuditedAmount', 'settlement', 'miscExpense']);
@@ -126,7 +127,7 @@ function Projects() {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [deletedOpen, setDeletedOpen] = useState(false);
   return <>
-<ResourcePage title="工程合同" description="项目名称和年度构成业务唯一键；金额使用精确十进制字符串。点击行可编辑完整合同资料。" service="fin" endpoint="/projects" pageKey="fin-projects" columns={PROJECT_COLUMNS} filterFields={[{ key: 'name', title: '项目名称', type: 'text' }, { key: 'partyA', title: '甲方', type: 'text' }, { key: 'year', title: '年度', type: 'number' }, { key: 'regionId', title: '地区 ID', type: 'number' }, { key: 'progressId', title: '进度 ID', type: 'number' }]} create={canMaintain ? { title: '新建工程合同', fields: PROJECT_FORM_FIELDS } : undefined} edit={canMaintain ? { title: '编辑工程合同', endpoint: (id) => `/projects/${id}`, fields: PROJECT_FORM_FIELDS } : undefined} batchDelete={canMaintain ? { endpoint: '/projects/batch', bodyKey: 'ids' } : undefined} actions={canMaintain ? <Button onClick={() => setDeletedOpen(true)}>已删除项目</Button> : undefined} rowActions={(row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>金额明细</Button>} />
+<ResourcePage title="工程合同" description="项目名称和年度构成业务唯一键；金额使用精确十进制字符串。点击行查看详情，使用行内操作进行编辑。" service="fin" endpoint="/projects" pageKey="fin-projects" columns={PROJECT_COLUMNS} filterFields={[{ key: 'name', title: '项目名称', type: 'text' }, { key: 'partyA', title: '甲方', type: 'text' }, { key: 'year', title: '年度', type: 'number' }, { key: 'regionId', title: '地区 ID', type: 'number' }, { key: 'progressId', title: '进度 ID', type: 'number' }]} create={canMaintain ? { title: '新建工程合同', fields: PROJECT_FORM_FIELDS } : undefined} edit={canMaintain ? { title: '编辑工程合同', endpoint: (id) => `/projects/${id}`, fields: PROJECT_FORM_FIELDS } : undefined} batchDelete={canMaintain ? { endpoint: '/projects/batch', bodyKey: 'ids' } : undefined} actions={canMaintain ? <Button onClick={() => setDeletedOpen(true)}>已删除项目</Button> : undefined} rowActions={(row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>金额明细</Button>} />
     {detailId !== null ? <ProjectDetails projectId={detailId} canMaintain={canMaintain} onClose={() => setDetailId(null)} /> : null}
     <Drawer title="已删除项目" open={deletedOpen} onClose={() => setDeletedOpen(false)} width="min(92vw, 1100px)"><DataTable title="已删除项目" description="软删除项目保留原 ID、业务键及操作历史；仅支持勾选后批量恢复。" service="fin" endpoint="/projects?view=deleted" pageKey="fin-deleted-projects" columns={PROJECT_COLUMNS} batchAction={{ label: '批量恢复', onExecute: async (ids) => { await http.put('/projects/deleted/restore', { ids: ids.map(Number) }, { service: 'fin' }); } }} /></Drawer>
   </>;
@@ -238,10 +239,10 @@ export function ProfitAnalysis() {
     setLoading(true);
     try {
       const [list, total] = await Promise.all([
-        http.get<{ data?: RecordValue[]; items?: RecordValue[] }>('/profit/projects?page=1&pageSize=100', { service: 'fin', active: true }),
+        http.get<{ data: RecordValue[] }>('/profit/projects?page=1&pageSize=100', { service: 'fin', active: true }),
         http.get<RecordValue>('/profit/totals', { service: 'fin', active: true }),
       ]);
-      setRows(list.data ?? list.items ?? []);
+      setRows(list.data);
       setTotals(total);
     } catch (error) {
       feedback.error(error, '利润分析加载失败');

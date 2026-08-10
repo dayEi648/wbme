@@ -1092,6 +1092,7 @@
                   "DINGTALK_ORG_MISMATCH",
                   "DINGTALK_STATE_INVALID",
                   "DINGTALK_UNAVAILABLE",
+                  "DISK_SPACE_CRITICAL",
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
@@ -1276,7 +1277,7 @@
             "type": "number"
           },
           "idempotencyKey": {
-            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "description": "本次调拨意图的幂等键；网络重试时必须保持不变",
             "maxLength": 128,
             "type": "string"
           },
@@ -1297,6 +1298,7 @@
           }
         },
         "required": [
+          "idempotencyKey",
           "fromInventoryItemId",
           "toWarehouseId",
           "qty"
@@ -2257,121 +2259,6 @@
     "/api/v1/approval-requests/export/all": {
       "get": {
         "operationId": "ApprovalController_exportAll",
-        "parameters": [
-          {
-            "description": "页码（从 1 开始）",
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 1,
-              "minimum": 1,
-              "type": "number"
-            }
-          },
-          {
-            "description": "每页条数（服务端接受 10/20/50/100）",
-            "in": "query",
-            "name": "pageSize",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "maximum": 100,
-              "minimum": 10,
-              "type": "number"
-            }
-          },
-          {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
-            "in": "query",
-            "name": "filters",
-            "required": false,
-            "schema": {
-              "maxLength": 16000,
-              "type": "string"
-            }
-          },
-          {
-            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
-            "in": "query",
-            "name": "sorts",
-            "required": false,
-            "schema": {
-              "maxLength": 4000,
-              "type": "string"
-            }
-          },
-          {
-            "description": "申请类型（取值由各模块声明）",
-            "in": "query",
-            "name": "requestType",
-            "required": false,
-            "schema": {
-              "maxLength": 64,
-              "type": "string"
-            }
-          },
-          {
-            "description": "PENDING=待处理；PROCESSED=已处理（批准/驳回/取消）；或具体状态",
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "enum": [
-                "PENDING",
-                "PROCESSED",
-                "DRAFT",
-                "APPROVED",
-                "REJECTED",
-                "CANCELLED"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "关键字（单号/申请人等模糊匹配）",
-            "in": "query",
-            "name": "keyword",
-            "required": false,
-            "schema": {
-              "maxLength": 100,
-              "type": "string"
-            }
-          },
-          {
-            "description": "申请人姓名",
-            "in": "query",
-            "name": "applicantName",
-            "required": false,
-            "schema": {
-              "maxLength": 50,
-              "type": "string"
-            }
-          },
-          {
-            "description": "处理人姓名",
-            "in": "query",
-            "name": "processorName",
-            "required": false,
-            "schema": {
-              "maxLength": 50,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Approval"
-        ]
-      }
-    },
-    "/api/v1/approval-requests/mine": {
-      "get": {
-        "operationId": "ApprovalController_listMine",
         "parameters": [
           {
             "description": "页码（从 1 开始）",
@@ -3547,6 +3434,29 @@
         ]
       }
     },
+    "/api/v1/categories/delete-preview": {
+      "get": {
+        "operationId": "CategoryController_deletePreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Category"
+        ]
+      }
+    },
     "/api/v1/consumable-requests": {
       "get": {
         "operationId": "ClaimController_listHistory",
@@ -4111,6 +4021,29 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/dict-items/delete-preview": {
+      "get": {
+        "operationId": "DictController_deletePreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -5873,6 +5806,29 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Warehouse"
+        ]
+      }
+    },
+    "/api/v1/warehouses/delete-preview": {
+      "get": {
+        "operationId": "WarehouseController_deletePreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""

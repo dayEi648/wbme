@@ -47,7 +47,7 @@
 | `GET` | `/projects` | 项目列表（名称/甲方/年度/地区/业务分类/进度筛选 + 分页；`view=deleted` 查已删除视图，仅供批量恢复；行含三类明细与自动字段） |
 | `POST` | `/projects` | 新建项目（幂等；字典引用保存 ID+名称快照；金额 ≥ 0 两位小数；`PROJECT_KEY_CONFLICT` 冲突） |
 | `GET` | `/projects/{id}` | 详情（完整合同资料 + 三类明细 + 自动字段与利润数据入口；已删除 404） |
-| `PUT` | `/projects/{id}` | 编辑（名称/年度允许随时修改，保存时校验新业务键；提交前后无实际差异不产生项目操作记录） |
+| `PUT` | `/projects/{id}` | 编辑（名称/年度允许随时修改，保存时校验新业务键；未提交 `subcontractors` 保留原值，显式 `[]` 清空；提交前后无实际差异不产生项目操作记录） |
 | `PUT` | `/projects/deleted/restore` | 已删除项目批量恢复（幂等；1～100 个；全有或全无；保留原 ID/业务键/数据与操作历史；任一不存在或未删除整批回滚并返回失败明细） |
 | `DELETE` | `/projects/batch` | 批量软删除（幂等；全有或全无；任一不存在或已删除整批回滚并返回失败明细；已删除项目不进入正常列表/筛选/统计/导出） |
 
@@ -61,7 +61,7 @@
 | --- | --- | --- |
 | `POST` | `/projects/{projectId}/details/{type}` | 新增明细（金额必填 ≥ 0；日期 YYYY-MM-DD；备注可空） |
 | `PUT` | `/projects/{projectId}/details/{type}/{detailId}` | 修改明细（每次一条；前后无实际差异不产生操作记录） |
-| `DELETE` | `/projects/{projectId}/details/{type}/{detailId}` | 单条物理删除（删除前完整快照审计同事务） |
+| `DELETE` | `/projects/{projectId}/details/{type}/{detailId}` | 单条物理删除（删除前完整快照审计同事务；body 可携带 `idempotencyKey`，同键重试返回原结果；成功后返回最新项目汇总与版本号 `{ ok, dataRevision, auto }`，前端无需二次查询） |
 
 ## 利润分析（fin PRD §4）
 
@@ -76,14 +76,17 @@
 白名单字段：`name`/`year`/`partyA`/`generalContractor`/`managementFee`/`subcontractors`/`contractStartDate`/
 `contractEndDate`/`contractAmount`/`paymentNode`/`tentativeAuditedAmount`/`settlement`/`miscExpense`/
 `remark`/`completenessDocs`/`regionId`/`progressId`/`bizCategoryId`（自动计算字段不可手工修改；
-`name`/`year` 变更联动业务键重新校验唯一）。
+`name`/`year` 变更联动业务键重新校验唯一；`year` 接受字符串与数字两种提交形态并规范化为整数；
+资料齐全度引用不得重复，停用项仅允许原引用往返）。
 
 ## Excel 导入（fin PRD §4）
 
 权限：`finance_maintain`。上传固定上限 20 MiB（Multer 拦截，超限 `IMPORT_FILE_TOO_LARGE` 413）；
 仅接受单个工作表的 `.xlsx`；服务端在 CPU 工作池内解析（ZIP 安全上限 200 MiB/1,000 条目、拒绝加密/
-嵌套/路径穿越/符号链接，公式白名单，模板签名校验）；原文件不写 OSS/PostgreSQL/Redis/磁盘，
-请求结束不保留文件内容；预览与确认各持单用户并发锁（与导出锁独立），120 秒固定总时限。
+嵌套/路径穿越/符号链接/宏（`xl/vbaProject.bin`）/外部链接（`xl/externalLinks`）/嵌入对象（`xl/embeddings`），
+公式白名单，模板签名校验；视觉为空但携带公式的行同样执行公式白名单校验）；原文件不写 OSS/PostgreSQL/Redis/磁盘，
+请求结束不保留文件内容；预览与确认各持单用户并发锁（与导出锁独立），120 秒固定总时限
+（从取得导入占用并开始接收请求体时计算，覆盖上传读取阶段）。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -113,7 +116,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/project-operations` | 列表（时间倒序；`projectId` 过滤 + 分页） |
+| `GET` | `/project-operations` | 列表（时间倒序；`projectId` 过滤 + 分页；每行携带 `projectName`（含已软删项目）） |
 | `GET` | `/project-operations/{id}` | 详情（按字段展示变更前后内容） |
 
 动作枚举：`CREATE`/`EDIT`/`DELETE`/`IMPORT_CREATE`/`IMPORT_OVERWRITE`/`IMPORT_SKIP`；

@@ -32,7 +32,7 @@ describe.skipIf(!DATABASE_URL)('SettingsService 平台设置（T4-5）', () => {
 
   it('listPlatformSettings 返回全部 PLATFORM 键与默认值', async () => {
     const result = await service.listPlatformSettings();
-    expect(result.settings.length).toBe(5);
+    expect(result.settings.length).toBe(15);
     const queryWindow = result.settings.find((s) => s.key === SETTING_KEYS.QUERY_DEFAULT_WINDOW_DAYS);
     expect(queryWindow?.defaultValue).toBe(30);
     expect(queryWindow?.value).toBe(30);

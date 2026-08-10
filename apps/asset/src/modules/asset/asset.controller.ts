@@ -8,9 +8,10 @@ import {
   AssetScheduleDto,
   AssetScrapDto,
   AssetUpdateDto,
+  createPaginationResponse,
   MyAssetQueryDto,
 } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, RequestTimeout } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess } from '../../shared/cross-schema-auth';
 import { loadAssetOperationLogOperator } from '../../shared/asset-operation-log.util';
@@ -30,18 +31,21 @@ export class AssetController {
 
   /** 我的资产（本人档：我负责的 / 我使用的 / 全部） */
   @Get('mine')
-  async listMine(@CurrentUser() userId: number, @Query() query: MyAssetQueryDto): Promise<{ items: unknown[]; total: number }> {
-    return this.assets.listMine(userId, query);
+  async listMine(@CurrentUser() userId: number, @Query() query: MyAssetQueryDto): Promise<unknown> {
+    const result = await this.assets.listMine(userId, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 台账分页列表（固定资产查看/维护，部门/公司档） */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: AssetQueryDto): Promise<{ items: unknown[]; total: number }> {
-    return this.assets.list(userId, query);
+  async list(@CurrentUser() userId: number, @Query() query: AssetQueryDto): Promise<unknown> {
+    const result = await this.assets.list(userId, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /** 台账导出（固定资产查看/维护；导出所有未逻辑删除或全部筛选结果） */
   @Get('export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   async export(@CurrentUser() userId: number, @Query() query: AssetQueryDto, @Res() res: Response): Promise<void> {
     await this.assets.export(userId, query, res);
   }

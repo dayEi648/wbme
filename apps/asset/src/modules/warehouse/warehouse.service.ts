@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  ASSET_CONFIG_FUNCTION_CODE,
   BusinessException,
   frameworkErrors,
+  INVENTORY_MANAGE_FUNCTION_CODE,
   inventoryErrors,
 } from '@wbme/contracts';
 // 库位删除/停用错误码见 inventoryErrors（INVENTORY 域）
@@ -60,7 +60,7 @@ export class WarehouseService {
   ): Promise<{ id: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
-      feature: ASSET_CONFIG_FUNCTION_CODE,
+      feature: INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.warehouse.create',
       idempotencyKey: input.idempotencyKey,
       fingerprint: fingerprintPayload(input),
@@ -104,7 +104,7 @@ export class WarehouseService {
   ): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
-      feature: ASSET_CONFIG_FUNCTION_CODE,
+      feature: INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.warehouse.update',
       idempotencyKey,
       fingerprint: fingerprintPayload({ ...input, id }),
@@ -134,17 +134,68 @@ export class WarehouseService {
   }
 
   /**
-   * 库位批量硬删除（存在未删除子库位或现存库存条目/未结清借还/待审批引用时整批拒绝）。
+   * 库位批量删除前引用预览（asset PRD §5/§12；主 PRD §2.6）：
+   * 返回每个目标仍被引用的情况（现存库存条目数/未结清借还数/待审批引用数），
+   * 引用本身不阻断删除；前端展示并要求确认后调用 batchDelete 物理删除。
+   *
+   * @param ids 库位 id 列表
+   * @returns 逐库位引用统计
+   * @throws RESOURCE_NOT_FOUND 任一目标不存在
+   */
+  async deletePreview(ids: readonly number[]): Promise<{
+    items: Array<{ id: number; inventoryItemCount: number; borrowCount: number; pendingCount: number }>;
+  }> {
+    const rows = await this.prisma.client.warehouse.findMany({ where: { id: { in: [...ids] } } });
+    if (rows.length !== ids.length) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const counts = await this.prisma.client.$queryRaw<
+      Array<{ id: number; inventory_item_count: bigint; borrow_count: bigint; pending_count: bigint }>
+    >`
+      SELECT w.id,
+        (SELECT COUNT(*) FROM asset.inventory_items ii
+          WHERE ii.warehouse_id = w.id AND (ii.book_qty > 0 OR ii.reserved_qty > 0)) AS inventory_item_count,
+        (SELECT COUNT(*) FROM asset.borrow_records br
+          INNER JOIN asset.inventory_items ii ON ii.id = br.inventory_item_id
+          WHERE ii.warehouse_id = w.id AND (br.qty - br.returned_qty - br.written_off_qty) > 0) AS borrow_count,
+        ((SELECT COUNT(*) FROM asset.consumable_request_items cri
+          INNER JOIN asset.approval_requests r ON r.id = cri.request_id
+          INNER JOIN asset.inventory_items ii ON ii.id = cri.inventory_item_id
+          WHERE ii.warehouse_id = w.id AND r.status = 'PENDING')
+         + (SELECT COUNT(*) FROM asset.stock_in_items sii
+          INNER JOIN asset.approval_requests r ON r.id = sii.request_id
+          WHERE sii.warehouse_id = w.id AND r.status = 'PENDING')) AS pending_count
+      FROM asset.warehouses w
+      WHERE w.id = ANY(${ids as number[]})
+    `;
+    const byId = new Map(counts.map((row) => [Number(row.id), row]));
+    return {
+      items: ids.map((id) => {
+        const row = byId.get(id);
+        return {
+          id,
+          inventoryItemCount: Number(row?.inventory_item_count ?? 0),
+          borrowCount: Number(row?.borrow_count ?? 0),
+          pendingCount: Number(row?.pending_count ?? 0),
+        };
+      }),
+    };
+  }
+
+  /**
+   * 库位批量硬删除（主 PRD §2.6 确认式删除：引用预览后确认执行；
+   * 批次/流水保存库位名称快照，删除不阻断也不追溯改写历史）。
+   * 存在未删除子库位时仍整批拒绝（asset PRD §5）。
    *
    * @param operator 操作人
    * @param ids 库位 id 列表
    * @returns 删除结果
-   * @throws LOCATION_HAS_CHILDREN / LOCATION_REFERENCED 任一库位不满足
+   * @throws LOCATION_HAS_CHILDREN 任一目标有未删除子库位
    */
   async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
-      feature: ASSET_CONFIG_FUNCTION_CODE,
+      feature: INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.warehouse.delete',
       idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
@@ -156,10 +207,6 @@ export class WarehouseService {
         const children = await tx.warehouse.count({ where: { parentId: { in: [...ids] } } });
         if (children > 0) {
           throw new BusinessException(inventoryErrors.LOCATION_HAS_CHILDREN, { children });
-        }
-        const referenced = await this.countReferenced(tx, ids);
-        if (referenced > 0) {
-          throw new BusinessException(inventoryErrors.LOCATION_REFERENCED, { referenced });
         }
         const result = await tx.warehouse.deleteMany({ where: { id: { in: [...ids] } } });
         return {
@@ -200,36 +247,6 @@ export class WarehouseService {
     }
   }
 
-  /**
-   * 统计库位引用数（现存库存条目 / 未结清借还 / 待审批引用——批次与流水只保存名称
-   * 快照不参与删除检查；删除前展示现存库存条目数、未结清借还数和待审批引用数）。
-   *
-   * @param tx 事务客户端
-   * @param ids 库位 id 集合
-   * @returns 引用总数
-   */
-  private async countReferenced(tx: Prisma.TransactionClient, ids: readonly number[]): Promise<number> {
-    const rows = await tx.$queryRaw<Array<{ total: bigint }>>`
-      SELECT (
-        (SELECT COUNT(*) FROM asset.inventory_items WHERE warehouse_id = ANY(${ids as number[]})
-          AND (book_qty > 0 OR reserved_qty > 0)) +
-        (SELECT COUNT(*) FROM asset.borrow_records br
-          INNER JOIN asset.inventory_items ii ON ii.id = br.inventory_item_id
-          WHERE ii.warehouse_id = ANY(${ids as number[]})
-            AND (br.qty - br.returned_qty - br.written_off_qty) > 0) +
-        (SELECT COUNT(*) FROM asset.consumable_request_items cri
-          INNER JOIN asset.approval_requests r ON r.id = cri.request_id
-          INNER JOIN asset.inventory_items ii ON ii.id = cri.inventory_item_id
-          WHERE ii.warehouse_id = ANY(${ids as number[]})
-            AND r.status = 'PENDING') +
-        (SELECT COUNT(*) FROM asset.stock_in_items sii
-          INNER JOIN asset.approval_requests r ON r.id = sii.request_id
-          WHERE sii.warehouse_id = ANY(${ids as number[]})
-            AND r.status = 'PENDING')
-      ) AS total
-    `;
-    return Number(rows[0]?.total ?? 0);
-  }
 }
 
 /**

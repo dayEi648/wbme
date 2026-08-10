@@ -2,9 +2,10 @@ import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query, Res } 
 import {
   ApprovalListQueryDto,
   CancelApprovalDto,
+  createPaginationResponse,
   ProcessApprovalDto,
 } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, EXPORT_TIMEOUT_MS, RequestTimeout } from '@wbme/server';
 import type { Response } from 'express';
 import { PrismaService } from '../../prisma.service';
 import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
@@ -41,7 +42,8 @@ export class ApprovalController {
    */
   @Get()
   async list(@CurrentUser() userId: number, @Query() query: ApprovalListQueryDto): Promise<unknown> {
-    return this.approval.list(userId, query);
+    const result = await this.approval.list(userId, query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
   /**
@@ -52,6 +54,7 @@ export class ApprovalController {
    * @param res 流式响应
    */
   @Post('export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
   async exportList(
     @CurrentUser() userId: number,
     @Query() query: ApprovalListQueryDto,
@@ -98,7 +101,7 @@ export class ApprovalController {
     @CurrentUser() processorId: number,
     @Body() dto: ProcessApprovalDto,
   ): Promise<{ ok: true }> {
-    await this.approval.process(requestId, dto.action, processorId, dto.opinion);
+    await this.approval.process(requestId, dto.action, processorId, dto.opinion, dto.idempotencyKey);
     return { ok: true };
   }
 
@@ -113,9 +116,9 @@ export class ApprovalController {
   async cancel(
     @Param('id', ParseIntPipe) requestId: number,
     @CurrentUser() actorId: number,
-    @Body() _dto: CancelApprovalDto,
+    @Body() dto: CancelApprovalDto,
   ): Promise<{ ok: true }> {
-    await this.approval.cancel(requestId, actorId);
+    await this.approval.cancel(requestId, actorId, undefined, dto.idempotencyKey);
     return { ok: true };
   }
 }

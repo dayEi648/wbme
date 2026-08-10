@@ -2,6 +2,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Collapse,
   Drawer,
   Empty,
   Form,
@@ -23,6 +24,7 @@ import { ExportOutlined, FilterOutlined, SettingOutlined, SortAscendingOutlined 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFeedback } from '../request/feedback';
 import { download, http, type ApiService } from '../request/http';
+import { formatDisplayValue, isMoneyField } from './display-format';
 
 type RecordValue = Record<string, unknown>;
 
@@ -80,10 +82,8 @@ interface FilterPreset {
 }
 
 interface PaginatedResponse {
-  data?: RecordValue[];
-  items?: RecordValue[];
-  total?: number;
-  pagination?: { page: number; pageSize: number; totalItems: number; totalPages: number };
+  data: RecordValue[];
+  pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
 }
 
 export interface DataTableProps {
@@ -105,7 +105,13 @@ export interface DataTableProps {
   /** 成功加载后的当前页数据，供审批等需要前后切换详情的页面使用。 */
   onRowsLoaded?: (rows: RecordValue[]) => void;
   /** 批量操作（默认勾选后出现操作栏）。 */
-  batchAction?: { label: string; danger?: boolean; onExecute: (ids: Array<string | number>) => Promise<void> };
+  batchAction?: {
+    label: string;
+    danger?: boolean;
+    /** 确认框中说明业务后果，危险操作不得只显示通用文案。 */
+    confirmationDescription?: ReactNode;
+    onExecute: (ids: Array<string | number>) => Promise<void>;
+  };
   /** 暴露当前勾选项，供需要多个批量业务操作的页面复用统一批量工具栏。 */
   onSelectionChange?: (ids: Array<string | number>) => void;
   /**
@@ -118,6 +124,8 @@ export interface DataTableProps {
     filename: string;
     method?: 'GET' | 'POST';
   };
+  /** 空列表时的下一步操作，例如创建或导入。 */
+  emptyAction?: { label: string; onExecute: () => void };
 }
 
 const DEFAULT_OPERATOR_BY_TYPE: Readonly<Record<NonNullable<FilterField['type']>, string>> = {
@@ -192,15 +200,20 @@ function isRecord(value: unknown): value is RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function normalizeList(payload: PaginatedResponse): { rows: RecordValue[]; total: number; page: number; pageSize: number } {
-  const firstArray = Object.values(payload).find((value): value is RecordValue[] => Array.isArray(value));
-  const sourceRows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.items) ? payload.items : firstArray ?? [];
-  const rows = sourceRows.map(normalizeRow);
+function normalizeList(payload: unknown): { rows: RecordValue[]; total: number; page: number; pageSize: number } {
+  if (!isRecord(payload) || !Array.isArray(payload.data) || !isRecord(payload.pagination)) {
+    throw new Error('列表接口未返回统一的 data + pagination 契约');
+  }
+  const { data, pagination } = payload as unknown as PaginatedResponse;
+  if (!Number.isInteger(pagination.page) || !Number.isInteger(pagination.pageSize) || !Number.isInteger(pagination.totalItems)) {
+    throw new Error('列表接口分页信息不合法');
+  }
+  const rows = data.map(normalizeRow);
   return {
     rows,
-    total: payload.pagination?.totalItems ?? payload.total ?? rows.length,
-    page: payload.pagination?.page ?? 1,
-    pageSize: payload.pagination?.pageSize ?? 20,
+    total: pagination.totalItems,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
   };
 }
 
@@ -221,14 +234,8 @@ function normalizeRow(row: RecordValue): RecordValue {
   return normalized;
 }
 
-function asText(value: unknown): string {
-  if (value === null || value === undefined || value === '') {
-    return '—';
-  }
-  if (typeof value === 'object') {
-    return JSON.stringify(value);
-  }
-  return String(value);
+function asText(value: unknown, key?: string): string {
+  return formatDisplayValue(value, key);
 }
 
 /**
@@ -265,7 +272,7 @@ export function buildGroupedFilterPayload(
 }
 
 export function isNumericCell(column: DataColumn, value: unknown): boolean {
-  return column.type === 'number' || typeof value === 'number';
+  return column.type === 'number' || typeof value === 'number' || (isMoneyField(column.key) && /^-?\d+(?:\.\d+)?$/.test(String(value)));
 }
 
 /**
@@ -290,6 +297,7 @@ export function DataTable({
   batchAction,
   onSelectionChange,
   exportConfig,
+  emptyAction,
 }: DataTableProps) {
   const feedback = useFeedback();
   const [rows, setRows] = useState<RecordValue[]>([]);
@@ -307,6 +315,10 @@ export function DataTable({
   const [filterGroups, setFilterGroups] = useState<FilterGroup[]>([]);
   const [filterLogic, setFilterLogic] = useState<FilterLogic>('AND');
   const [sorts, setSorts] = useState<SortCondition[]>([]);
+  const [appliedFilters, setAppliedFilters] = useState<FilterCondition[]>([]);
+  const [appliedFilterGroups, setAppliedFilterGroups] = useState<FilterGroup[]>([]);
+  const [appliedFilterLogic, setAppliedFilterLogic] = useState<FilterLogic>('AND');
+  const [appliedSorts, setAppliedSorts] = useState<SortCondition[]>([]);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [activePresetId, setActivePresetId] = useState<number | undefined>();
   const [renamingPresetId, setRenamingPresetId] = useState<number | null>(null);
@@ -317,11 +329,22 @@ export function DataTable({
   const [presetForm] = Form.useForm<{ name: string }>();
   const [renamePresetForm] = Form.useForm<{ name: string }>();
 
-  const queryKey = useMemo(() => JSON.stringify({ page, pageSize, filters, filterGroups, filterLogic, sorts }), [page, pageSize, filters, filterGroups, filterLogic, sorts]);
+  const queryKey = useMemo(() => JSON.stringify({ page, pageSize, filters: appliedFilters, filterGroups: appliedFilterGroups, filterLogic: appliedFilterLogic, sorts: appliedSorts }), [page, pageSize, appliedFilters, appliedFilterGroups, appliedFilterLogic, appliedSorts]);
   const visibleColumns = useMemo(
     () => visibleKeys.map((key) => columns.find((column) => column.key === key)).filter((column): column is DataColumn => Boolean(column)),
     [columns, visibleKeys],
   );
+  const quickFilterFields = useMemo(
+    () => filterFields
+      .filter((field) => field.type === 'enum' || /(?:keyword|name|status|state|month)/i.test(field.key))
+      .slice(0, 4),
+    [filterFields],
+  );
+  const quickFilterKeys = useMemo(() => new Set(quickFilterFields.map((field) => field.key)), [quickFilterFields]);
+  const appliedFilterCount = appliedFilters.length + appliedFilterGroups.reduce((count, group) => count + group.conditions.length, 0);
+  const advancedFilters = filters
+    .map((filter, index) => ({ filter, index }))
+    .filter(({ filter }) => !quickFilterKeys.has(filter.field));
 
   /** 构造受控列表参数；筛选字段仍由后端资源白名单解释，前端不会传递 SQL/任意字段。 */
   const buildListParams = (options: { includePagination: boolean; includeConditions: boolean }): URLSearchParams => {
@@ -330,21 +353,21 @@ export function DataTable({
       return params;
     }
 
-    const populatedFilters = filters.filter((filter) => filter.value.trim());
-    const populatedGroups = filterGroups
+    const populatedFilters = appliedFilters.filter((filter) => filter.value.trim());
+    const populatedGroups = appliedFilterGroups
       .map((group) => ({ ...group, conditions: group.conditions.filter((filter) => filter.value.trim()) }))
       .filter((group) => group.conditions.length > 0);
     const allFilterConditions = [...populatedFilters, ...populatedGroups.flatMap((group) => group.conditions)];
     if (allFilterConditions.length > 0) {
-      const filterPayload = buildGroupedFilterPayload(filterLogic, populatedFilters, populatedGroups);
+      const filterPayload = buildGroupedFilterPayload(appliedFilterLogic, populatedFilters, populatedGroups);
       params.set('filters', JSON.stringify(filterPayload));
       // 同时映射到当前资源已有的白名单具名查询参数，保证既有列表接口与通用契约可联调。
       for (const filter of allFilterConditions) {
         params.set(filter.field, filter.value);
       }
     }
-    if (sorts.length > 0) {
-      params.set('sorts', JSON.stringify(sorts));
+    if (appliedSorts.length > 0) {
+      params.set('sorts', JSON.stringify(appliedSorts));
     }
     return params;
   };
@@ -426,7 +449,7 @@ export function DataTable({
       fixed: columnFixed[column.key] ?? column.fixed,
       // L29：数字/金额列使用等宽数字字体（tabular-nums），列内数字上下对齐（isNumericCell）
       render: (_: unknown, row: RecordValue) => {
-        const content = column.render?.(row[column.key], row) ?? asText(row[column.key]);
+        const content = column.render?.(row[column.key], row) ?? asText(row[column.key], column.key);
         return isNumericCell(column, row[column.key]) ? <span style={{ fontVariantNumeric: 'tabular-nums' }}>{content}</span> : content;
       },
     })),
@@ -434,7 +457,7 @@ export function DataTable({
   ];
 
   const addFilter = () => {
-    const field = filterFields[0];
+    const field = filterFields.find((item) => !quickFilterKeys.has(item.key)) ?? filterFields[0];
     if (!field) {
       return;
     }
@@ -451,6 +474,21 @@ export function DataTable({
   const updateFilterField = (index: number, fieldKey: string) => {
     const field = filterFields.find((item) => item.key === fieldKey);
     updateFilter(index, { field: fieldKey, operator: DEFAULT_OPERATOR_BY_TYPE[field?.type ?? 'text'], value: '' });
+  };
+
+  /** 快捷筛选一个字段只保留一个条件，防止默认界面形成难以理解的重复条件。 */
+  const updateQuickFilter = (field: FilterField, value: string | undefined) => {
+    setFilters((current) => {
+      const otherFilters = current.filter((filter) => filter.field !== field.key);
+      if (!value?.trim()) {
+        return otherFilters;
+      }
+      return [...otherFilters, {
+        field: field.key,
+        operator: DEFAULT_OPERATOR_BY_TYPE[field.type ?? 'text'],
+        value,
+      }];
+    });
   };
 
   const addFilterGroup = () => {
@@ -549,6 +587,16 @@ export function DataTable({
     }
   };
 
+  /** 按操作语义给危险批量操作补足结果提示；页面可用 confirmationDescription 覆盖。 */
+  const batchConfirmationDescription = batchAction?.confirmationDescription
+    ?? (batchAction?.label.includes('注销')
+      ? '注销后，该员工将失去所有系统入口；既有业务记录仍会保留。'
+      : batchAction?.label.includes('撤销')
+        ? '撤销后，已授予的功能将立即失效。'
+        : batchAction?.danger
+          ? '此操作可能无法恢复，请确认已核对受影响的数据。'
+          : undefined);
+
   /** 下载全部或当前筛选范围；不使用当前页数据，始终由服务端导出完整权限范围。 */
   const exportRows = async (scope: 'all' | 'filtered') => {
     if (!exportConfig) return;
@@ -607,16 +655,16 @@ export function DataTable({
 
       <Space wrap>
         <Button icon={<FilterOutlined />} onClick={() => setFilterOpen(true)}>
-          筛选{filters.length + filterGroups.reduce((count, group) => count + group.conditions.length, 0) > 0 ? `（${filters.length + filterGroups.reduce((count, group) => count + group.conditions.length, 0)}）` : ''}
+          筛选{appliedFilterCount > 0 ? `（${appliedFilterCount}）` : ''}
         </Button>
         <Button icon={<SortAscendingOutlined />} onClick={() => setSortOpen(true)}>
-          排序{sorts.length > 0 ? `（${sorts.length}）` : ''}
+          排序{appliedSorts.length > 0 ? `（${appliedSorts.length}）` : ''}
         </Button>
         <Button onClick={() => setPresetOpen(true)}>保存预设</Button>
         <Select
           allowClear
           placeholder="使用预设"
-          style={{ minWidth: 160 }}
+          style={{ minWidth: 128, maxWidth: 180 }}
           options={presets.map((preset) => ({ label: preset.name, value: preset.id }))}
           onChange={(id: number | undefined) => {
             setActivePresetId(id);
@@ -626,6 +674,10 @@ export function DataTable({
               setFilterGroups(preset.content.filterGroups ?? []);
               setFilterLogic(preset.content.filterLogic ?? 'AND');
               setSorts(preset.content.sorts ?? []);
+              setAppliedFilters(preset.content.filters ?? []);
+              setAppliedFilterGroups(preset.content.filterGroups ?? []);
+              setAppliedFilterLogic(preset.content.filterLogic ?? 'AND');
+              setAppliedSorts(preset.content.sorts ?? []);
               setPage(1);
             }
           }}
@@ -640,7 +692,7 @@ export function DataTable({
             <Button icon={<ExportOutlined />} onClick={() => void exportRows('filtered')}>导出已筛选</Button>
           </Space.Compact>
         ) : null}
-        {filters.length > 0 || filterGroups.length > 0 || sorts.length > 0 ? (
+        {appliedFilters.length > 0 || appliedFilterGroups.length > 0 || appliedSorts.length > 0 ? (
           <Button
             type="link"
             onClick={() => {
@@ -648,6 +700,10 @@ export function DataTable({
               setFilterGroups([]);
               setFilterLogic('AND');
               setSorts([]);
+              setAppliedFilters([]);
+              setAppliedFilterGroups([]);
+              setAppliedFilterLogic('AND');
+              setAppliedSorts([]);
               setActivePresetId(undefined);
               setPage(1);
             }}
@@ -664,6 +720,7 @@ export function DataTable({
             <Typography.Text>已选择 {selectedKeys.length} 项</Typography.Text>
             <Popconfirm
               title={`确认${batchAction.label} ${selectedKeys.length} 项？`}
+              description={batchConfirmationDescription}
               okText="确认"
               cancelText="取消"
               okButtonProps={{ danger: batchAction.danger }}
@@ -690,8 +747,8 @@ export function DataTable({
             </Button>
           </Empty>
         ) : rows.length === 0 ? (
-          <Empty description={filters.length > 0 || filterGroups.length > 0 ? '无符合条件的数据' : '暂无数据'}>
-            {filters.length > 0 || filterGroups.length > 0 ? <Button onClick={() => { setFilters([]); setFilterGroups([]); setFilterLogic('AND'); setActivePresetId(undefined); }}>清除全部筛选条件</Button> : null}
+          <Empty description={appliedFilterCount > 0 ? '无符合条件的数据' : '暂无数据'}>
+            {appliedFilterCount > 0 ? <Button onClick={() => { setFilters([]); setFilterGroups([]); setFilterLogic('AND'); setAppliedFilters([]); setAppliedFilterGroups([]); setAppliedFilterLogic('AND'); setActivePresetId(undefined); setPage(1); }}>清除全部筛选条件</Button> : emptyAction ? <Button type="primary" onClick={emptyAction.onExecute}>{emptyAction.label}</Button> : null}
           </Empty>
         ) : (
           <>
@@ -739,7 +796,7 @@ export function DataTable({
                           <Typography.Text type="secondary">{column.title}</Typography.Text>
                           {/* L29：数字/金额列使用等宽数字字体，与桌面表格一致（isNumericCell） */}
                           <span style={isNumericCell(column, row[column.key]) ? { fontVariantNumeric: 'tabular-nums' } : undefined}>
-                            {column.render?.(row[column.key], row) ?? asText(row[column.key])}
+                            {column.render?.(row[column.key], row) ?? asText(row[column.key], column.key)}
                           </span>
                         </div>
                       ))}
@@ -769,66 +826,95 @@ export function DataTable({
         ) : null}
       </Card>
 
-      <Drawer title="筛选" placement="right" open={filterOpen} onClose={() => setFilterOpen(false)} width={420}>
+      <Drawer
+        title="筛选"
+        placement="right"
+        open={filterOpen}
+        onClose={() => {
+          setFilters(appliedFilters);
+          setFilterGroups(appliedFilterGroups);
+          setFilterLogic(appliedFilterLogic);
+          setFilterOpen(false);
+        }}
+        width={420}
+      >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {filters.length > 1 ? (
-            <Card size="small" title="条件组合">
-              {/* L31：存在条件组时组间恒为 OR（主 PRD §2.7「组内 AND、组间 OR」），
-                  开关仅作用于主条件之间；文案如实标注避免误导 */}
-              <Segmented<FilterLogic>
-                block
-                value={filterLogic}
-                options={filterGroups.length > 0
-                  ? [
-                      { label: '主条件同时满足（组间取任一）', value: 'AND' },
-                      { label: '主条件满足任一（组间取任一）', value: 'OR' },
-                    ]
-                  : [{ label: '同时满足（AND）', value: 'AND' }, { label: '满足任一（OR）', value: 'OR' }]}
-                onChange={(value) => setFilterLogic(value)}
-              />
-            </Card>
-          ) : null}
-          {filters.map((filter, index) => (
-            <Card key={`${filter.field}-${index}`} size="small">
+          {quickFilterFields.length > 0 ? (
+            <Card size="small" title="快捷筛选">
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                {renderFilterEditor(filter, (field) => updateFilterField(index, field), (patch) => updateFilter(index, patch))}
-                <Button danger type="link" onClick={() => setFilters((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
-                  移除条件
-                </Button>
+                {quickFilterFields.map((field) => {
+                  const value = filters.find((filter) => filter.field === field.key)?.value ?? '';
+                  return <div key={field.key}>
+                    <Typography.Text type="secondary">{field.title}</Typography.Text>
+                    {field.type === 'enum' ? (
+                      <Select allowClear showSearch optionFilterProp="label" value={value || undefined} options={field.options} style={{ width: '100%', marginTop: 4 }} onChange={(nextValue: string | undefined) => updateQuickFilter(field, nextValue)} />
+                    ) : (
+                      <Input type={field.type === 'date' ? 'date' : 'text'} value={value} style={{ marginTop: 4 }} onChange={(event) => updateQuickFilter(field, event.target.value)} />
+                    )}
+                  </div>;
+                })}
               </Space>
             </Card>
-          ))}
-          <Button onClick={addFilter} disabled={filterFields.length === 0}>
-            添加筛选条件
-          </Button>
-          {filterGroups.map((group, groupIndex) => (
-            <Card key={group.id} size="small" title={`条件组 ${groupIndex + 1}（组内均满足，与主条件组取任一）`}>
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                {group.conditions.map((filter, index) => (
-                  <Card key={`${group.id}-${index}`} size="small">
+          ) : null}
+          <Collapse
+            items={[{
+              key: 'advanced-filter',
+              label: '高级筛选',
+              children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                {advancedFilters.length > 1 ? (
+                  <Card size="small" title="条件关系">
+                    <Segmented<FilterLogic>
+                      block
+                      value={filterLogic}
+                      options={filterGroups.length > 0
+                        ? [{ label: '主条件同时满足', value: 'AND' }, { label: '主条件满足任一', value: 'OR' }]
+                        : [{ label: '同时满足', value: 'AND' }, { label: '满足任一', value: 'OR' }]}
+                      onChange={(value) => setFilterLogic(value)}
+                    />
+                  </Card>
+                ) : null}
+                {advancedFilters.map(({ filter, index }) => (
+                  <Card key={`${filter.field}-${index}`} size="small">
                     <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                      {renderFilterEditor(filter, (field) => updateGroupConditionField(group.id, index, field), (patch) => updateGroupCondition(group.id, index, patch))}
-                      <Button danger type="link" onClick={() => setFilterGroups((current) => current.map((item) => item.id === group.id ? { ...item, conditions: item.conditions.filter((_, conditionIndex) => conditionIndex !== index) } : item))}>
-                        移除条件
-                      </Button>
+                      {renderFilterEditor(filter, (field) => updateFilterField(index, field), (patch) => updateFilter(index, patch))}
+                      <Button danger type="link" onClick={() => setFilters((current) => current.filter((_, itemIndex) => itemIndex !== index))}>移除条件</Button>
                     </Space>
                   </Card>
                 ))}
-                <Button onClick={() => setFilterGroups((current) => current.map((item) => item.id === group.id ? { ...item, conditions: [...item.conditions, { field: filterFields[0]?.key ?? 'id', operator: DEFAULT_OPERATOR_BY_TYPE[filterFields[0]?.type ?? 'text'], value: '' }] } : item))} disabled={filterFields.length === 0}>向条件组添加条件</Button>
-                <Button danger type="link" onClick={() => setFilterGroups((current) => current.filter((item) => item.id !== group.id))}>移除条件组</Button>
-              </Space>
-            </Card>
-          ))}
-          <Button onClick={addFilterGroup} disabled={filterFields.length === 0}>
-            添加条件组
-          </Button>
-          <Button type="primary" block onClick={() => { setPage(1); setFilterOpen(false); }}>
+                <Button onClick={addFilter} disabled={filterFields.length === 0}>添加筛选条件</Button>
+                {filterGroups.map((group, groupIndex) => (
+                  <Card key={group.id} size="small" title={`条件组 ${groupIndex + 1}`}>
+                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                      {group.conditions.map((filter, index) => (
+                        <Card key={`${group.id}-${index}`} size="small">
+                          <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                            {renderFilterEditor(filter, (field) => updateGroupConditionField(group.id, index, field), (patch) => updateGroupCondition(group.id, index, patch))}
+                            <Button danger type="link" onClick={() => setFilterGroups((current) => current.map((item) => item.id === group.id ? { ...item, conditions: item.conditions.filter((_, conditionIndex) => conditionIndex !== index) } : item))}>移除条件</Button>
+                          </Space>
+                        </Card>
+                      ))}
+                      <Button onClick={() => setFilterGroups((current) => current.map((item) => item.id === group.id ? { ...item, conditions: [...item.conditions, { field: filterFields[0]?.key ?? 'id', operator: DEFAULT_OPERATOR_BY_TYPE[filterFields[0]?.type ?? 'text'], value: '' }] } : item))} disabled={filterFields.length === 0}>向条件组添加条件</Button>
+                      <Button danger type="link" onClick={() => setFilterGroups((current) => current.filter((item) => item.id !== group.id))}>移除条件组</Button>
+                    </Space>
+                  </Card>
+                ))}
+                <Button onClick={addFilterGroup} disabled={filterFields.length === 0}>添加条件组</Button>
+              </Space>,
+            }]}
+          />
+          <Button type="primary" block onClick={() => {
+            setAppliedFilters(filters);
+            setAppliedFilterGroups(filterGroups);
+            setAppliedFilterLogic(filterLogic);
+            setPage(1);
+            setFilterOpen(false);
+          }}>
             应用筛选
           </Button>
         </Space>
       </Drawer>
 
-      <Drawer title="排序" placement="right" open={sortOpen} onClose={() => setSortOpen(false)} width={420}>
+      <Drawer title="排序" placement="right" open={sortOpen} onClose={() => { setSorts(appliedSorts); setSortOpen(false); }} width={420}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {sorts.map((sort, index) => (
             <Card key={`${sort.field}-${index}`} size="small">
@@ -844,7 +930,7 @@ export function DataTable({
           <Button onClick={() => setSorts((current) => [...current, { field: columns[0]?.key ?? 'id', direction: 'ASC' }])} disabled={columns.length === 0}>
             添加排序字段
           </Button>
-          <Button type="primary" block onClick={() => { setPage(1); setSortOpen(false); }}>
+          <Button type="primary" block onClick={() => { setAppliedSorts(sorts); setPage(1); setSortOpen(false); }}>
             应用排序
           </Button>
         </Space>
@@ -862,7 +948,20 @@ export function DataTable({
                   <Space wrap>
                     <Button size="small" disabled={index <= 0} onClick={() => { const next = [...visibleKeys]; const previous = next[index - 1]; const current = next[index]; if (previous && current) { next[index - 1] = current; next[index] = previous; void saveColumns(next); } }}>上移</Button>
                     <Button size="small" disabled={index < 0 || index === visibleColumns.length - 1} onClick={() => { const next = [...visibleKeys]; const current = next[index]; const following = next[index + 1]; if (current && following) { next[index] = following; next[index + 1] = current; void saveColumns(next); } }}>下移</Button>
-                    <InputNumber size="small" min={80} max={800} placeholder="宽度" value={columnWidths[column.key] ?? column.width} onChange={(value) => { const next = { ...columnWidths }; if (value === null) { delete next[column.key]; } else { next[column.key] = Number(value); } void saveColumns(visibleKeys, next, columnFixed); }} />
+                    <InputNumber
+                      size="small"
+                      min={80}
+                      max={800}
+                      placeholder="宽度"
+                      value={columnWidths[column.key] ?? column.width}
+                      onChange={(value) => {
+                        const next = { ...columnWidths };
+                        if (value === null) delete next[column.key];
+                        else next[column.key] = Number(value);
+                        setColumnWidths(next);
+                      }}
+                      onBlur={() => void saveColumns(visibleKeys, columnWidths, columnFixed)}
+                    />
                     <Select size="small" allowClear placeholder="固定" value={columnFixed[column.key] ?? column.fixed} options={[{ label: '固定左侧', value: 'left' }, { label: '固定右侧', value: 'right' }]} onChange={(value: 'left' | 'right' | undefined) => { const next = { ...columnFixed, [column.key]: value }; void saveColumns(visibleKeys, columnWidths, next); }} />
                   </Space>
                 </Space>
@@ -934,5 +1033,5 @@ export function listItems(payload: unknown): RecordValue[] {
   if (!isRecord(payload)) {
     return [];
   }
-  return normalizeList(payload as PaginatedResponse).rows;
+  return normalizeList(payload).rows;
 }

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createPaginationResponse } from '@wbme/contracts';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 
@@ -24,13 +25,14 @@ export class ReleaseLogService {
     const skip = (dto.page - 1) * dto.pageSize;
     const [items, total] = await Promise.all([
       this.prisma.client.releaseLog.findMany({
-        orderBy: { createdAt: 'desc' },
+        // 次级 id 兜底：同秒创建时分页边界稳定（主 PRD §9.5）
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip,
         take: dto.pageSize,
       }),
       this.prisma.client.releaseLog.count(),
     ]);
-    return { items, total, page: dto.page, pageSize: dto.pageSize };
+    return createPaginationResponse(items, total, dto.page, dto.pageSize);
   }
 
   /**

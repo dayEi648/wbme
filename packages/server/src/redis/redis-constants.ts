@@ -24,6 +24,10 @@ export const REDIS_NAMESPACE = {
   DINGTALK_STATE: 'dtstate',
   /** 激活/注册/重置的一次性流程会话（Path 限定 Cookie 对应） */
   FLOW_TOKEN: 'flowtoken',
+  /**
+   * 授权上下文缓存（base PRD §3：账号授权版本 + 权限目录版本 + 用户组织版本 + 组织树版本）
+   */
+  AUTH: 'auth',
 } as const;
 
 export type RedisNamespace = (typeof REDIS_NAMESPACE)[keyof typeof REDIS_NAMESPACE];

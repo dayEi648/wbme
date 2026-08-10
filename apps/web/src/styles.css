@@ -9,12 +9,32 @@
     display: none;
   }
 
-  /* 触控端所有可操作目标至少 44px，筛选/排序抽屉与卡片行内操作共享此规则。 */
+  /* 触控端所有可操作目标至少 44px：工具栏、Header、筛选、分页与列表卡片共用。 */
+  .ant-btn,
+  .ant-segmented-item,
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next,
+  .ant-select-single .ant-select-selector,
   .ant-drawer .ant-btn,
   .wbme-mobile-cards .ant-btn,
   .wbme-mobile-cards .ant-checkbox-wrapper {
     min-height: 44px;
-    display: inline-flex;
     align-items: center;
+  }
+
+  .ant-btn,
+  .ant-segmented-item,
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    display: inline-flex;
+  }
+
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    min-width: 44px;
+    justify-content: center;
   }
 }

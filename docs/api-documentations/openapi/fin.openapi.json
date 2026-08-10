@@ -69,6 +69,7 @@
                   "DINGTALK_ORG_MISMATCH",
                   "DINGTALK_STATE_INVALID",
                   "DINGTALK_UNAVAILABLE",
+                  "DISK_SPACE_CRITICAL",
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
@@ -416,6 +417,16 @@
         "properties": {},
         "type": "object"
       },
+      "IdempotentDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ImportChoiceDto": {
         "properties": {
           "confirmDataLossWarning": {
@@ -626,7 +637,7 @@
             "type": "string"
           },
           "subcontractors": {
-            "description": "分包方（手输数组）",
+            "description": "分包方名称数组（编辑时未提交保持原值，显式空数组清空）",
             "items": {
               "type": "string"
             },
@@ -1918,6 +1929,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdempotentDto"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": ""
