@@ -191,6 +191,8 @@ export async function tryReplayIdempotentResult<T>(
  * @param options.run 业务写入：返回业务结果与日志内容；幂等日志行由本函数写入。
  *   约定：所有依赖数据库状态的校验（存在性、状态、版本等）必须放在 run 内执行——
  *   重放先于 run 返回首次结果，不因首次成功后数据变化而误判（主 PRD §9.5）。
+ * @param options.beforeCommit 提交前检查点：run 完成后、幂等日志写入与事务提交前调用。
+ *   供导入等长流程在最后窗口（一次 DB 往返 + commit）检查超时/取消（fin PRD §4）。
  * @returns 业务结果
  * @throws IDEMPOTENCY_KEY_REUSED 同键不同指纹
  */
@@ -203,12 +205,14 @@ export async function commitIdempotentOperation<T>(
     idempotencyKey?: string;
     fingerprint: string;
     run: (tx: Prisma.TransactionClient) => Promise<IdempotentOutcome<T>>;
+    beforeCommit?: () => void;
   },
 ): Promise<T> {
-  const { operator, feature, scope, idempotencyKey, fingerprint, run } = options;
+  const { operator, feature, scope, idempotencyKey, fingerprint, run, beforeCommit } = options;
   if (!idempotencyKey) {
     return prisma.$transaction(async (tx) => {
       const outcome = await run(tx);
+      beforeCommit?.();
       await writeFinOperationLog(tx, { operator, feature, actionType: outcome.actionType, summary: outcome.summary });
       return outcome.result;
     });
@@ -216,6 +220,7 @@ export async function commitIdempotentOperation<T>(
   try {
     return await prisma.$transaction(async (tx) => {
       const outcome = await run(tx);
+      beforeCommit?.();
       await writeFinOperationLog(tx, {
         operator,
         feature,
@@ -251,6 +256,7 @@ export async function commitIdempotentOperation<T>(
  * @param options.idempotencyKey 客户端幂等键（缺省则不记录幂等、直接执行）
  * @param options.fingerprint 规范化请求指纹（fingerprintPayload 产物）
  * @param options.run 业务写入：返回业务结果与日志内容；幂等日志行由本函数写入
+ * @param options.beforeCommit 提交前检查点：透传给 commitIdempotentOperation
  * @returns 业务结果；同键同指纹返回首次执行的结果引用
  * @throws IDEMPOTENCY_KEY_REUSED 同键不同指纹
  */
@@ -263,6 +269,7 @@ export async function executeIdempotentOperation<T>(
     idempotencyKey?: string;
     fingerprint: string;
     run: (tx: Prisma.TransactionClient) => Promise<IdempotentOutcome<T>>;
+    beforeCommit?: () => void;
   },
 ): Promise<T> {
   if (options.idempotencyKey) {

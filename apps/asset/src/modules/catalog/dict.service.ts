@@ -149,7 +149,7 @@ export class DictService {
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.dict.update',
       idempotencyKey,
-      fingerprint: fingerprintPayload(input),
+      fingerprint: fingerprintPayload({ ...input, id }),
       run: async (tx) => {
         const existing = await tx.assetDictItem.findUnique({ where: { id } });
         if (!existing) {

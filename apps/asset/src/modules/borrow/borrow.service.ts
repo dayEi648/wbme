@@ -11,6 +11,7 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
+import { attachDeactivatedFlags } from '../../shared/deactivated-flag.util';
 import { writeStockFlow, type InventoryItemLockRow } from '../../shared/inventory-core';
 import {
   executeIdempotentOperation,
@@ -334,7 +335,10 @@ export class BorrowService {
          LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
       ),
     ]);
-    return { items: rows, total: Number(totalRow[0]?.total ?? 0) };
+    const items = rows as Array<Record<string, unknown>>;
+    // 借还历史含已注销员工（M9）：补"已注销"标记（主 PRD §2.6）
+    await attachDeactivatedFlags(this.prisma.client, items, 'userId', 'userDeactivated');
+    return { items, total: Number(totalRow[0]?.total ?? 0) };
   }
 
   /**

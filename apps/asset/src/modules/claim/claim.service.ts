@@ -10,6 +10,7 @@ import {
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { allocateFifoBatches, cleanupEmptyItem, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
+import { attachDeactivatedFlags } from '../../shared/deactivated-flag.util';
 import { acquireQuotaAdvisoryLocks, computeCycleKey } from '../../shared/quota-period';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import {
@@ -360,7 +361,10 @@ export class ClaimService {
       }
       where.applicantId = { in: [...applicantIds] };
     }
-    return this.paginate(where, query);
+    const result = await this.paginate(where, query);
+    // 范围历史含已注销员工（M9）：补"已注销"标记（主 PRD §2.6）
+    await attachDeactivatedFlags(this.prisma.client, result.items as Array<Record<string, unknown>>, 'applicantId', 'applicantDeactivated');
+    return result;
   }
 
   /** 分页查询 */

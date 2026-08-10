@@ -250,7 +250,7 @@ export class RepairService {
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.repair.complete',
       idempotencyKey,
-      fingerprint: fingerprintPayload(dto),
+      fingerprint: fingerprintPayload({ ...dto, id }),
       run: async (tx) => {
         const order = await tx.repairOrder.findUnique({ where: { id } });
         if (!order) {

@@ -1,4 +1,4 @@
-import { Button, Card, Popconfirm, Segmented, Space, Table, Typography } from 'antd';
+import { Button, Card, Popconfirm, Segmented, Space, Table, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
@@ -55,6 +55,18 @@ const COMMON_COLUMNS = [
   { key: 'createdAt', title: '创建时间' },
 ];
 
+/** 姓名列（申请人/借用人）：已注销员工附"已注销"标记（主 PRD §2.6，M9）。 */
+const nameColWithDeactivatedFlag = (key: 'applicantName' | 'userName', title: string, flagKey: 'applicantDeactivated' | 'userDeactivated') => ({
+  key,
+  title,
+  render: (value: unknown, row: Record<string, unknown>) => (
+    <span>
+      {String(value ?? '')}
+      {row[flagKey] ? <Tag color="red" style={{ marginLeft: 4 }}>已注销</Tag> : null}
+    </span>
+  ),
+});
+
 /** 审批申请列表列（契约：对齐后端 ApprovalRequest 模型字段——无 name，申请人见 applicantName 列；M20 复核修复） */
 const REQUEST_COLUMNS = [
   { key: 'id', title: 'ID', fixed: 'left' as const },
@@ -69,7 +81,7 @@ const REQUEST_COLUMNS = [
 export const BORROW_HISTORY_COLUMNS = [
   { key: 'id', title: 'ID', fixed: 'left' as const },
   { key: 'recordType', title: '记录类型' },
-  { key: 'userName', title: '借用人/代交人' },
+  nameColWithDeactivatedFlag('userName', '借用人/代交人', 'userDeactivated'),
   { key: 'consumableName', title: '物品' },
   { key: 'qty', title: '数量' },
   { key: 'borrowedAt', title: '借出时间' },
@@ -130,15 +142,15 @@ export default function AssetPage() {
       case 'stock-in':
         return <ResourcePage title="入库申请" description="提交后库存按审批状态占用或入账；展示本人提交的历史。" service="asset" endpoint="/stock-in-requests/mine" pageKey="asset-stock-in" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建入库申请', endpoint: '/stock-in-requests', fields: [{ key: 'items', label: '入库明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
       case 'stock-in-history':
-        return <ResourcePage title="入库申请历史" description="查看数据范围内全部入库申请记录（「入库申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-in-requests" pageKey="asset-stock-in-history" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
+        return <ResourcePage title="入库申请历史" description="查看数据范围内全部入库申请记录（「入库申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-in-requests" pageKey="asset-stock-in-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'stock-change':
         return <ResourcePage title="库存变更申请" description="意外扣减等库存变更经过审批，拒绝与取消会释放占用。" service="asset" endpoint="/stock-change-requests/mine" pageKey="asset-stock-change" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建库存变更申请', endpoint: '/stock-change-requests', fields: [{ key: 'items', label: '变更明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
       case 'stock-change-history':
-        return <ResourcePage title="库存变更历史" description="查看数据范围内全部库存变更申请记录（「库存变更申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-change-requests" pageKey="asset-stock-change-history" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
+        return <ResourcePage title="库存变更历史" description="查看数据范围内全部库存变更申请记录（「库存变更申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-change-requests" pageKey="asset-stock-change-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'claims':
         return <ResourcePage title="消耗品申领" description="普通申领按可用库存与个人额度进行原子占用。" service="asset" endpoint="/consumable-requests/mine" pageKey="asset-claims" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交申领', endpoint: '/consumable-requests', fields: [{ key: 'items', label: '申领明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
       case 'claim-history':
-        return <ResourcePage title="申领历史" description="查看数据范围内全部消耗品申领记录（「消耗品申领历史记录」部门/公司档）。" service="asset" endpoint="/consumable-requests" pageKey="asset-claim-history" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
+        return <ResourcePage title="申领历史" description="查看数据范围内全部消耗品申领记录（「消耗品申领历史记录」部门/公司档）。" service="asset" endpoint="/consumable-requests" pageKey="asset-claim-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'agent-claims':
         return <ResourcePage title="代领申请" description="代领需指定受领人；受领人可查看共享借还清单。" service="asset" endpoint="/agent-requests/mine" pageKey="asset-agent-claims" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '代领人' }, { key: 'recipientCount', title: '受领人数' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领申请', endpoint: '/agent-requests', fields: [{ key: 'items', label: '物品明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }, { key: 'recipientIds', label: '受领人 ID（JSON 数组）', type: 'textarea', required: true, maxLength: 2000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items), recipientIds: parseJsonArray(values.recipientIds) }) }} />;
       case 'agent-settlements':

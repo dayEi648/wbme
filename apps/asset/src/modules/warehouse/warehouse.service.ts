@@ -107,7 +107,7 @@ export class WarehouseService {
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.warehouse.update',
       idempotencyKey,
-      fingerprint: fingerprintPayload(input),
+      fingerprint: fingerprintPayload({ ...input, id }),
       run: async (tx) => {
         const existing = await tx.warehouse.findUnique({ where: { id } });
         if (!existing) {

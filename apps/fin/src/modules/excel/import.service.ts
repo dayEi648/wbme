@@ -270,7 +270,8 @@ export class ImportService {
         run: async (tx) => {
           const result = await this.applyImport(tx, operator, inputs, preview, choices, checkTimeout);
           // 终末检查点：applyImport 最后一个检查点在审计 createMany 之后，而幂等日志写入与
-          // 事务提交之间还有一次 DB 往返——取消恰落此窗口时事务仍会提交（S7 复核修复）
+          // 事务提交之间还有一次 DB 往返——取消恰落此窗口时事务仍会提交；beforeCommit
+          // 把检查点延伸到幂等日志写入与 commit 之前（fin PRD §4）
           checkTimeout();
           return {
             result,
@@ -278,6 +279,8 @@ export class ImportService {
             summary: `在利润分析中导入了 ${result.summary.created + result.summary.overwritten} 个项目（新增 ${result.summary.created}、覆盖 ${result.summary.overwritten}、跳过 ${result.summary.skipped}）`,
           };
         },
+        // 提交前最终检查点：覆盖幂等日志写入与事务提交之间的最后窗口
+        beforeCommit: () => checkTimeout(),
       });
     } finally {
       await release();

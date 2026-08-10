@@ -349,7 +349,8 @@ export class AssetService {
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.fixed.update',
       idempotencyKey,
-      fingerprint: fingerprintPayload(dto),
+      // 指纹纳入资源 id：同键复用到不同资产时必须按 §9.5 返回冲突而非静默重放
+      fingerprint: fingerprintPayload({ ...dto, id }),
       run: async (tx) => {
         const existing = await tx.asset.findUnique({ where: { id } });
         if (!existing || existing.deletedAt !== null) {
@@ -432,7 +433,7 @@ export class AssetService {
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.fixed.schedule',
       idempotencyKey,
-      fingerprint: fingerprintPayload(dto),
+      fingerprint: fingerprintPayload({ ...dto, id }),
       run: async (tx) => {
         const existing = await tx.asset.findUnique({ where: { id } });
         if (!existing || existing.deletedAt !== null) {

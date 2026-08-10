@@ -358,7 +358,7 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
           {
             code: 'finance_view',
             name: '财务数据查看',
-            description: '项目、工程合同、利润分析与项目操作记录只读（财务查看人员）；导入导出为数据维护能力，入口在独立导入导出页且仅财务数据维护人员可见',
+            description: '项目、工程合同、利润分析与项目操作记录只读（财务查看人员）；利润分析页支持按模板导出；导入为数据维护能力，仅财务数据维护人员可见',
             dataScopeOptions: ['COMPANY'],
           },
           {

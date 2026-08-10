@@ -251,7 +251,7 @@ export class ConsumableService {
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.consumable.update',
       idempotencyKey,
-      fingerprint: fingerprintPayload({ ...input, type: undefined }),
+      fingerprint: fingerprintPayload({ ...input, type: undefined, id }),
       run: async (tx) => {
         const existing = await tx.consumable.findUnique({ where: { id } });
         if (!existing) {

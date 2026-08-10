@@ -36,7 +36,6 @@ function formatPercentage(value: unknown): string {
 const NAVIGATION: NavigationItem[] = [
   { key: 'projects', label: '工程合同', path: '/fin/projects', permission: 'finance_view' },
   { key: 'profit', label: '利润分析', path: '/fin/profit', permission: 'finance_view' },
-  { key: 'excel', label: 'Excel 导入导出', path: '/fin/excel', permission: 'finance_maintain' },
   { key: 'operations', label: '项目操作记录', path: '/fin/operations', permission: 'finance_view' },
   { key: 'config', label: '财务配置', path: '/fin/config', permission: 'finance_config' },
 ];
@@ -99,8 +98,6 @@ export default function FinPage() {
     switch (section) {
       case 'projects':
         return <Projects />;
-      case 'excel':
-        return <ExcelImportExport />;
       case 'operations':
         return <DataTable title="项目操作记录" description="记录财务项目的新增、修改、删除与金额明细变更。" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'id', title: 'ID', fixed: 'left' as const }, { key: 'projectName', title: '项目' }, { key: 'actionType', title: '操作' }, { key: 'operatorName', title: '操作者' }, { key: 'createdAt', title: '时间' }]} filterFields={[{ key: 'projectId', title: '项目 ID', type: 'number' }]} />;
       case 'config':
@@ -325,6 +322,8 @@ export function ProfitAnalysis() {
 
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <div><Typography.Title level={3}>利润分析</Typography.Title><Typography.Paragraph type="secondary">桌面端可直接编辑单个业务单元格并即时保存；自动计算列不可编辑。移动端复用同一保存接口。</Typography.Paragraph><Space>{saveStatusTag()}{Object.keys(moneyDrafts).length > 0 ? <Typography.Text type="warning">有 {Object.keys(moneyDrafts).length} 个未提交草稿</Typography.Text> : null}</Space></div>
+    {/* 导入导出内嵌业务页面（M23，产品决策：所有导入导出归属业务页面）；导出对查看人员可用 */}
+    <ExcelImportExport canMaintain={canEdit} />
     <Card loading={loading} styles={{ body: { padding: 0 } }}>
       <Table<RecordValue> rowKey={(row) => String(row.id)} dataSource={rows} pagination={false} scroll={{ x: 'max-content' }} columns={[
         { key: 'name', title: '项目名称', fixed: 'left', width: 220, render: renderCell('name') },
@@ -366,7 +365,9 @@ export function ProfitAnalysis() {
   </Space>;
 }
 
-function ExcelImportExport() {
+/** 利润分析页内嵌的 Excel 导入导出（产品决策 2026-08-10：导入导出归属业务页面）。
+ * 导出对财务查看人员可用（fin PRD §3）；导入为数据维护能力，仅 maintain 可见。 */
+function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
   const feedback = useFeedback();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -427,8 +428,7 @@ function ExcelImportExport() {
     }
   };
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <div><Typography.Title level={3}>利润分析 Excel 导入导出</Typography.Title><Typography.Paragraph type="secondary">仅接受服务端导出的 V2 模板；预览与确认均在当前请求中限时处理，不留存原文件。</Typography.Paragraph></div>
-    <Card title="导入">
+    {canMaintain ? <Card title="导入"><Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>仅接受服务端导出的 V2 模板；预览与确认均在当前请求中限时处理，不留存原文件。</Typography.Paragraph>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Upload accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" maxCount={1} beforeUpload={selectFile} onRemove={() => { setFile(null); setPreview(null); setChoices({}); }}>
           <Button icon={<ImportOutlined />}>选择 Excel 文件</Button>
@@ -436,7 +436,7 @@ function ExcelImportExport() {
         <Space wrap><Button type="primary" disabled={!file} loading={loading} onClick={() => void previewFile()}>生成预览</Button><Button disabled={!preview || loading} onClick={() => void confirmFile()}>确认导入</Button></Space>
         {preview ? <ImportPreviewCard preview={preview} choices={choices} onChoiceChange={(rowNumber, decision) => setChoices((current) => ({ ...current, [rowNumber]: decision }))} /> : null}
       </Space>
-    </Card>
+    </Card> : null}
     <Card title="导出"><Space wrap><Button icon={<DownloadOutlined />} onClick={() => void exportFile('all')}>导出全部</Button><Button icon={<ExportOutlined />} onClick={() => void exportFile('filtered')}>导出已筛选</Button></Space></Card>
   </Space>;
 }

@@ -9,6 +9,7 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
+import { attachDeactivatedFlags } from '../../shared/deactivated-flag.util';
 import { allocateFifoBatches, cleanupEmptyItem, lockInventoryItems, writeStockFlow } from '../../shared/inventory-core';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import {
@@ -227,7 +228,10 @@ export class StockChangeService {
       }
       where.applicantId = { in: [...applicantIds] };
     }
-    return this.paginate(where, query);
+    const result = await this.paginate(where, query);
+    // 范围历史含已注销员工（M9）：补"已注销"标记（主 PRD §2.6）
+    await attachDeactivatedFlags(this.prisma.client, result.items as Array<Record<string, unknown>>, 'applicantId', 'applicantDeactivated');
+    return result;
   }
 
   /** 按申请人分页（本人历史） */

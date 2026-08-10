@@ -128,7 +128,7 @@ export class CategoryService {
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.category.update',
       idempotencyKey,
-      fingerprint: fingerprintPayload(input),
+      fingerprint: fingerprintPayload({ ...input, id }),
       run: async (tx) => {
         const existing = await tx.assetCategory.findUnique({ where: { id } });
         if (!existing) {

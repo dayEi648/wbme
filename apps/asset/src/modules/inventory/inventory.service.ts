@@ -268,7 +268,7 @@ export class InventoryService {
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.batch.correct',
       idempotencyKey: input.idempotencyKey,
-      fingerprint: fingerprintPayload(input),
+      fingerprint: fingerprintPayload({ ...input, batchId }),
       run: async (tx) => {
         // 锁序（M8 复核修复）：先无锁读批次定位条目，再按「条目 id 升序 → 批次行」加锁——
         // 与全系统其它写路径（申领/调拨/入库：lockInventoryItems 升序 → allocateFifoBatches）
