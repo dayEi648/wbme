@@ -9,6 +9,8 @@ import {
   USER_MANAGE_FUNCTION_CODE,
   type UserStatus,
 } from '@wbme/contracts';
+import { redisKey, REDIS_CLIENT, REDIS_NAMESPACE } from '@wbme/server';
+import type { Redis } from 'ioredis';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 import {
@@ -47,11 +49,16 @@ interface UserView {
   hasDingtalkBinding: boolean;
   createdAt: Date;
   deactivatedAt: Date | null;
+  /** 是否处于登录锁定（Redis 账号锁；仅详情返回，列表不查询） */
+  accountLocked?: boolean;
 }
 
 @Injectable()
 export class UserAdminService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+  ) {}
 
   /**
    * 创建用户（backstage PRD §3）：待激活基础账号（无密码、未绑定钉钉），
@@ -171,7 +178,7 @@ export class UserAdminService {
   }
 
   /**
-   * 用户详情（含已注销账号：恢复预览与管理展示需要）。
+   * 用户详情（含已注销账号：恢复预览与管理展示需要；携带登录锁定状态）。
    *
    * @param targetUserId 目标用户 id
    * @returns 用户展示项
@@ -195,7 +202,9 @@ export class UserAdminService {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
     const boundIds = await this.loadBoundUserIds([targetUserId]);
-    return this.toView(user, boundIds.has(targetUserId));
+    // 登录锁定状态（Redis 账号锁；与解锁接口同一 key 构造，base PRD §4）
+    const locked = (await this.redis.exists(redisKey(REDIS_NAMESPACE.RATE_LIMIT, 'acct_lock', targetUserId))) === 1;
+    return { ...this.toView(user, boundIds.has(targetUserId)), accountLocked: locked };
   }
 
   /**

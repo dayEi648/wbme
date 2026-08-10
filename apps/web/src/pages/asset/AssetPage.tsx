@@ -1,6 +1,7 @@
-import { Button, Card, Popconfirm, Segmented, Space, Table, Tag, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Button, Card, Descriptions, Drawer, Empty, Image, Modal, Pagination, Popconfirm, Space, Spin, Table, Tabs, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { QRCodeCanvas } from 'qrcode.react';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
 import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
@@ -8,34 +9,40 @@ import { ResourcePage } from '../../components/ResourcePage';
 import { ResourceFormModal } from '../../components/ResourceFormModal';
 import { SettingsEditor } from '../../components/SettingsEditor';
 import { SystemHome } from '../../components/SystemHome';
+import { formatBeijingDateTime } from '../../components/display-format';
+import { openQrPrintWindow } from '../../components/qr-print';
 import { useFeedback } from '../../request/feedback';
 import { http } from '../../request/http';
 import { useSession } from '../../request/session';
 
+type RecordValue = Record<string, unknown>;
+
 const NAVIGATION: NavigationItem[] = [
-  { key: 'my-assets', label: '我的资产', path: '/asset/my-assets', permission: 'my_assets' },
-  { key: 'assets', label: '固定资产台账', path: '/asset/assets', permission: ['fixed_asset_view', 'fixed_asset_maintain'] },
-  { key: 'repairs', label: '维修管理', path: '/asset/repairs', permission: 'fixed_asset_maintain' },
-  { key: 'consumables', label: '消耗品配置', path: '/asset/consumables', permission: 'inventory_manage' },
-  { key: 'warehouses', label: '库位管理', path: '/asset/warehouses', permission: 'inventory_manage' },
-  { key: 'inventory', label: '库存管理', path: '/asset/inventory', permission: 'inventory_manage' },
-  { key: 'stock-flows', label: '库存流水', path: '/asset/stock-flows', permission: 'inventory_manage' },
-  { key: 'transfers', label: '库存调拨', path: '/asset/transfers', permission: 'inventory_manage' },
-  { key: 'stock-in', label: '入库申请', path: '/asset/stock-in', permission: 'stock_in_apply' },
-  { key: 'stock-change', label: '库存变更申请', path: '/asset/stock-change', permission: 'stock_change_apply' },
-  { key: 'claims', label: '消耗品申领', path: '/asset/claims', permission: 'consumable_apply' },
-  { key: 'stock-in-history', label: '入库申请历史', path: '/asset/stock-in-history', permission: 'stock_in_history' },
-  { key: 'stock-change-history', label: '库存变更历史', path: '/asset/stock-change-history', permission: 'stock_change_history' },
-  { key: 'claim-history', label: '申领历史', path: '/asset/claim-history', permission: 'consumable_apply_history' },
-  { key: 'borrow-history', label: '借还历史', path: '/asset/borrow-history', permission: 'borrow_history' },
-  { key: 'agent-claims', label: '代领申请', path: '/asset/agent-claims', permission: 'proxy_apply' },
-  { key: 'agent-settlements', label: '代领结清', path: '/asset/agent-settlements', permission: 'proxy_apply' },
-  { key: 'borrow', label: '借还与核销', path: '/asset/borrow', permission: 'my_borrow' },
-  { key: 'my-requests', label: '我的资产申请', path: '/asset/my-requests', permission: ['stock_in_apply', 'stock_change_apply', 'consumable_apply', 'proxy_apply', 'my_borrow'] },
-  { key: 'disposals', label: '注销处置', path: '/asset/disposals', permission: 'consumable_approval' },
-  { key: 'qr-codes', label: '二维码管理', path: '/asset/qr-codes', permission: ['fixed_asset_maintain', 'inventory_manage'] },
-  { key: 'approval', label: '审批中心', path: '/asset/approval', permission: 'consumable_approval' },
-  { key: 'config', label: '资产配置', path: '/asset/config', permission: 'asset_config' },
+  { key: 'my-assets', label: '我的资产', path: '/asset/my-assets', permission: 'my_assets', group: '固定资产' },
+  { key: 'assets', label: '固定资产台账', path: '/asset/assets', permission: ['fixed_asset_view', 'fixed_asset_maintain'], group: '固定资产' },
+  { key: 'repairs', label: '维修管理', path: '/asset/repairs', permission: 'fixed_asset_maintain', group: '固定资产' },
+  { key: 'qr-codes', label: '二维码管理', path: '/asset/qr-codes', permission: ['fixed_asset_maintain', 'inventory_manage'], group: '固定资产' },
+  { key: 'consumables', label: '消耗品配置', path: '/asset/consumables', permission: 'inventory_manage', group: '库存管理' },
+  { key: 'warehouses', label: '库位管理', path: '/asset/warehouses', permission: 'inventory_manage', group: '库存管理' },
+  { key: 'inventory', label: '库存条目', path: '/asset/inventory', permission: 'inventory_manage', group: '库存管理' },
+  { key: 'inventory-batches', label: '库存批次', path: '/asset/inventory-batches', permission: 'inventory_manage', group: '库存管理' },
+  { key: 'stock-flows', label: '库存流水', path: '/asset/stock-flows', permission: 'inventory_manage', group: '库存管理' },
+  { key: 'transfers', label: '库存调拨', path: '/asset/transfers', permission: 'inventory_manage', group: '库存管理' },
+  { key: 'disposals-pending', label: '待处置', path: '/asset/disposals-pending', permission: 'consumable_approval', group: '库存管理' },
+  { key: 'disposals-records', label: '处置记录', path: '/asset/disposals-records', permission: 'consumable_approval', group: '库存管理' },
+  { key: 'stock-in', label: '入库申请', path: '/asset/stock-in', permission: 'stock_in_apply', group: '申请与审批' },
+  { key: 'stock-change', label: '库存变更申请', path: '/asset/stock-change', permission: 'stock_change_apply', group: '申请与审批' },
+  { key: 'claims', label: '消耗品申领', path: '/asset/claims', permission: 'consumable_apply', group: '申请与审批' },
+  { key: 'agent-claims', label: '代领申请', path: '/asset/agent-claims', permission: 'proxy_apply', group: '申请与审批' },
+  { key: 'agent-settlements', label: '代领结清', path: '/asset/agent-settlements', permission: 'proxy_apply', group: '申请与审批' },
+  { key: 'borrow', label: '借还与核销', path: '/asset/borrow', permission: 'my_borrow', group: '申请与审批' },
+  { key: 'agent-shared', label: '代领共享清单', path: '/asset/agent-shared', permission: 'my_borrow', group: '申请与审批' },
+  { key: 'approval', label: '审批中心', path: '/asset/approval', permission: 'consumable_approval', group: '审批中心' },
+  { key: 'stock-in-history', label: '入库申请历史', path: '/asset/stock-in-history', permission: 'stock_in_history', group: '历史记录' },
+  { key: 'stock-change-history', label: '库存变更历史', path: '/asset/stock-change-history', permission: 'stock_change_history', group: '历史记录' },
+  { key: 'claim-history', label: '申领历史', path: '/asset/claim-history', permission: 'consumable_apply_history', group: '历史记录' },
+  { key: 'borrow-history', label: '借还历史', path: '/asset/borrow-history', permission: 'borrow_history', group: '历史记录' },
+  { key: 'config', label: '系统设置', path: '/asset/config', permission: 'asset_config', group: '系统设置' },
 ];
 
 const ASSET_COLUMNS = [
@@ -59,7 +66,7 @@ const COMMON_COLUMNS = [
 const nameColWithDeactivatedFlag = (key: 'applicantName' | 'userName', title: string, flagKey: 'applicantDeactivated' | 'userDeactivated') => ({
   key,
   title,
-  render: (value: unknown, row: Record<string, unknown>) => (
+  render: (value: unknown, row: RecordValue) => (
     <span>
       {String(value ?? '')}
       {row[flagKey] ? <Tag color="red" style={{ marginLeft: 4 }}>已注销</Tag> : null}
@@ -67,17 +74,13 @@ const nameColWithDeactivatedFlag = (key: 'applicantName' | 'userName', title: st
   ),
 });
 
-/** 审批申请列表列（契约：对齐后端 ApprovalRequest 模型字段——无 name，申请人见 applicantName 列；M20 复核修复） */
 const REQUEST_COLUMNS = [
   { key: 'id', title: 'ID', fixed: 'left' as const },
   { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
   { key: 'submittedAt', title: '提交时间' },
 ];
 
-/**
- * 借还历史列（契约：对齐后端 borrow.service listHistory SELECT 字段经 DataTable
- * normalizeRow 转驼峰后的键，asset-page-columns.spec 有列 key 契约断言，M20）。
- */
+/** 借还历史列（契约：对齐后端 borrow.service listHistory SELECT 字段，asset-page-columns.spec 断言）。 */
 export const BORROW_HISTORY_COLUMNS = [
   { key: 'id', title: 'ID', fixed: 'left' as const },
   { key: 'recordType', title: '记录类型' },
@@ -91,7 +94,7 @@ export const BORROW_HISTORY_COLUMNS = [
   { key: 'createdAt', title: '创建时间' },
 ];
 
-/** 待处置列（契约：对齐后端 disposal.service listPending SELECT 字段经 normalizeRow 转驼峰，M28） */
+/** 待处置列（契约：对齐后端 disposal.service listPending SELECT 字段，asset-page-columns.spec 断言）。 */
 export const DISPOSAL_PENDING_COLUMNS = [
   { key: 'recordId', title: '记录 ID', fixed: 'left' as const },
   { key: 'recordType', title: '记录类型' },
@@ -101,7 +104,7 @@ export const DISPOSAL_PENDING_COLUMNS = [
   { key: 'dueAt', title: '到期时间' },
 ];
 
-/** 处置记录列（契约：对齐后端 disposal.service listRecords SELECT 字段，M28） */
+/** 处置记录列（契约：对齐后端 disposal.service listRecords SELECT 字段，asset-page-columns.spec 断言）。 */
 export const DISPOSAL_RECORDS_COLUMNS = [
   { key: 'id', title: 'ID', fixed: 'left' as const },
   { key: 'recordType', title: '记录类型' },
@@ -117,6 +120,11 @@ const ENABLED_STATUS_OPTIONS = [{ label: '启用', value: 'ACTIVE' }, { label: '
 const APPROVAL_STATUS_OPTIONS = [{ label: '待审批', value: 'PENDING' }, { label: '已批准', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }, { label: '已取消', value: 'CANCELLED' }];
 const ASSET_USAGE_STATUS_OPTIONS = [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }, { label: '待维修', value: 'PENDING_REPAIR' }, { label: '维修中', value: 'REPAIRING' }, { label: '已报废', value: 'SCRAPPED' }];
 
+const ASSET_STATUS_LABELS: Readonly<Record<string, string>> = {
+  IDLE: '闲置', IN_USE: '使用中', PENDING_REPAIR: '待维修', REPAIRING: '维修中', SCRAPPED: '已报废',
+};
+const OWNERSHIP_LABELS: Readonly<Record<string, string>> = { COMPANY: '公司', PARTNER: '合作方' };
+
 /** 资产系统路由容器。 */
 export default function AssetPage() {
   const { pathname } = useLocation();
@@ -124,45 +132,49 @@ export default function AssetPage() {
   const body = useMemo(() => {
     switch (section) {
       case 'my-assets':
-        return <DataTable title="我的资产" description="查看本人负责、使用或相关的固定资产。" service="asset" endpoint="/assets/mine" pageKey="asset-my-assets" columns={ASSET_COLUMNS} filterFields={[{ key: 'scope', title: '范围', type: 'enum', options: [{ label: '负责', value: 'OWNED' }, { label: '使用', value: 'USED' }, { label: '全部', value: 'ALL' }] }]} />;
+        return <MyAssets />;
       case 'assets':
         return <FixedAssets />;
       case 'repairs':
         return <RepairManagement />;
       case 'consumables':
-        return <ResourcePage title="消耗品配置" description="维护可申领的消耗品品种、单位及启停状态。" service="asset" endpoint="/consumables" pageKey="asset-consumables" columns={[...COMMON_COLUMNS, { key: 'unitName', title: '单位' }, { key: 'categoryName', title: '分类' }]} filterFields={[{ key: 'keyword', title: '关键字', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: ENABLED_STATUS_OPTIONS }]} create={{ title: '新建消耗品', endpoint: '/consumables', fields: [{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'type', label: '品种类型', type: 'select', required: true, options: [{ label: '一次性用品', value: 'DISPOSABLE' }, { label: '借还用品', value: 'REUSABLE' }] }, { key: 'unitId', label: '单位 ID', type: 'number' }, { key: 'categoryId', label: '分类 ID', type: 'number' }, { key: 'quotaCycle', label: '一次性用品周期', type: 'select', options: [{ label: '月', value: 'MONTH' }, { label: '季度', value: 'QUARTER' }, { label: '年', value: 'YEAR' }] }, { key: 'quotaLimit', label: '一次性用品数量上限', type: 'number' }, { key: 'returnDays', label: '借还期限（天）', type: 'number' }, { key: 'maxHolding', label: '借还同时持有上限', type: 'number' }, { key: 'referencePrice', label: '参考单价', type: 'number' }, { key: 'safetyStock', label: '安全库存', type: 'number' }] }} edit={{ title: '编辑消耗品', fields: [{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'type', label: '品种类型', type: 'select', required: true, options: [{ label: '一次性用品', value: 'DISPOSABLE' }, { label: '借还用品', value: 'REUSABLE' }] }, { key: 'categoryId', label: '分类 ID', type: 'number' }, { key: 'quotaCycle', label: '一次性用品周期', type: 'select', options: [{ label: '月', value: 'MONTH' }, { label: '季度', value: 'QUARTER' }, { label: '年', value: 'YEAR' }] }, { key: 'quotaLimit', label: '一次性用品数量上限', type: 'number' }, { key: 'returnDays', label: '借还期限（天）', type: 'number' }, { key: 'maxHolding', label: '借还同时持有上限', type: 'number' }, { key: 'referencePrice', label: '参考单价', type: 'number' }, { key: 'safetyStock', label: '安全库存', type: 'number', required: true }, { key: 'status', label: '状态', type: 'select', required: true, options: ENABLED_STATUS_OPTIONS }] }} batchDelete={{ endpoint: '/consumables/batch', bodyKey: 'ids' }} />;
+        return <ResourcePage title="消耗品配置" service="asset" endpoint="/consumables" pageKey="asset-consumables" columns={[...COMMON_COLUMNS, { key: 'unitName', title: '单位' }, { key: 'categoryName', title: '分类' }]} filterFields={[{ key: 'keyword', title: '关键字', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: ENABLED_STATUS_OPTIONS }]} create={{ title: '新建消耗品', endpoint: '/consumables', fields: [{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'type', label: '品种类型', type: 'select', required: true, options: [{ label: '一次性用品', value: 'DISPOSABLE' }, { label: '借还用品', value: 'REUSABLE' }] }, { key: 'unitId', label: '单位 ID', type: 'number' }, { key: 'categoryId', label: '分类 ID', type: 'number' }, { key: 'quotaCycle', label: '一次性用品周期', type: 'select', options: [{ label: '月', value: 'MONTH' }, { label: '季度', value: 'QUARTER' }, { label: '年', value: 'YEAR' }] }, { key: 'quotaLimit', label: '一次性用品数量上限', type: 'number' }, { key: 'returnDays', label: '借还期限（天）', type: 'number' }, { key: 'maxHolding', label: '借还同时持有上限', type: 'number' }, { key: 'referencePrice', label: '参考单价', type: 'number' }, { key: 'safetyStock', label: '安全库存', type: 'number' }] }} edit={{ title: '编辑消耗品', fields: [{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'type', label: '品种类型', type: 'select', required: true, options: [{ label: '一次性用品', value: 'DISPOSABLE' }, { label: '借还用品', value: 'REUSABLE' }] }, { key: 'categoryId', label: '分类 ID', type: 'number' }, { key: 'quotaCycle', label: '一次性用品周期', type: 'select', options: [{ label: '月', value: 'MONTH' }, { label: '季度', value: 'QUARTER' }, { label: '年', value: 'YEAR' }] }, { key: 'quotaLimit', label: '一次性用品数量上限', type: 'number' }, { key: 'returnDays', label: '借还期限（天）', type: 'number' }, { key: 'maxHolding', label: '借还同时持有上限', type: 'number' }, { key: 'referencePrice', label: '参考单价', type: 'number' }, { key: 'safetyStock', label: '安全库存', type: 'number', required: true }, { key: 'status', label: '状态', type: 'select', required: true, options: ENABLED_STATUS_OPTIONS }] }} batchDelete={{ endpoint: '/consumables/batch', bodyKey: 'ids' }} />;
       case 'warehouses':
-        return <ResourcePage title="库位管理" description="维护全公司统一层级库位树；移动或删除前由服务端校验循环和业务引用。" service="asset" endpoint="/warehouses/tree" pageKey="asset-warehouses" columns={[...COMMON_COLUMNS, { key: 'parentName', title: '上级库位' }, { key: 'sort', title: '排序' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }]} create={{ title: '新建库位', endpoint: '/warehouses', fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位 ID', type: 'number' }, { key: 'sort', label: '排序', type: 'number' }] }} edit={{ title: '编辑库位', endpoint: (id) => `/warehouses/${id}`, fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位 ID', type: 'number' }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/warehouses/batch', bodyKey: 'ids' }} />;
+        return <ResourcePage title="库位管理" service="asset" endpoint="/warehouses/tree" pageKey="asset-warehouses" columns={[...COMMON_COLUMNS, { key: 'parentName', title: '上级库位' }, { key: 'sort', title: '排序' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }]} create={{ title: '新建库位', endpoint: '/warehouses', fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位 ID', type: 'number' }, { key: 'sort', label: '排序', type: 'number' }] }} edit={{ title: '编辑库位', endpoint: (id) => `/warehouses/${id}`, fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位 ID', type: 'number' }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/warehouses/batch', bodyKey: 'ids', previewEndpoint: '/warehouses/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `现存库存条目 ${String(item.inventoryItemCount ?? 0)} 个；未结清借还 ${String(item.borrowCount ?? 0)} 条；待审批引用 ${String(item.pendingCount ?? 0)} 处` }) }} />;
       case 'inventory':
-        return <InventoryManagement />;
+        return <InventoryItems />;
+      case 'inventory-batches':
+        return <InventoryBatches />;
       case 'stock-flows':
         return <StockFlows />;
       case 'transfers':
-        return <ResourcePage title="库存调拨" description="每次调拨处理一个库存条目，服务端按 FIFO 分配批次并保持总量不变。" service="asset" endpoint="/asset/inventory-transfers" pageKey="asset-inventory-transfers" columns={[...COMMON_COLUMNS, { key: 'sourceLocationName', title: '来源库位' }, { key: 'targetLocationName', title: '目标库位' }, { key: 'qty', title: '数量' }]} create={{ title: '发起调拨', fields: [{ key: 'fromInventoryItemId', label: '来源库存 ID', type: 'number', required: true }, { key: 'toWarehouseId', label: '目标库位 ID', type: 'number', required: true }, { key: 'qty', label: '数量', type: 'number', required: true }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }] }} />;
+        return <ResourcePage title="库存调拨" service="asset" endpoint="/asset/inventory-transfers" pageKey="asset-inventory-transfers" columns={[...COMMON_COLUMNS, { key: 'sourceLocationName', title: '来源库位' }, { key: 'targetLocationName', title: '目标库位' }, { key: 'qty', title: '数量' }]} create={{ title: '发起调拨', fields: [{ key: 'fromInventoryItemId', label: '来源库存 ID', type: 'number', required: true }, { key: 'toWarehouseId', label: '目标库位 ID', type: 'number', required: true }, { key: 'qty', label: '数量', type: 'number', required: true }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }] }} />;
       case 'stock-in':
-        return <ResourcePage title="入库申请" description="提交后库存按审批状态占用或入账；展示本人提交的历史。" service="asset" endpoint="/stock-in-requests/mine" pageKey="asset-stock-in" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建入库申请', endpoint: '/stock-in-requests', fields: [{ key: 'items', label: '入库明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+        return <ResourcePage title="入库申请" service="asset" endpoint="/stock-in-requests/mine" pageKey="asset-stock-in" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建入库申请', endpoint: '/stock-in-requests', fields: [{ key: 'items', label: '入库明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
       case 'stock-in-history':
-        return <ResourcePage title="入库申请历史" description="查看数据范围内全部入库申请记录（「入库申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-in-requests" pageKey="asset-stock-in-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
+        return <ResourcePage title="入库申请历史" service="asset" endpoint="/stock-in-requests" pageKey="asset-stock-in-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'stock-change':
-        return <ResourcePage title="库存变更申请" description="意外扣减等库存变更经过审批，拒绝与取消会释放占用。" service="asset" endpoint="/stock-change-requests/mine" pageKey="asset-stock-change" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建库存变更申请', endpoint: '/stock-change-requests', fields: [{ key: 'items', label: '变更明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+        return <ResourcePage title="库存变更申请" service="asset" endpoint="/stock-change-requests/mine" pageKey="asset-stock-change" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建库存变更申请', endpoint: '/stock-change-requests', fields: [{ key: 'items', label: '变更明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
       case 'stock-change-history':
-        return <ResourcePage title="库存变更历史" description="查看数据范围内全部库存变更申请记录（「库存变更申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-change-requests" pageKey="asset-stock-change-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
+        return <ResourcePage title="库存变更历史" service="asset" endpoint="/stock-change-requests" pageKey="asset-stock-change-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'claims':
-        return <ResourcePage title="消耗品申领" description="普通申领按可用库存与个人额度进行原子占用。" service="asset" endpoint="/consumable-requests/mine" pageKey="asset-claims" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交申领', endpoint: '/consumable-requests', fields: [{ key: 'items', label: '申领明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+        return <ClaimRequests />;
       case 'claim-history':
-        return <ResourcePage title="申领历史" description="查看数据范围内全部消耗品申领记录（「消耗品申领历史记录」部门/公司档）。" service="asset" endpoint="/consumable-requests" pageKey="asset-claim-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
+        return <ResourcePage title="申领历史" service="asset" endpoint="/consumable-requests" pageKey="asset-claim-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'agent-claims':
-        return <ResourcePage title="代领申请" description="代领需指定受领人；受领人可查看共享借还清单。" service="asset" endpoint="/agent-requests/mine" pageKey="asset-agent-claims" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '代领人' }, { key: 'recipientCount', title: '受领人数' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领申请', endpoint: '/agent-requests', fields: [{ key: 'items', label: '物品明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }, { key: 'recipientIds', label: '受领人 ID（JSON 数组）', type: 'textarea', required: true, maxLength: 2000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items), recipientIds: parseJsonArray(values.recipientIds) }) }} />;
+        return <ResourcePage title="代领申请" service="asset" endpoint="/agent-requests/mine" pageKey="asset-agent-claims" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '代领人' }, { key: 'recipientCount', title: '受领人数' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领申请', endpoint: '/agent-requests', fields: [{ key: 'items', label: '物品明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }, { key: 'recipientIds', label: '受领人 ID（JSON 数组）', type: 'textarea', required: true, maxLength: 2000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items), recipientIds: parseJsonArray(values.recipientIds) }) }} />;
       case 'agent-settlements':
-        return <ResourcePage title="代领整单结清" description="代领借还必须一次性覆盖整张共享清单的全部未结清数量，提交后进入消耗品审批。" service="asset" endpoint="/agent-settlements/mine" pageKey="asset-agent-settlements" columns={[...REQUEST_COLUMNS, { key: 'applicationNo', title: '申请编号' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领整单结清', endpoint: '/agent-settlements', fields: [{ key: 'refRequestId', label: '代领申请 ID', type: 'number', required: true }, { key: 'items', label: '结清明细（JSON）', type: 'textarea', required: true, maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }], transform: (values) => ({ refRequestId: values.refRequestId, items: parseJsonArray(values.items) }) }} />;
+        return <ResourcePage title="代领整单结清" service="asset" endpoint="/agent-settlements/mine" pageKey="asset-agent-settlements" columns={[...REQUEST_COLUMNS, { key: 'applicationNo', title: '申请编号' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领整单结清', endpoint: '/agent-settlements', fields: [{ key: 'refRequestId', label: '代领申请 ID', type: 'number', required: true }, { key: 'items', label: '结清明细（JSON）', type: 'textarea', required: true, maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }], transform: (values) => ({ refRequestId: values.refRequestId, items: parseJsonArray(values.items) }) }} />;
       case 'borrow':
-        return <BorrowPage />;
+        return <MyBorrow />;
+      case 'agent-shared':
+        return <AgentSharedList />;
       case 'borrow-history':
-        return <ResourcePage title="借还历史" description="查看数据范围内全部借还/归还/核销记录（「借还历史记录」部门/公司档）。" service="asset" endpoint="/borrow-records" pageKey="asset-borrow-history" columns={BORROW_HISTORY_COLUMNS} filterFields={[{ key: 'keyword', title: '物品/借用人关键字', type: 'text' }]} />;
-      case 'my-requests':
-        return <MyAssetApplications />;
-      case 'disposals':
-        return <DisposalManagement />;
+        return <ResourcePage title="借还历史" service="asset" endpoint="/borrow-records" pageKey="asset-borrow-history" columns={BORROW_HISTORY_COLUMNS} filterFields={[{ key: 'keyword', title: '物品/借用人关键字', type: 'text' }]} />;
+      case 'disposals-pending':
+        return <ResourcePage title="待处置" service="asset" endpoint="/disposals?tab=PENDING" pageKey="asset-disposals" columns={DISPOSAL_PENDING_COLUMNS} create={{ title: '执行直接处置', endpoint: '/disposals', fields: [{ key: 'disposalType', label: '处置类型', type: 'select', required: true, options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }, { key: 'items', label: '个人借还明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }, { key: 'agentRequestId', label: '代领申请 ID（仅整单结清）', type: 'number' }, { key: 'agentItems', label: '代领结清明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"WRITE_OFF","writeOffType":"LOST","reason":"遗失","qty":1}]' }], transform: disposalPayload }} />;
+      case 'disposals-records':
+        return <ResourcePage title="处置记录" service="asset" endpoint="/disposals?tab=RECORDS" pageKey="asset-disposal-records" columns={DISPOSAL_RECORDS_COLUMNS} filterFields={[{ key: 'disposalType', title: '处置方式', type: 'enum', options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }]} />;
       case 'qr-codes':
         return <QrCodeManagement />;
       case 'approval':
@@ -176,14 +188,105 @@ export default function AssetPage() {
   return <AppShell systemName="资产系统" homePath="/asset" items={NAVIGATION}>{body}</AppShell>;
 }
 
+/** 我的资产：点行打开资产详情（asset PRD §4：详情/主图/二维码/历史）；扫码以 ?assetId= 直达详情。 */
+function MyAssets() {
+  const [searchParams] = useSearchParams();
+  const scannedAssetId = searchParams.get('assetId');
+  const [detailId, setDetailId] = useState<number | null>(scannedAssetId ? Number(scannedAssetId) : null);
+  return <>
+    <DataTable title="我的资产" service="asset" endpoint="/assets/mine" pageKey="asset-my-assets" columns={ASSET_COLUMNS} filterFields={[{ key: 'scope', title: '范围', type: 'enum', options: [{ label: '负责', value: 'OWNED' }, { label: '使用', value: 'USED' }, { label: '全部', value: 'ALL' }] }]} onRowClick={(row) => setDetailId(Number(row.id))} />
+    <AssetDetailDrawer assetId={detailId} onClose={() => setDetailId(null)} />
+  </>;
+}
+
+/** 资产详情抽屉：基本信息、主图、二维码与调度/变更/维修历史（asset PRD §4）。 */
+function AssetDetailDrawer({ assetId, onClose }: { assetId: number | null; onClose: () => void }) {
+  const feedback = useFeedback();
+  const [detail, setDetail] = useState<RecordValue | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [qr, setQr] = useState<RecordValue | null>(null);
+  useEffect(() => {
+    if (assetId === null) {
+      setDetail(null);
+      setImageUrl(null);
+      setQr(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const [asset, qrResult] = await Promise.all([
+          http.get<RecordValue>(`/assets/${assetId}`, { service: 'asset', active: true }),
+          http.get<{ data?: Array<RecordValue> }>(`/qr-codes?targetType=ASSET&targetId=${assetId}&page=1&pageSize=5`, { service: 'asset', active: true }),
+        ]);
+        setDetail(asset);
+        const activeQr = (qrResult.data ?? []).find((row) => row.status === 'ACTIVE');
+        setQr(activeQr ?? null);
+        if (typeof asset.imageOssKey === 'string' && asset.imageOssKey) {
+          const download = await http.get<{ downloadUrl?: string }>(`/files/images/download?objectKey=${encodeURIComponent(asset.imageOssKey)}`, { active: true });
+          setImageUrl(download.downloadUrl ?? null);
+        } else {
+          setImageUrl(null);
+        }
+      } catch (error) {
+        feedback.error(error, '资产详情加载失败');
+      }
+    })();
+  }, [assetId, feedback]);
+  const transfers = Array.isArray(detail?.transfers) ? detail?.transfers as Array<RecordValue> : [];
+  const changes = Array.isArray(detail?.changes) ? detail?.changes as Array<RecordValue> : [];
+  const repairOrders = Array.isArray(detail?.repairOrders) ? detail?.repairOrders as Array<RecordValue> : [];
+  const basicItems: Array<{ label: string; children: React.ReactNode }> = (
+    [
+      ['name', '资产名称'], ['id', '资产编号'], ['categoryName', '分类'], ['specModel', '规格型号'],
+      ['departmentName', '所属部门'], ['responsibleUserName', '责任人'], ['currentUserName', '使用者'],
+      ['usageStatus', '使用状态'], ['ownership', '资产归属'], ['ownerName', '合作方名称'],
+      ['amount', '金额'], ['purchaseAt', '入库时间'], ['remark', '备注'], ['updatedAt', '更新时间'],
+    ] as Array<[string, string]>
+  ).filter(([key]) => detail?.[key] !== undefined && detail[key] !== null).map(([key, label]) => ({
+    label,
+    children: <span>{key === 'usageStatus' ? ASSET_STATUS_LABELS[String(detail?.[key] ?? '')] ?? String(detail?.[key] ?? '—') : key === 'ownership' ? OWNERSHIP_LABELS[String(detail?.[key] ?? '')] ?? String(detail?.[key] ?? '—') : key === 'purchaseAt' || key === 'updatedAt' ? formatBeijingDateTime(String(detail?.[key] ?? '')) : String(detail?.[key] ?? '—')}</span>,
+  }));
+  return <Drawer title="资产详情" open={assetId !== null} onClose={onClose} width={720}>
+    {detail ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {imageUrl ? <Image src={imageUrl} alt="资产主图" style={{ maxWidth: 320, maxHeight: 240, objectFit: 'contain' }} /> : null}
+      <Descriptions bordered column={1} size="small" items={basicItems} />
+      <Card size="small" title="二维码">
+        {qr && typeof qr.publicId === 'string' ? (
+          <Space direction="vertical" size="small">
+            <QRCodeCanvas value={`${window.location.origin}/scan#${qr.publicId}`} size={140} />
+            <Typography.Text type="secondary">扫码查看资产入口</Typography.Text>
+          </Space>
+        ) : <Typography.Text type="secondary">未生成有效二维码</Typography.Text>}
+      </Card>
+      <Tabs items={[
+        { key: 'transfers', label: `调度记录（${transfers.length}）`, children: historyTable(transfers, [
+          { key: 'createdAt', title: '时间' }, { key: 'toDepartmentName', title: '目标部门' }, { key: 'toUserName', title: '目标责任人' }, { key: 'remark', title: '备注' },
+        ]) },
+        { key: 'changes', label: `变更记录（${changes.length}）`, children: historyTable(changes, [
+          { key: 'createdAt', title: '时间' }, { key: 'changedField', title: '变更字段' }, { key: 'oldValue', title: '变更前' }, { key: 'newValue', title: '变更后' }, { key: 'operatorName', title: '操作人' },
+        ]) },
+        { key: 'repairs', label: `维修单（${repairOrders.length}）`, children: historyTable(repairOrders, [
+          { key: 'createdAt', title: '登记时间' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'faultDescription', title: '故障/维修事项' }, { key: 'result', title: '维修结果' }, { key: 'actualCost', title: '实际费用' },
+        ]) },
+      ]} />
+    </Space> : <Typography.Text>正在加载...</Typography.Text>}
+  </Drawer>;
+}
+
+function historyTable(rows: Array<RecordValue>, columns: Array<{ key: string; title: string; render?: (value: unknown) => React.ReactNode }>) {
+  return <Table<RecordValue> size="small" rowKey={(row, index) => `${String(row.id ?? '')}-${String(index)}`} pagination={false} dataSource={rows} locale={{ emptyText: '暂无记录' }} columns={columns.map((column) => ({ ...column, dataIndex: column.key, render: column.render ?? ((value: unknown) => <span style={{ whiteSpace: 'pre-wrap' }}>{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</span>) }))} />;
+}
+
 function FixedAssets() {
   const feedback = useFeedback();
   const { can } = useSession();
-  // 只读用户（fixed_asset_view）不展示任何编辑入口（主 PRD §10.4，M25）
   const canMaintain = can('fixed_asset_maintain');
+  const [searchParams] = useSearchParams();
+  const scannedAssetId = searchParams.get('assetId');
   const [version, setVersion] = useState(0);
   const [scheduleId, setScheduleId] = useState<number | null>(null);
-  const schedule = async (values: Record<string, unknown>) => {
+  const [detailId, setDetailId] = useState<number | null>(scannedAssetId ? Number(scannedAssetId) : null);
+  const schedule = async (values: RecordValue) => {
     if (!scheduleId) return;
     try {
       await http.post(`/assets/${scheduleId}/schedule`, values, { service: 'asset' });
@@ -207,7 +310,6 @@ function FixedAssets() {
     <ResourcePage
       key={version}
       title="固定资产台账"
-      description="维护资产资料、调度、报废和维修状态；点击资产可编辑基础资料，部门和责任人变更必须走调度记录。"
       service="asset"
       endpoint="/assets"
       pageKey="asset-ledger"
@@ -252,6 +354,7 @@ function FixedAssets() {
       exportConfig={{ allEndpoint: '/assets/export', filename: 'assets.xlsx' }}
       rowActions={canMaintain ? (row) => (
         <Space size="small">
+          <Button size="small" onClick={() => setDetailId(Number(row.id))}>详情</Button>
           <Button size="small" onClick={() => setScheduleId(Number(row.id))}>调度</Button>
           {row.usageStatus !== 'SCRAPPED' ? (
             <Popconfirm title="确认报废该资产？报废是业务状态变更，不会删除台账。" onConfirm={() => void scrap(Number(row.id))}>
@@ -259,18 +362,77 @@ function FixedAssets() {
             </Popconfirm>
           ) : null}
         </Space>
-      ) : undefined}
+      ) : (row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>详情</Button>}
     />
     <ResourceFormModal title="资产调度" open={scheduleId !== null} onCancel={() => setScheduleId(null)} onSubmit={schedule} fields={[{ key: 'toDepartmentId', label: '目标部门 ID', type: 'number', required: true }, { key: 'toUserId', label: '目标责任人 ID', type: 'number', required: true }, { key: 'remark', label: '调度备注', type: 'textarea', maxLength: 200 }]} />
+    <AssetDetailDrawer assetId={detailId} onClose={() => setDetailId(null)} />
   </>;
 }
 
-/** 库存条目与入库批次：批次纠正由服务端重验追溯条件并写入库存流水。 */
-function InventoryManagement() {
+/** 库存条目：点行查看条目详情（含该条目批次与「查看全部批次」跳转）。 */
+function InventoryItems() {
+  const [detailId, setDetailId] = useState<number | null>(null);
+  return <>
+    <DataTable title="库存条目" service="asset" endpoint="/inventory/items" pageKey="asset-inventory" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'warehouseName', title: '库位' }, { key: 'availableQty', title: '可用数量' }, { key: 'bookQty', title: '账面数量' }, { key: 'reservedQty', title: '占用数量' }, { key: 'lowStock', title: '低库存', render: (value: unknown) => <StatusTag value={value ? 'PENDING' : 'NORMAL'} /> }]} filterFields={[{ key: 'consumableId', title: '品种 ID', type: 'number' }, { key: 'warehouseId', title: '库位 ID', type: 'number' }]} onRowClick={(row) => setDetailId(Number(row.id))} />
+    <InventoryItemDrawer itemId={detailId} onClose={() => setDetailId(null)} />
+  </>;
+}
+
+/** 库存条目详情：条目信息 + 该条目批次；提供跳转批次页入口。 */
+function InventoryItemDrawer({ itemId, onClose }: { itemId: number | null; onClose: () => void }) {
   const feedback = useFeedback();
+  const navigate = useNavigate();
+  const [item, setItem] = useState<RecordValue | null>(null);
+  const [batches, setBatches] = useState<RecordValue[]>([]);
+  useEffect(() => {
+    if (itemId === null) {
+      setItem(null);
+      setBatches([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const [itemResult, batchResult] = await Promise.all([
+          http.get<{ data?: Array<RecordValue> }>(`/inventory/items?page=1&pageSize=1&id=${itemId}`, { service: 'asset', active: true }),
+          http.get<{ data?: Array<RecordValue> }>(`/inventory/batches?inventoryItemId=${itemId}&page=1&pageSize=20`, { service: 'asset', active: true }),
+        ]);
+        setItem((itemResult.data ?? [])[0] ?? null);
+        setBatches(batchResult.data ?? []);
+      } catch (error) {
+        feedback.error(error, '库存条目详情加载失败');
+      }
+    })();
+  }, [itemId, feedback]);
+  const items = item ? [
+    { label: '品种', children: String(item.consumableName ?? '—') },
+    { label: '库位', children: String(item.warehouseName ?? '—') },
+    { label: '可用数量', children: String(item.availableQty ?? '—') },
+    { label: '账面数量', children: String(item.bookQty ?? '—') },
+    { label: '占用数量', children: String(item.reservedQty ?? '—') },
+  ] : [];
+  return <Drawer title="库存条目详情" open={itemId !== null} onClose={onClose} width={720}>
+    {item ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Descriptions bordered column={1} size="small" items={items} />
+      <Card size="small" title={`该条目批次（${batches.length}）`} extra={<Button size="small" onClick={() => navigate(`/asset/inventory-batches?inventoryItemId=${itemId}`)}>查看全部批次</Button>} styles={{ body: { padding: 0 } }}>
+        <Table<RecordValue> size="small" rowKey={(row) => String(row.id)} pagination={false} dataSource={batches} locale={{ emptyText: '暂无批次' }} columns={[
+          { key: 'id', title: '批次 ID', dataIndex: 'id' },
+          { key: 'spec', title: '规格', dataIndex: 'spec' },
+          { key: 'remainingQty', title: '剩余数量', dataIndex: 'remainingQty' },
+          { key: 'receivedAt', title: '入库时间', dataIndex: 'receivedAt' },
+        ]} />
+      </Card>
+    </Space> : <Typography.Text>正在加载...</Typography.Text>}
+  </Drawer>;
+}
+
+/** 库存批次页：支持从条目详情携带 inventoryItemId 进入并自动筛选。 */
+function InventoryBatches() {
+  const feedback = useFeedback();
+  const [searchParams] = useSearchParams();
+  const itemId = searchParams.get('inventoryItemId');
   const [version, setVersion] = useState(0);
   const [batchId, setBatchId] = useState<number | null>(null);
-  const correctBatch = async (values: Record<string, unknown>) => {
+  const correctBatch = async (values: RecordValue) => {
     if (batchId === null) return;
     const payload = {
       ...values,
@@ -285,19 +447,17 @@ function InventoryManagement() {
       feedback.error(error, '库存批次纠正失败');
     }
   };
-  return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <DataTable key={`items-${version}`} title="消耗品库存" description="库存账面、占用与可用数量由服务端事务保持一致。" service="asset" endpoint="/inventory/items" pageKey="asset-inventory" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'warehouseName', title: '库位' }, { key: 'availableQty', title: '可用数量' }, { key: 'bookQty', title: '账面数量' }, { key: 'reservedQty', title: '占用数量' }, { key: 'lowStock', title: '低库存', render: (value: unknown) => <StatusTag value={value ? 'PENDING' : 'NORMAL'} /> }]} filterFields={[{ key: 'consumableId', title: '品种 ID', type: 'number' }, { key: 'warehouseId', title: '库位 ID', type: 'number' }]} />
-    <DataTable key={`batches-${version}`} title="库存批次" description="查看批次来源与剩余数量；纠正供应商、品牌、单价、规格或库位前由服务端校验追溯与占用条件。" service="asset" endpoint="/inventory/batches" pageKey="asset-inventory-batches" columns={[{ key: 'id', title: '批次 ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'spec', title: '规格' }, { key: 'warehouseName', title: '库位' }, { key: 'remainingQty', title: '剩余数量' }, { key: 'supplierName', title: '供应商' }, { key: 'unitPrice', title: '单价' }, { key: 'receivedAt', title: '入库时间' }]} filterFields={[{ key: 'inventoryItemId', title: '库存条目 ID', type: 'number' }, { key: 'consumableId', title: '品种 ID', type: 'number' }, { key: 'warehouseId', title: '库位 ID', type: 'number' }]} rowActions={(row) => <Button size="small" onClick={() => setBatchId(Number(row.id))}>纠正批次</Button>} />
+  const endpoint = itemId ? `/inventory/batches?inventoryItemId=${itemId}` : '/inventory/batches';
+  return <>
+    <DataTable key={`batches-${version}`} title="库存批次" service="asset" endpoint={endpoint} pageKey="asset-inventory-batches" columns={[{ key: 'id', title: '批次 ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'spec', title: '规格' }, { key: 'warehouseName', title: '库位' }, { key: 'remainingQty', title: '剩余数量' }, { key: 'supplierName', title: '供应商' }, { key: 'unitPrice', title: '单价' }, { key: 'receivedAt', title: '入库时间' }]} filterFields={[{ key: 'inventoryItemId', title: '库存条目 ID', type: 'number' }, { key: 'consumableId', title: '品种 ID', type: 'number' }, { key: 'warehouseId', title: '库位 ID', type: 'number' }]} rowActions={(row) => <Button size="small" onClick={() => setBatchId(Number(row.id))}>纠正批次</Button>} />
     <ResourceFormModal title="纠正库存批次" open={batchId !== null} onCancel={() => setBatchId(null)} onSubmit={correctBatch} fields={[{ key: 'reason', label: '纠正原因', type: 'textarea', required: true, maxLength: 500 }, { key: 'supplierId', label: '供应商 ID', type: 'number' }, { key: 'brandId', label: '品牌 ID', type: 'number' }, { key: 'unitPrice', label: '单价（元）', type: 'number' }, { key: 'spec', label: '规格', maxLength: 100 }, { key: 'warehouseId', label: '目标库位 ID', type: 'number' }, { key: 'remark', label: '批次备注', type: 'textarea', maxLength: 500 }]} />
-  </Space>;
+  </>;
 }
 
-/** 库存流水只读追加，导出由受保护接口生成完整 XLSX。 */
 function StockFlows() {
   return (
     <DataTable
       title="库存流水"
-      description="库存流水只追加，记录每次变动前后数量。"
       service="asset"
       endpoint="/inventory/stock-flows"
       pageKey="asset-stock-flows"
@@ -323,7 +483,7 @@ function RepairManagement() {
   const feedback = useFeedback();
   const [version, setVersion] = useState(0);
   const [completeId, setCompleteId] = useState<number | null>(null);
-  const run = async (id: number, action: 'start' | 'cancel', body: Record<string, unknown> = {}) => {
+  const run = async (id: number, action: 'start' | 'cancel', body: RecordValue = {}) => {
     try {
       await http.post(`/repair-orders/${id}/${action}`, body, { service: 'asset' });
       feedback.success(action === 'start' ? '维修已开始' : '维修已取消');
@@ -332,7 +492,7 @@ function RepairManagement() {
       feedback.error(error, action === 'start' ? '开始维修失败' : '取消维修失败');
     }
   };
-  const complete = async (values: Record<string, unknown>) => {
+  const complete = async (values: RecordValue) => {
     if (!completeId) return;
     try {
       await http.post(`/repair-orders/${completeId}/complete`, values, { service: 'asset' });
@@ -344,56 +504,18 @@ function RepairManagement() {
     }
   };
   return <>
-    <ResourcePage key={version} title="维修管理" description="维修登记、开始、完成与取消均由资产状态机控制。" service="asset" endpoint="/repair-orders" pageKey="asset-repairs" columns={[...COMMON_COLUMNS, { key: 'assetName', title: '资产' }, { key: 'status', title: '维修状态', render: (value: unknown) => <StatusTag value={value} /> }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待维修', value: 'PENDING' }, { label: '维修中', value: 'REPAIRING' }, { label: '已取消', value: 'CANCELLED' }, { label: '已完成', value: 'COMPLETED' }] }, { key: 'assetId', title: '资产 ID', type: 'number' }]} create={{ title: '登记维修', endpoint: '/repair-orders', fields: [{ key: 'assetId', label: '资产 ID', type: 'number', required: true }, { key: 'faultDescription', label: '故障/维修事项', type: 'textarea', required: true, maxLength: 1000 }] }} rowActions={(row) => <Space size="small">{row.status === 'PENDING' ? <><Popconfirm title="确认开始维修？" onConfirm={() => void run(Number(row.id), 'start')}><Button size="small">开始</Button></Popconfirm><Popconfirm title="确认取消维修登记？" onConfirm={() => void run(Number(row.id), 'cancel')}><Button size="small" danger>取消</Button></Popconfirm></> : null}{row.status === 'REPAIRING' ? <Button size="small" type="primary" onClick={() => setCompleteId(Number(row.id))}>完成维修</Button> : null}</Space>} />
+    <ResourcePage key={version} title="维修管理" service="asset" endpoint="/repair-orders" pageKey="asset-repairs" columns={[...COMMON_COLUMNS, { key: 'assetName', title: '资产' }, { key: 'status', title: '维修状态', render: (value: unknown) => <StatusTag value={value} /> }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待维修', value: 'PENDING' }, { label: '维修中', value: 'REPAIRING' }, { label: '已取消', value: 'CANCELLED' }, { label: '已完成', value: 'COMPLETED' }] }, { key: 'assetId', title: '资产 ID', type: 'number' }]} create={{ title: '登记维修', endpoint: '/repair-orders', fields: [{ key: 'assetId', label: '资产 ID', type: 'number', required: true }, { key: 'faultDescription', label: '故障/维修事项', type: 'textarea', required: true, maxLength: 1000 }] }} rowActions={(row) => <Space size="small">{row.status === 'PENDING' ? <><Popconfirm title="确认开始维修？" onConfirm={() => void run(Number(row.id), 'start')}><Button size="small">开始</Button></Popconfirm><Popconfirm title="确认取消维修登记？" onConfirm={() => void run(Number(row.id), 'cancel')}><Button size="small" danger>取消</Button></Popconfirm></> : null}{row.status === 'REPAIRING' ? <Button size="small" type="primary" onClick={() => setCompleteId(Number(row.id))}>完成维修</Button> : null}</Space>} />
     <ResourceFormModal title="完成维修" open={completeId !== null} onCancel={() => setCompleteId(null)} onSubmit={complete} fields={[{ key: 'result', label: '维修结果', type: 'textarea', required: true, maxLength: 1000 }, { key: 'actualCost', label: '实际费用', type: 'number', required: true }, { key: 'postStatus', label: '恢复资产状态', type: 'select', required: true, options: [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }] }]} />
   </>;
 }
 
-/** 我的资产申请统一历史：不依赖审批权限，申请人/代交人可以取消待审批单。 */
-/** 注销借还处置（asset PRD §9：待处置 / 处置记录两个视图，M28） */
-function DisposalManagement() {
-  const [tab, setTab] = useState<'PENDING' | 'RECORDS'>('PENDING');
-  return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <Segmented
-      value={tab}
-      onChange={(value) => setTab(value as 'PENDING' | 'RECORDS')}
-      options={[{ label: '待处置', value: 'PENDING' }, { label: '处置记录', value: 'RECORDS' }]}
-    />
-    {tab === 'PENDING' ? (
-      <ResourcePage title="待处置" description="对已注销员工的未结清借还直接归还或核销；这是最终处置，不创建审批申请。" service="asset" endpoint="/disposals?tab=PENDING" pageKey="asset-disposals" columns={DISPOSAL_PENDING_COLUMNS} create={{ title: '执行直接处置', endpoint: '/disposals', fields: [{ key: 'disposalType', label: '处置类型', type: 'select', required: true, options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }, { key: 'items', label: '个人借还明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }, { key: 'agentRequestId', label: '代领申请 ID（仅整单结清）', type: 'number' }, { key: 'agentItems', label: '代领结清明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"WRITE_OFF","writeOffType":"LOST","reason":"遗失","qty":1}]' }], transform: disposalPayload }} />
-    ) : (
-      <ResourcePage title="处置记录" description="按处理时间倒序显示数据范围内的管理员直接处置结果及关联库存流水摘要。" service="asset" endpoint="/disposals?tab=RECORDS" pageKey="asset-disposal-records" columns={DISPOSAL_RECORDS_COLUMNS} filterFields={[{ key: 'disposalType', title: '处置方式', type: 'enum', options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }]} />
-    )}
-  </Space>;
-}
-
-function MyAssetApplications() {
-  const feedback = useFeedback();
-  const [version, setVersion] = useState(0);
-  const cancel = async (id: number) => {
-    try {
-      await http.post(`/approval-requests/${id}/cancel`, {}, { service: 'asset' });
-      feedback.success('资产申请已取消');
-      setVersion((value) => value + 1);
-    } catch (error) {
-      feedback.error(error, '取消资产申请失败');
-    }
-  };
-  return <DataTable key={version} title="我的资产申请" description="查看本人提交或代交的全部资产申请；待审批状态可主动取消，取消后相关库存、额度或借还占用由服务端原子释放。" service="asset" endpoint="/approval-requests/mine" pageKey="asset-my-requests" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'applicationNo', title: '申请编号' }, { key: 'requestType', title: '申请类型' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'submittedAt', title: '提交时间' }, { key: 'processorName', title: '处理人' }, { key: 'opinion', title: '处理意见' }]} filterFields={[{ key: 'requestType', title: '申请类型', type: 'enum', options: [{ label: '入库申请', value: 'STOCK_IN' }, { label: '库存变更', value: 'STOCK_CHANGE' }, { label: '消耗品申领', value: 'CONSUMABLE_REQUEST' }, { label: '代领申请', value: 'AGENT_REQUEST' }, { label: '归还申请', value: 'RETURN' }, { label: '核销申请', value: 'WRITE_OFF' }, { label: '代领结清', value: 'AGENT_SETTLEMENT' }] }, { key: 'status', title: '状态', type: 'enum', options: [{ label: '待审批', value: 'PENDING' }, { label: '已批准', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }, { label: '已取消', value: 'CANCELLED' }] }, { key: 'keyword', title: '单号或申请人', type: 'text' }]} rowActions={(row) => row.status === 'PENDING' ? <Popconfirm title="确认取消该待审批资产申请？" onConfirm={() => void cancel(Number(row.id))}><Button size="small" danger>取消申请</Button></Popconfirm> : null} />;
-}
-
-function BorrowPage() {
+/** 我的借还：归还/核销提交审批；已结清记录禁用操作入口（批次 4-19）。 */
+function MyBorrow() {
   const feedback = useFeedback();
   const [version, setVersion] = useState(0);
   const [returnId, setReturnId] = useState<number | null>(null);
   const [writeOffId, setWriteOffId] = useState<number | null>(null);
-  const [agentShared, setAgentShared] = useState<Array<Record<string, unknown>>>([]);
-  useEffect(() => {
-    void http.get<{ agentShared?: Array<Record<string, unknown>> }>('/my-borrow?page=1&pageSize=20', { service: 'asset', active: true })
-      .then((result) => setAgentShared(result.agentShared ?? []))
-      .catch((error) => feedback.error(error, '代领共享清单加载失败'));
-  }, [feedback, version]);
-  const submitReturn = async (values: Record<string, unknown>) => {
+  const submitReturn = async (values: RecordValue) => {
     if (!returnId) return;
     try {
       await http.post('/borrow-returns', { items: [{ borrowRecordId: returnId, qty: Number(values.qty), reason: values.reason }] }, { service: 'asset' });
@@ -404,7 +526,7 @@ function BorrowPage() {
       feedback.error(error, '归还申请提交失败');
     }
   };
-  const submitWriteOff = async (values: Record<string, unknown>) => {
+  const submitWriteOff = async (values: RecordValue) => {
     if (!writeOffId) return;
     try {
       await http.post('/borrow-write-offs', { items: [{ borrowRecordId: writeOffId, qty: Number(values.qty), writeOffType: values.writeOffType, reason: values.reason }] }, { service: 'asset' });
@@ -415,18 +537,57 @@ function BorrowPage() {
       feedback.error(error, '核销申请提交失败');
     }
   };
-  return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <DataTable key={version} title="我的借还" description="查看本人借还和代领共享清单；归还、核销均提交审批申请。" service="asset" endpoint="/my-borrow" pageKey="asset-my-borrow" columns={[{ key: 'id', title: '记录 ID', fixed: 'left' }, { key: 'consumableName', title: '资产/物品' }, { key: 'qty', title: '借出数量' }, { key: 'dueAt', title: '到期时间' }, { key: 'returnedQty', title: '已归还' }, { key: 'writtenOffQty', title: '已核销' }]} filterFields={[{ key: 'settlementStatus', title: '结清状态', type: 'enum', options: [{ label: '未结清', value: 'OPEN' }, { label: '已结清', value: 'SETTLED' }] }]} rowActions={(row) => <Space size="small"><Button size="small" onClick={() => setReturnId(Number(row.id))}>归还</Button><Button size="small" danger onClick={() => setWriteOffId(Number(row.id))}>核销</Button></Space>} />
-    <Card title="代领共享清单（只读）" size="small"><Typography.Paragraph type="secondary">你作为受领人可查看整张共享清单；它不计入个人持有量，归还和结清只能由代领发起人完成。</Typography.Paragraph><Table<Record<string, unknown>> rowKey={(row) => String(row.id)} size="small" pagination={false} dataSource={agentShared} locale={{ emptyText: '暂无代领共享清单' }} columns={[{ key: 'id', title: '记录 ID', dataIndex: 'id' }, { key: 'proxyName', title: '代领人', dataIndex: 'proxyName' }, { key: 'consumableName', title: '物品', dataIndex: 'consumableName' }, { key: 'qty', title: '共享数量', dataIndex: 'qty' }, { key: 'dueAt', title: '到期时间', dataIndex: 'dueAt' }, { key: 'returnedQty', title: '已归还', dataIndex: 'returnedQty' }, { key: 'writtenOffQty', title: '已核销', dataIndex: 'writtenOffQty' }]} /></Card>
+  return <>
+    <DataTable key={version} title="我的借还" service="asset" endpoint="/my-borrow" pageKey="asset-my-borrow" columns={[{ key: 'id', title: '记录 ID', fixed: 'left' }, { key: 'consumableName', title: '资产/物品' }, { key: 'qty', title: '借出数量' }, { key: 'dueAt', title: '到期时间' }, { key: 'returnedQty', title: '已归还' }, { key: 'writtenOffQty', title: '已核销' }]} filterFields={[{ key: 'settlementStatus', title: '结清状态', type: 'enum', options: [{ label: '未结清', value: 'OPEN' }, { label: '已结清', value: 'SETTLED' }] }]} rowActions={(row) => { const settled = row.settlementStatus === 'SETTLED'; return <Space size="small"><Button size="small" disabled={settled} onClick={() => setReturnId(Number(row.id))}>归还</Button><Button size="small" danger disabled={settled} onClick={() => setWriteOffId(Number(row.id))}>核销</Button></Space>; }} />
     <ResourceFormModal title="提交归还申请" open={returnId !== null} onCancel={() => setReturnId(null)} onSubmit={submitReturn} fields={[{ key: 'qty', label: '归还数量', type: 'number', required: true }, { key: 'reason', label: '归还备注', type: 'textarea', maxLength: 200 }]} />
     <ResourceFormModal title="提交核销申请" open={writeOffId !== null} onCancel={() => setWriteOffId(null)} onSubmit={submitWriteOff} fields={[{ key: 'qty', label: '核销数量', type: 'number', required: true }, { key: 'writeOffType', label: '核销类型', type: 'select', required: true, options: [{ label: '遗失', value: 'LOST' }, { label: '损坏', value: 'DAMAGED' }] }, { key: 'reason', label: '核销原因', type: 'textarea', required: true, maxLength: 500 }]} />
-  </Space>;
+  </>;
 }
 
-/** 二维码停用、恢复与重新生成；公开标识不在页面日志或本地存储中保存。 */
+/** 代领共享清单（受领人查看整张共享清单；归还与结清只能由代领发起人完成）。 */
+function AgentSharedList() {
+  const feedback = useFeedback();
+  const [agentShared, setAgentShared] = useState<Array<RecordValue>>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    void http.get<{ agentShared?: Array<RecordValue> }>('/my-borrow?page=1&pageSize=20', { service: 'asset', active: true })
+      .then((result) => setAgentShared(result.agentShared ?? []))
+      .catch((error) => feedback.error(error, '代领共享清单加载失败'))
+      .finally(() => setLoading(false));
+  }, [feedback]);
+  if (loading) return <Spin tip="正在加载..." />;
+  return <Card title="代领共享清单" size="small">
+    <Table<RecordValue> rowKey={(row) => String(row.id)} size="small" pagination={false} dataSource={agentShared} locale={{ emptyText: '暂无代领共享清单' }} columns={[{ key: 'id', title: '记录 ID', dataIndex: 'id' }, { key: 'proxyName', title: '代领人', dataIndex: 'proxyName' }, { key: 'consumableName', title: '物品', dataIndex: 'consumableName' }, { key: 'qty', title: '共享数量', dataIndex: 'qty' }, { key: 'dueAt', title: '到期时间', dataIndex: 'dueAt' }, { key: 'returnedQty', title: '已归还', dataIndex: 'returnedQty' }, { key: 'writtenOffQty', title: '已核销', dataIndex: 'writtenOffQty' }]} />
+  </Card>;
+}
+
+/** 二维码管理专属页：卡片网格 + 查看/打印 + 停用/恢复/重新生成（asset PRD §11）。 */
+const QR_TARGET_TYPE_LABELS: Readonly<Record<string, string>> = { ASSET: '固定资产', INVENTORY_ITEM: '库存条目', SCAN_CATALOG: '长期申领目录' };
+const QR_STATUS_LABELS: Readonly<Record<string, string>> = { ACTIVE: '有效', DISABLED: '已停用', REVOKED: '已作废' };
+
 function QrCodeManagement() {
   const feedback = useFeedback();
+  const [rows, setRows] = useState<RecordValue[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
   const [version, setVersion] = useState(0);
+  const [preview, setPreview] = useState<RecordValue | null>(null);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const result = await http.get<{ data?: Array<RecordValue>; pagination?: { totalItems?: number } }>(`/qr-codes?page=${page}&pageSize=${pageSize}`, { service: 'asset', active: true });
+      setRows(result.data ?? []);
+      setTotal(result.pagination?.totalItems ?? 0);
+    } catch (error) {
+      feedback.error(error, '二维码列表加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void load(); }, [page, pageSize, version]);
   const perform = async (id: number, action: 'DISABLE' | 'ENABLE' | 'REGENERATE') => {
     try {
       await http.post(`/qr-codes/${id}/action`, { action }, { service: 'asset' });
@@ -436,29 +597,129 @@ function QrCodeManagement() {
       feedback.error(error, '二维码操作失败');
     }
   };
-  return <ResourcePage key={version} title="二维码管理" description="二维码仅作扫码入口，不授予任何业务权限；作废后不可恢复，重新生成只更换公开标识。" service="asset" endpoint="/qr-codes" pageKey="asset-qr-codes" columns={[...COMMON_COLUMNS, { key: 'targetType', title: '目标类型' }, { key: 'status', title: '二维码状态', render: (value: unknown) => <StatusTag value={value} /> }]} create={{ title: '生成二维码', endpoint: '/qr-codes', fields: [{ key: 'targetType', label: '目标类型', type: 'select', required: true, options: [{ label: '固定资产', value: 'ASSET' }, { label: '库存条目', value: 'INVENTORY_ITEM' }, { label: '申领目录', value: 'SCAN_CATALOG' }] }, { key: 'targetId', label: '目标 ID', type: 'number' }] }} rowActions={(row) => <Space size="small">{row.status === 'ACTIVE' ? <Popconfirm title="确认停用二维码？" onConfirm={() => void perform(Number(row.id), 'DISABLE')}><Button size="small">停用</Button></Popconfirm> : row.status === 'DISABLED' ? <Popconfirm title="确认恢复二维码？" onConfirm={() => void perform(Number(row.id), 'ENABLE')}><Button size="small">恢复</Button></Popconfirm> : null}<Popconfirm title="确认作废当前二维码并重新生成？" onConfirm={() => void perform(Number(row.id), 'REGENERATE')}><Button size="small" danger>重新生成</Button></Popconfirm></Space>} />;
+  return <>
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Space>
+        <Button type="primary" onClick={() => setCreateOpen(true)}>生成二维码</Button>
+      </Space>
+      {loading ? <Spin tip="正在加载..." /> : rows.length === 0 ? <Empty description="暂无二维码" /> : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+            {rows.map((row) => {
+              const status = String(row.status ?? '');
+              const publicId = typeof row.publicId === 'string' ? row.publicId : '';
+              return <Card key={String(row.id)} size="small" title={<Space direction="vertical" size={0}><Typography.Text strong>{String(row.targetName ?? '—')}</Typography.Text><Typography.Text type="secondary" style={{ fontSize: 12 }}>{QR_TARGET_TYPE_LABELS[String(row.targetType ?? '')] ?? String(row.targetType ?? '—')} · #{String(row.id)}</Typography.Text></Space>}>
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 8, background: 'rgba(0,0,0,0.02)', borderRadius: 6 }}>
+                    <QRCodeCanvas value={`${window.location.origin}/scan#${publicId}`} size={120} aria-label={`二维码 ${String(row.targetName ?? row.id)}`} />
+                  </div>
+                  <Space wrap>
+                    <Tag color={status === 'ACTIVE' ? 'green' : status === 'DISABLED' ? 'orange' : 'default'}>{QR_STATUS_LABELS[status] ?? status}</Tag>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.createdAt ? formatBeijingDateTime(String(row.createdAt)) : ''}</Typography.Text>
+                  </Space>
+                  <Space wrap>
+                    <Button size="small" onClick={() => setPreview(row)}>查看</Button>
+                    <PrintQrButton value={`${window.location.origin}/scan#${publicId}`} label={String(row.targetName ?? row.id ?? '')} />
+                    {status === 'ACTIVE' ? <Popconfirm title="确认停用二维码？" description="停用期间扫码无效，恢复后同一张二维码重新生效。" okText="停用" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void perform(Number(row.id), 'DISABLE')}><Button size="small" danger>停用</Button></Popconfirm> : null}
+                    {status === 'DISABLED' ? <Popconfirm title="确认恢复二维码？" onConfirm={() => void perform(Number(row.id), 'ENABLE')}><Button size="small">恢复</Button></Popconfirm> : null}
+                    <Popconfirm title="确认作废当前二维码并重新生成？" description="旧二维码永久失效，不能恢复；业务数据不受影响。" okText="重新生成" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void perform(Number(row.id), 'REGENERATE')}><Button size="small" danger>重新生成</Button></Popconfirm>
+                  </Space>
+                </Space>
+              </Card>;
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Pagination current={page} pageSize={pageSize} total={total} showSizeChanger pageSizeOptions={[10, 20, 50, 100]} showTotal={(count) => `共 ${count} 条`} onChange={(nextPage, nextPageSize) => { setPage(nextPage); setPageSize(nextPageSize); }} />
+          </div>
+        </>
+      )}
+    </Space>
+    <ResourceFormModal title="生成二维码" open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={async (values) => { await http.post('/qr-codes', values, { service: 'asset' }); feedback.success('二维码已生成'); setCreateOpen(false); setVersion((value) => value + 1); }} fields={[{ key: 'targetType', label: '目标类型', type: 'select', required: true, options: [{ label: '固定资产', value: 'ASSET' }, { label: '库存条目', value: 'INVENTORY_ITEM' }, { label: '申领目录', value: 'SCAN_CATALOG' }] }, { key: 'targetId', label: '目标 ID', type: 'number' }]} submitText="生成" />
+    <Modal title="二维码" open={preview !== null} onCancel={() => setPreview(null)} footer={<Button onClick={() => setPreview(null)}>关闭</Button>}>
+      {preview && typeof preview.publicId === 'string' ? <Space direction="vertical" size="middle" style={{ width: '100%', alignItems: 'center' }}>
+        <Typography.Text strong>{String(preview.targetName ?? '—')}</Typography.Text>
+        <QRCodeCanvas value={`${window.location.origin}/scan#${preview.publicId}`} size={200} />
+        <PrintQrButton value={`${window.location.origin}/scan#${preview.publicId}`} label={String(preview.targetName ?? preview.id ?? '')} />
+      </Space> : null}
+    </Modal>
+  </>;
+}
+
+/** 打印二维码：从 canvas 提取图片并打开打印窗口（asset PRD §11 重新展示和打印同一张有效二维码）。 */
+function PrintQrButton({ value, label }: { value: string; label: string }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  return <Space direction="vertical" size={4} style={{ alignItems: 'center' }}>
+    <div style={{ display: 'none' }}><QRCodeCanvas value={value} size={240} ref={canvasRef} /></div>
+    <Button size="small" onClick={() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      openQrPrintWindow(label, canvas.toDataURL('image/png'));
+    }}>打印</Button>
+  </Space>;
+}
+
+/**
+ * 将扫码 URL 的库存条目参数转换为申领表单默认值。
+ *
+ * @param rawInventoryItemId URL 查询参数中的库存条目 ID
+ * @returns 合法 ID 的申领明细默认值；非法值返回 undefined
+ */
+export function buildScannedClaimInitialValues(rawInventoryItemId: string | null): Record<string, string> | undefined {
+  const inventoryItemId = Number(rawInventoryItemId);
+  if (!Number.isSafeInteger(inventoryItemId) || inventoryItemId <= 0) return undefined;
+  return { items: JSON.stringify([{ inventoryItemId, qty: 1, purpose: '' }], null, 2) };
+}
+
+/** 扫码进入的消耗品申领页：库存二维码会预填对应库存条目，避免目标在跳转时丢失。 */
+function ClaimRequests() {
+  const [searchParams] = useSearchParams();
+  const rawInventoryItemId = searchParams.get('inventoryItemId');
+  const initialValues = buildScannedClaimInitialValues(rawInventoryItemId);
+  const inventoryItemId = initialValues === undefined ? null : Number(rawInventoryItemId);
+  const description = inventoryItemId === null
+    ? undefined
+    : `已根据二维码定位库存条目 #${inventoryItemId}，申领明细已预填；请确认数量并填写用途后提交。`;
+  return <ResourcePage
+    title="消耗品申领"
+    description={description}
+    service="asset"
+    endpoint="/consumable-requests/mine"
+    pageKey="asset-claims"
+    columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]}
+    filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]}
+    create={{
+      title: '提交申领',
+      endpoint: '/consumable-requests',
+      fields: [{ key: 'items', label: '申领明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }],
+      initialValues,
+      transform: (values) => ({ ...values, items: parseJsonArray(values.items) }),
+    }}
+  />;
 }
 
 function ApprovalPage() {
   return <ApprovalCenter title="资产审批中心" service="asset" pageKey="asset-approval" />;
 }
 
+/** 系统设置书签：运行参数 / 资产分类 / 业务字典（分类与字典删除为两段式引用确认）。 */
 function AssetConfig() {
-  return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <SettingsEditor title="资产运行参数" description="维护扫码入口和申领额度重置日；变更仅影响之后开始的业务周期。" service="asset" endpoint="/asset-settings" save={async (item, value) => {
-      if (item.key === 'asset.scan.entry.url') {
-        await http.put('/asset-settings', { scanEntryUrl: value }, { service: 'asset' });
-        return;
-      }
-      if (item.key === 'asset.quota.reset.day') {
-        await http.put('/asset-settings', { quotaResetDay: Number(value) }, { service: 'asset' });
-        return;
-      }
-      throw new Error('未知的资产设置键');
-    }} />
-    <ResourcePage title="资产分类" service="asset" endpoint="/categories" pageKey="asset-categories" columns={COMMON_COLUMNS} create={{ title: '新建分类', endpoint: '/categories', fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'parentId', label: '父分类 ID', type: 'number', required: true }] }} edit={{ title: '编辑资产分类', endpoint: (id) => `/categories/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/categories/batch', bodyKey: 'ids' }} />
-    <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={[...COMMON_COLUMNS, { key: 'dictType', title: '类型' }]} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids' }} />
-  </Space>;
+  return <Card>
+    <Tabs items={[
+      { key: 'params', label: '运行参数', children: <SettingsEditor title="资产运行参数" service="asset" endpoint="/asset-settings" save={async (item, value) => {
+        if (item.key === 'asset.scan.entry.url') {
+          await http.put('/asset-settings', { scanEntryUrl: value }, { service: 'asset' });
+          return;
+        }
+        if (item.key === 'asset.quota.reset.day') {
+          await http.put('/asset-settings', { quotaResetDay: Number(value) }, { service: 'asset' });
+          return;
+        }
+        throw new Error('未知的资产设置键');
+      }} /> },
+      { key: 'categories', label: '资产分类', children: <ResourcePage title="资产分类" service="asset" endpoint="/categories" pageKey="asset-categories" columns={COMMON_COLUMNS} create={{ title: '新建分类', endpoint: '/categories', fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'parentId', label: '父分类 ID', type: 'number', required: true }] }} edit={{ title: '编辑资产分类', endpoint: (id) => `/categories/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/categories/batch', bodyKey: 'ids', previewEndpoint: '/categories/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `现存资产 ${String(item.assetCount ?? 0)} 个；消耗品品种 ${String(item.consumableCount ?? 0)} 个` }) }} /> },
+      { key: 'dicts', label: '业务字典', children: <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={[...COMMON_COLUMNS, { key: 'dictType', title: '类型' }]} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids', previewEndpoint: '/dict-items/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `业务引用 ${String(item.referencedCount ?? 0)} 处` }) }} /> },
+    ]} />
+  </Card>;
 }
 
 function parseJsonArray(value: unknown): unknown[] {
@@ -474,9 +735,9 @@ function parseJsonArray(value: unknown): unknown[] {
 }
 
 /** 组装注销借还直接处置请求；每次点击生成新幂等键，网络重试由请求层调用方复用。 */
-function disposalPayload(values: Record<string, unknown>): Record<string, unknown> {
+function disposalPayload(values: RecordValue): RecordValue {
   const disposalType = String(values.disposalType ?? '');
-  const payload: Record<string, unknown> = { disposalType, idempotencyKey: crypto.randomUUID() };
+  const payload: RecordValue = { disposalType, idempotencyKey: crypto.randomUUID() };
   if (disposalType === 'AGENT_SETTLE') {
     payload.agentRequestId = values.agentRequestId;
     payload.agentItems = parseJsonArray(values.agentItems);

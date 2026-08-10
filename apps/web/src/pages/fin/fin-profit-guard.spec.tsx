@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { http } from '../../request/http';
-import { ProfitAnalysis } from './FinPage';
+import { canMountProfitAnalysis, ProfitAnalysis } from './FinPage';
 
 /**
  * M22 复核修复回归：离开保护（fin PRD §4）。
@@ -124,6 +124,11 @@ function renderProfit() {
 describe('ProfitAnalysis 离开保护（M22）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('仅有财务配置权限时不挂载利润分析', () => {
+    expect(canMountProfitAnalysis((permission) => permission === 'finance_config')).toBe(false);
+    expect(canMountProfitAnalysis((permission) => permission === 'finance_view')).toBe(true);
   });
 
   it('/fin/profit 命中 profit 分支，不渲染其它页面内容（防 case 缺失回归）', async () => {

@@ -12,7 +12,7 @@ interface SettingItem {
 
 interface SettingsEditorProps {
   title: string;
-  description: string;
+  description?: string;
   service: ApiService;
   endpoint: string;
   /** 将一项设置转换为所属服务的更新请求。 */
@@ -64,11 +64,11 @@ export function SettingsEditor({ title, description, service, endpoint, save }: 
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <div>
       <Typography.Title level={3} style={{ marginBottom: 4 }}>{title}</Typography.Title>
-      <Typography.Paragraph type="secondary">{description}</Typography.Paragraph>
+      {description ? <Typography.Paragraph type="secondary">{description}</Typography.Paragraph> : null}
     </div>
     <Card loading={loading}>
       {loading ? <Spin /> : items.length === 0 ? <Typography.Text type="secondary">当前没有可配置的运行参数。</Typography.Text> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {items.map((item) => <Card key={item.key} size="small" title={item.label} extra={<Typography.Text type="secondary">{item.key}</Typography.Text>}>
+        {items.map((item) => <Card key={item.key} size="small" title={item.label}>
           <Space wrap style={{ width: '100%' }}>
             {item.valueType === 'NUMBER' ? <InputNumber stringMode value={values[item.key]} style={{ minWidth: 220 }} onChange={(value) => setValues((current) => ({ ...current, [item.key]: value === null ? '' : String(value) }))} /> : <Input value={values[item.key]} maxLength={200} style={{ minWidth: 320 }} onChange={(event) => setValues((current) => ({ ...current, [item.key]: event.target.value }))} />}
             <Button type="primary" loading={savingKey === item.key} onClick={() => void saveItem(item)}>保存</Button>

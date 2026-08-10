@@ -1,8 +1,8 @@
 import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
-import { IdempotentDto, SYSTEM_STRUCTURE_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
+import { IdempotentDto, SYSTEM_SETTINGS_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
-import { IsIn, IsString, MaxLength } from 'class-validator';
+import { IsIn } from 'class-validator';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
 import { SystemStructureService } from './system-structure.service';
 
@@ -17,33 +17,22 @@ class UpdateSystemStatusDto extends IdempotentDto {
   productStatus!: 'OPEN' | 'COMING_SOON';
 }
 
-/** 业务说明维护入参（板块/功能共用；空白 = 清除） */
-class UpdateDescriptionDto extends IdempotentDto {
-  /** 业务说明（≤500；空白字符串清除为 NULL） */
-  @ApiProperty({
-    description: '业务说明（≤500；空白字符串清除为 NULL）',
-    maxLength: 500,
-  })
-  @IsString()
-  @MaxLength(500)
-  description!: string;
-}
-
 /**
- * 系统与业务结构管理（backstage PRD §6）。
- * 全部路由要求持有"系统与业务结构管理"功能授权或超级管理员。
+ * 系统开放状态管理（批次 4 起归入「系统设置」书签，权限随迁 system_settings；
+ * 原「系统与业务结构」页面与说明维护接口已删除）。
+ * 全部路由要求持有"系统设置"功能授权或超级管理员。
  */
-@ApiTags('系统与业务结构')
+@ApiTags('系统状态')
 @Controller('systems')
 @UseGuards(FunctionPermissionGuard)
-@RequireFunction(SYSTEM_STRUCTURE_MANAGE_FUNCTION_CODE)
+@RequireFunction(SYSTEM_SETTINGS_FUNCTION_CODE)
 export class SystemStructureController {
   constructor(private readonly structure: SystemStructureService) {}
 
-  /** 系统与业务结构树（系统 → 板块 → 功能，按目录排序） */
+  /** 系统列表（编码/名称/开放状态；供系统设置书签切换状态） */
   @Get()
-  listStructure(): Promise<unknown> {
-    return this.structure.listStructure();
+  listSystems(): Promise<unknown> {
+    return this.structure.listSystems();
   }
 
   /** 调整系统开放状态（asset/hr/fin；backstage 恒开放不可调；BASE 不在目录 404） */
@@ -54,26 +43,5 @@ export class SystemStructureController {
     @Body() dto: UpdateSystemStatusDto,
   ): Promise<unknown> {
     return this.structure.updateSystemStatus(operatorId, systemCode, dto.productStatus, dto.idempotencyKey);
-  }
-
-  /** 维护业务板块的业务说明 */
-  @Put(':systemCode/sections/:sectionCode/description')
-  updateSectionDescription(
-    @Param('systemCode') systemCode: string,
-    @Param('sectionCode') sectionCode: string,
-    @CurrentUser() operatorId: number,
-    @Body() dto: UpdateDescriptionDto,
-  ): Promise<unknown> {
-    return this.structure.updateSectionDescription(operatorId, systemCode, sectionCode, dto.description, dto.idempotencyKey);
-  }
-
-  /** 维护功能的业务说明 */
-  @Put('functions/:functionCode/description')
-  updateFunctionDescription(
-    @Param('functionCode') functionCode: string,
-    @CurrentUser() operatorId: number,
-    @Body() dto: UpdateDescriptionDto,
-  ): Promise<unknown> {
-    return this.structure.updateFunctionDescription(operatorId, functionCode, dto.description, dto.idempotencyKey);
   }
 }

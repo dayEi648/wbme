@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Drawer, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Typography, Upload, theme, type UploadFile } from 'antd';
+import { Button, Card, Checkbox, Descriptions, Drawer, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tabs, Typography, Upload, theme, type UploadFile } from 'antd';
 import { DownloadOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { JsonDetails } from '../../components/JsonDetails';
 import { ResourcePage } from '../../components/ResourcePage';
 import { ResourceFormModal, type FormField } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
+import { formatMoney } from '../../components/display-format';
 import { useFeedback } from '../../request/feedback';
 import { download, http, upload } from '../../request/http';
 import { useSession } from '../../request/session';
@@ -34,11 +35,21 @@ function formatPercentage(value: unknown): string {
 }
 
 const NAVIGATION: NavigationItem[] = [
-  { key: 'projects', label: '工程合同', path: '/fin/projects', permission: 'finance_view' },
-  { key: 'profit', label: '利润分析', path: '/fin/profit', permission: 'finance_view' },
-  { key: 'operations', label: '项目操作记录', path: '/fin/operations', permission: 'finance_view' },
-  { key: 'config', label: '财务配置', path: '/fin/config', permission: 'finance_config' },
+  { key: 'projects', label: '工程合同', path: '/fin/projects', permission: 'finance_view', group: '业务' },
+  { key: 'profit', label: '利润分析', path: '/fin/profit', permission: 'finance_view', group: '业务' },
+  { key: 'operations', label: '项目操作记录', path: '/fin/operations', permission: 'finance_view', group: '业务' },
+  { key: 'config', label: '系统设置', path: '/fin/config', permission: 'finance_config', group: '系统设置' },
 ];
+
+/**
+ * 判断当前会话能否挂载利润分析组件。
+ *
+ * @param can 当前会话的功能权限判断函数
+ * @returns 具备利润分析读取权限时返回 true
+ */
+export function canMountProfitAnalysis(can: (permission: string) => boolean): boolean {
+  return can('finance_view');
+}
 
 const PROJECT_COLUMNS = [
   { key: 'id', title: 'ID', fixed: 'left' as const },
@@ -74,6 +85,59 @@ const PROJECT_FORM_FIELDS: FormField[] = [
 
 const MONEY_FIELDS = new Set(['contractAmount', 'tentativeAuditedAmount', 'settlement', 'miscExpense']);
 
+/** 项目资料中文标签（金额列保持十进制字符串展示，列表内已格式化）。 */
+const PROJECT_FIELD_LABELS: Readonly<Record<string, string>> = {
+  id: '项目 ID',
+  name: '项目名称',
+  year: '年度',
+  partyA: '甲方',
+  generalContractor: '总包方',
+  managementFee: '管理费',
+  subcontractors: '分包方',
+  contractStartDate: '合同开始日期',
+  contractEndDate: '合同完工日期',
+  contractAmount: '合同金额',
+  paymentNode: '主合同付款节点',
+  tentativeAuditedAmount: '暂定/审定金额',
+  settlement: '分包结算',
+  miscExpense: '零星费用',
+  regionName: '地区',
+  progressName: '项目进度',
+  bizCategoryName: '业务分类',
+  remark: '项目备注',
+  createdAt: '创建时间',
+  updatedAt: '更新时间',
+  deletedAt: '删除时间',
+};
+
+/** 自动计算中文标签。 */
+const AUTO_FIELD_LABELS: Readonly<Record<string, string>> = {
+  invoicedAmount: '累计开票',
+  receivedAmount: '累计收款',
+  remainingInvoiceAmount: '剩余未开票',
+  remainingReceiptAmount: '剩余未收款',
+  grossMargin: '毛利率',
+  dataRevision: '数据版本',
+};
+
+const PROJECT_MONEY_KEYS = new Set(['contractAmount', 'tentativeAuditedAmount', 'settlement', 'miscExpense', 'invoicedAmount', 'receivedAmount', 'remainingInvoiceAmount', 'remainingReceiptAmount']);
+
+/** 项目资料/自动计算字段 → 中文标签展示（金额千分位、比率百分比）。 */
+function detailItems(obj: RecordValue | null, labels: Readonly<Record<string, string>>, moneyKeys: Set<string>, ratioKeys: Set<string> = new Set()) {
+  if (!obj) return [];
+  return Object.entries(labels)
+    .filter(([key]) => obj[key] !== undefined && obj[key] !== null)
+    .map(([key, label]) => {
+      const value = obj[key];
+      let children: React.ReactNode = String(value);
+      if (Array.isArray(value)) children = value.length === 0 ? '—' : value.join('、');
+      else if (moneyKeys.has(key)) children = formatMoney(value);
+      else if (ratioKeys.has(key)) children = formatPercentage(value);
+      else if (typeof value === 'object') children = JSON.stringify(value);
+      return { label, children };
+    });
+}
+
 interface PreviewChoice {
   rowNumber: number;
   name: string;
@@ -95,13 +159,14 @@ interface ImportPreview extends RecordValue {
 /** 财务系统路由容器。 */
 export default function FinPage() {
   const { pathname } = useLocation();
+  const { can } = useSession();
   const section = pathname.split('/')[2] ?? '';
   const body = useMemo(() => {
     switch (section) {
       case 'projects':
         return <Projects />;
       case 'operations':
-        return <DataTable title="项目操作记录" description="记录财务项目的新增、修改、删除与金额明细变更。" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'id', title: 'ID', fixed: 'left' as const }, { key: 'projectName', title: '项目' }, { key: 'actionType', title: '操作' }, { key: 'operatorName', title: '操作者' }, { key: 'createdAt', title: '时间' }]} filterFields={[{ key: 'projectId', title: '项目 ID', type: 'number' }]} />;
+        return <DataTable title="项目操作记录" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'id', title: 'ID', fixed: 'left' as const }, { key: 'projectName', title: '项目' }, { key: 'action', title: '操作' }, { key: 'operatorName', title: '操作者' }, { key: 'createdAt', title: '时间' }]} filterFields={[{ key: 'projectId', title: '项目 ID', type: 'number' }]} />;
       case 'config':
         return <FinanceConfig />;
       // 利润分析常驻渲染（见下方 display:none 容器），body 不再重复挂载，避免
@@ -117,19 +182,21 @@ export default function FinPage() {
     {/* 利润分析常驻渲染（M22 复核修复）：离开保护基于 location 变化检测，
         若组件随 section 切换卸载，卸载与导航发生在同一 commit，确认弹窗永远不出现；
         display:none 隐藏非当前页，组件保持挂载使保护对站内切换真实生效 */}
-    <div style={{ display: section === 'profit' ? undefined : 'none' }}><ProfitAnalysis /></div>
+    {canMountProfitAnalysis(can) ? <div style={{ display: section === 'profit' ? undefined : 'none' }}><ProfitAnalysis /></div> : null}
   </AppShell>;
 }
 
+/** 工程合同：书签式「在册合同 / 已删除项目」两页签（禁止 Drawer 套 DataTable）。 */
 function Projects() {
   const { can } = useSession();
   const canMaintain = can('finance_maintain');
   const [detailId, setDetailId] = useState<number | null>(null);
-  const [deletedOpen, setDeletedOpen] = useState(false);
   return <>
-<ResourcePage title="工程合同" description="项目名称和年度构成业务唯一键；金额使用精确十进制字符串。点击行查看详情，使用行内操作进行编辑。" service="fin" endpoint="/projects" pageKey="fin-projects" columns={PROJECT_COLUMNS} filterFields={[{ key: 'name', title: '项目名称', type: 'text' }, { key: 'partyA', title: '甲方', type: 'text' }, { key: 'year', title: '年度', type: 'number' }, { key: 'regionId', title: '地区 ID', type: 'number' }, { key: 'progressId', title: '进度 ID', type: 'number' }]} create={canMaintain ? { title: '新建工程合同', fields: PROJECT_FORM_FIELDS } : undefined} edit={canMaintain ? { title: '编辑工程合同', endpoint: (id) => `/projects/${id}`, fields: PROJECT_FORM_FIELDS } : undefined} batchDelete={canMaintain ? { endpoint: '/projects/batch', bodyKey: 'ids' } : undefined} actions={canMaintain ? <Button onClick={() => setDeletedOpen(true)}>已删除项目</Button> : undefined} rowActions={(row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>金额明细</Button>} />
+    <Tabs items={[
+      { key: 'active', label: '在册合同', children: <ResourcePage title="工程合同" service="fin" endpoint="/projects" pageKey="fin-projects" columns={PROJECT_COLUMNS} filterFields={[{ key: 'name', title: '项目名称', type: 'text' }, { key: 'partyA', title: '甲方', type: 'text' }, { key: 'year', title: '年度', type: 'number' }, { key: 'bizCategoryId', title: '业务分类', type: 'number' }, { key: 'regionId', title: '地区 ID', type: 'number' }, { key: 'progressId', title: '进度 ID', type: 'number' }]} create={canMaintain ? { title: '新建工程合同', fields: PROJECT_FORM_FIELDS } : undefined} edit={canMaintain ? { title: '编辑工程合同', endpoint: (id) => `/projects/${id}`, fields: PROJECT_FORM_FIELDS } : undefined} batchDelete={canMaintain ? { endpoint: '/projects/batch', bodyKey: 'ids' } : undefined} rowActions={(row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>金额明细</Button>} /> },
+      { key: 'deleted', label: '已删除项目', children: <DataTable title="已删除项目" service="fin" endpoint="/projects?view=deleted" pageKey="fin-deleted-projects" columns={PROJECT_COLUMNS} batchAction={{ label: '批量恢复', onExecute: async (ids) => { await http.put('/projects/deleted/restore', { ids: ids.map(Number) }, { service: 'fin' }); } }} /> },
+    ]} />
     {detailId !== null ? <ProjectDetails projectId={detailId} canMaintain={canMaintain} onClose={() => setDetailId(null)} /> : null}
-    <Drawer title="已删除项目" open={deletedOpen} onClose={() => setDeletedOpen(false)} width="min(92vw, 1100px)"><DataTable title="已删除项目" description="软删除项目保留原 ID、业务键及操作历史；仅支持勾选后批量恢复。" service="fin" endpoint="/projects?view=deleted" pageKey="fin-deleted-projects" columns={PROJECT_COLUMNS} batchAction={{ label: '批量恢复', onExecute: async (ids) => { await http.put('/projects/deleted/restore', { ids: ids.map(Number) }, { service: 'fin' }); } }} /></Drawer>
   </>;
 }
 
@@ -176,7 +243,7 @@ function ProjectDetails({ projectId, canMaintain, onClose }: { projectId: number
     return isRecord(details) && Array.isArray(details[key]) ? details[key].filter((item): item is DetailItem => isRecord(item) && typeof item.id === 'number' && typeof item.amount === 'string') : [];
   };
   const table = (title: string, kind: DetailKind, rows: DetailItem[]) => <Card key={kind} size="small" title={title} extra={canMaintain ? <Button size="small" onClick={() => setEditing({ kind })}>新增</Button> : null}><Table<DetailItem> size="small" rowKey="id" pagination={false} dataSource={rows} locale={{ emptyText: '暂无明细' }} columns={[{ key: 'amount', title: '金额', dataIndex: 'amount' }, { key: 'occurredDate', title: '日期', dataIndex: 'occurredDate' }, { key: 'remark', title: '备注', dataIndex: 'remark' }, ...(canMaintain ? [{ key: 'actions', title: '操作', render: (_: unknown, item: DetailItem) => <Space size="small"><Button size="small" onClick={() => setEditing({ kind, item })}>编辑</Button><Popconfirm title="确认删除这条金额明细？删除不可恢复。" onConfirm={() => void remove(kind, item)}><Button size="small" danger>删除</Button></Popconfirm></Space> }] : [])]} /></Card>;
-  return <Drawer title="项目详情与金额明细" open onClose={onClose} width={860}>{detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}><Card title="项目资料" size="small">{JSON.stringify(detail.project ?? {})}</Card><Card title="自动计算" size="small">{JSON.stringify(detail.auto ?? {})}</Card>{table('开票金额', 'invoice', detailRows('invoices'))}{table('已收回款', 'receipt', detailRows('receipts'))}{table('已付分包款', 'subcontract-payment', detailRows('subcontractPayments'))}</Space> : <Typography.Text>正在加载...</Typography.Text>}<ResourceFormModal title={editing?.item ? '编辑金额明细' : '新增金额明细'} open={editing !== null} onCancel={() => setEditing(null)} onSubmit={save} initialValues={editing?.item ?? {}} fields={[{ key: 'amount', label: '金额', type: 'number', required: true }, { key: 'occurredDate', label: '日期', type: 'date' }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }]} /></Drawer>;
+  return <Drawer title="项目详情与金额明细" open onClose={onClose} width={860}>{detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}><Card title="项目资料" size="small"><Descriptions bordered column={1} size="small" items={detailItems(isRecord(detail.project) ? detail.project : null, PROJECT_FIELD_LABELS, PROJECT_MONEY_KEYS)} /></Card><Card title="自动计算" size="small"><Descriptions bordered column={1} size="small" items={detailItems(isRecord(detail.auto) ? detail.auto : null, AUTO_FIELD_LABELS, PROJECT_MONEY_KEYS, new Set(['grossMargin']))} /></Card>{table('开票金额', 'invoice', detailRows('invoices'))}{table('已收回款', 'receipt', detailRows('receipts'))}{table('已付分包款', 'subcontract-payment', detailRows('subcontractPayments'))}</Space> : <Typography.Text>正在加载...</Typography.Text>}<ResourceFormModal title={editing?.item ? '编辑金额明细' : '新增金额明细'} open={editing !== null} onCancel={() => setEditing(null)} onSubmit={save} initialValues={editing?.item ?? {}} fields={[{ key: 'amount', label: '金额', type: 'number', required: true }, { key: 'occurredDate', label: '日期', type: 'date' }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }]} /></Drawer>;
 }
 
 /** 利润分析（导出供组件测试；离开保护时序见 fin-profit-guard.spec，M22） */
@@ -296,6 +363,16 @@ export function ProfitAnalysis() {
     }
   };
 
+  /** 利润分析导出（页头操作区）；已筛选导出在筛选 UI 落地前与全部一致（批次 6 携带筛选）。 */
+  const exportFile = async (scope: 'all' | 'filtered') => {
+    try {
+      const blob = await download(`/profit/excel/export/${scope}`, { service: 'fin', active: true });
+      triggerDownload(blob, `profit-${scope}.xlsx`);
+    } catch (error) {
+      feedback.error(error, 'Excel 导出失败');
+    }
+  };
+
   /** 保存状态标签（fin PRD §4：保存中/已保存/保存失败） */
   const saveStatusTag = () => {
     if (saveState === 'saving') {
@@ -321,14 +398,33 @@ export function ProfitAnalysis() {
     return <Input defaultValue={text} aria-label={`${String(row.name ?? '项目')} ${field}`} onPressEnter={(event) => void saveCell(row, field, event.currentTarget.value)} onBlur={(event) => void saveCell(row, field, event.currentTarget.value)} />;
   };
   const negative = (value: unknown) => <span style={String(value).startsWith('-') ? { color: token.colorError } : undefined}>{value === null || value === undefined ? '—' : String(value)}</span>;
+  /** 总计统计行：复用统一金额/比率格式化（主 PRD §9.11）。 */
+  const summaryRow = totals ? (
+    <Table.Summary.Row>
+      <Table.Summary.Cell index={0} colSpan={5}><Typography.Text strong>总计</Typography.Text></Table.Summary.Cell>
+      <Table.Summary.Cell index={5}><Typography.Text strong>{formatMoney(totals.totalReceived)}</Typography.Text></Table.Summary.Cell>
+      <Table.Summary.Cell index={6}><Typography.Text strong>{formatMoney(totals.totalSubcontractPaid)}</Typography.Text></Table.Summary.Cell>
+      <Table.Summary.Cell index={7}><Typography.Text strong>{formatMoney(totals.equity)}</Typography.Text></Table.Summary.Cell>
+      <Table.Summary.Cell index={8}><Typography.Text strong>{formatPercentage(totals.grossMargin)}</Typography.Text></Table.Summary.Cell>
+    </Table.Summary.Row>
+  ) : null;
 
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <div><Typography.Title level={3}>利润分析</Typography.Title><Typography.Paragraph type="secondary">桌面端可直接编辑单个业务单元格并即时保存；自动计算列不可编辑。移动端复用同一保存接口。</Typography.Paragraph><Space>{saveStatusTag()}{Object.keys(moneyDrafts).length > 0 ? <Typography.Text type="warning">有 {Object.keys(moneyDrafts).length} 个未提交草稿</Typography.Text> : null}</Space></div>
-    {/* 导入导出内嵌业务页面（M23，产品决策：所有导入导出归属业务页面）；导出对查看人员可用 */}
-    <ExcelImportExport canMaintain={canEdit} />
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+      <div>
+        <Typography.Title level={3} style={{ marginBottom: 4 }}>利润分析</Typography.Title>
+        <Space>{saveStatusTag()}{Object.keys(moneyDrafts).length > 0 ? <Typography.Text type="warning">有 {Object.keys(moneyDrafts).length} 个未提交草稿</Typography.Text> : null}</Space>
+      </div>
+      {/* 导出收进页头操作区（批次 4-2：导入导出收进页头操作区）；导出对查看人员可用 */}
+      <Space wrap>
+        <Button icon={<DownloadOutlined />} onClick={() => void exportFile('all')}>导出全部</Button>
+        <Button icon={<ExportOutlined />} onClick={() => void exportFile('filtered')}>导出已筛选</Button>
+      </Space>
+    </div>
+    {canEdit ? <ImportCard /> : null}
     <Card loading={loading} styles={{ body: { padding: 0 } }}>
       <div className="wbme-desktop-table">
-        <Table<RecordValue> rowKey={(row) => String(row.id)} dataSource={rows} pagination={false} scroll={{ x: 'max-content' }} columns={[
+        <Table<RecordValue> rowKey={(row) => String(row.id)} dataSource={rows} pagination={false} scroll={{ x: 'max-content' }} summary={summaryRow ? () => summaryRow : undefined} columns={[
           { key: 'name', title: '项目名称', fixed: 'left', width: 220, render: renderCell('name') },
           { key: 'year', title: '年度', width: 110, render: renderCell('year') },
           { key: 'partyA', title: '甲方', width: 200, render: renderCell('partyA') },
@@ -380,7 +476,6 @@ export function ProfitAnalysis() {
         </Space>
       </div>
     </Card>
-    {totals ? <Card title="当前筛选范围汇总"><Space wrap>{Object.entries(totals).map(([key, value]) => <Typography.Text key={key}>{key}：{String(value ?? '—')}</Typography.Text>)}</Space></Card> : null}
     <Modal
       open={leavePrompt !== null}
       title="未保存的编辑内容"
@@ -407,9 +502,8 @@ export function ProfitAnalysis() {
   </Space>;
 }
 
-/** 利润分析页内嵌的 Excel 导入导出（产品决策 2026-08-10：导入导出归属业务页面）。
- * 导出对财务查看人员可用（fin PRD §3）；导入为数据维护能力，仅 maintain 可见。 */
-function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
+/** 利润分析导入（数据维护能力，仅 maintain 可见）；预览与确认均限时处理，不留存原文件。 */
+function ImportCard() {
   const feedback = useFeedback();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -466,33 +560,24 @@ function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
       setLoading(false);
     }
   };
-  const exportFile = async (scope: 'all' | 'filtered') => {
-    try {
-      const blob = await download(`/profit/excel/export/${scope}`, { service: 'fin', active: true });
-      triggerDownload(blob, `profit-${scope}.xlsx`);
-    } catch (error) {
-      feedback.error(error, 'Excel 导出失败');
-    }
-  };
-  return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    {canMaintain ? <Card title="导入"><Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>仅接受服务端导出的 V2 模板；预览与确认均在当前请求中限时处理，不留存原文件。</Typography.Paragraph>
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Upload accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" maxCount={1} beforeUpload={selectFile} onRemove={() => { setFile(null); setPreview(null); setChoices({}); setConfirmWarnings({}); }}>
-          <Button icon={<ImportOutlined />}>选择 Excel 文件</Button>
-        </Upload>
-        <Space wrap><Button type="primary" disabled={!file} loading={loading} onClick={() => void previewFile()}>生成预览</Button><Button disabled={!preview || loading || hasUnconfirmedWarning(preview, choices, confirmWarnings)} onClick={() => void confirmFile()}>确认导入</Button></Space>
-        {preview ? <ImportPreviewCard preview={preview} choices={choices} confirmations={confirmWarnings} onChoiceChange={(rowNumber, decision) => setChoices((current) => ({ ...current, [rowNumber]: decision }))} onConfirmChange={(rowNumber, confirmed) => setConfirmWarnings((current) => ({ ...current, [rowNumber]: confirmed }))} /> : null}
-      </Space>
-    </Card> : null}
-    <Card title="导出"><Space wrap><Button icon={<DownloadOutlined />} onClick={() => void exportFile('all')}>导出全部</Button><Button icon={<ExportOutlined />} onClick={() => void exportFile('filtered')}>导出已筛选</Button></Space></Card>
-  </Space>;
+  return <Card title="导入">
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Upload accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" maxCount={1} beforeUpload={selectFile} onRemove={() => { setFile(null); setPreview(null); setChoices({}); setConfirmWarnings({}); }}>
+        <Button icon={<ImportOutlined />}>选择 Excel 文件</Button>
+      </Upload>
+      <Space wrap><Button type="primary" disabled={!file} loading={loading} onClick={() => void previewFile()}>生成预览</Button><Button disabled={!preview || loading || hasUnconfirmedWarning(preview, choices, confirmWarnings)} onClick={() => void confirmFile()}>确认导入</Button></Space>
+      {preview ? <ImportPreviewCard preview={preview} choices={choices} confirmations={confirmWarnings} onChoiceChange={(rowNumber, decision) => setChoices((current) => ({ ...current, [rowNumber]: decision }))} onConfirmChange={(rowNumber, confirmed) => setConfirmWarnings((current) => ({ ...current, [rowNumber]: confirmed }))} /> : null}
+    </Space>
+  </Card>;
 }
 
 function FinanceConfig() {
-  return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <JsonDetails title="财务运行参数" service="fin" endpoint="/finance-settings" description="财务系统运行配置即时生效。" />
-    <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'id', title: 'ID', fixed: 'left' as const }, { key: 'dictType', title: '类型' }, { key: 'name', title: '名称' }, { key: 'semantic', title: '金额语义' }, { key: 'status', title: '状态' }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }] }, { key: 'sort', label: '排序', type: 'number' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }] }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids' }} />
-  </Space>;
+  return <Card>
+    <Tabs items={[
+      { key: 'params', label: '运行参数', children: <JsonDetails title="财务运行参数" service="fin" endpoint="/finance-settings" /> },
+      { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'id', title: 'ID', fixed: 'left' as const }, { key: 'dictType', title: '类型' }, { key: 'name', title: '名称' }, { key: 'semantic', title: '金额语义' }, { key: 'status', title: '状态' }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }] }, { key: 'sort', label: '排序', type: 'number' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }] }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids' }} /> },
+    ]} />
+  </Card>;
 }
 
 function ImportPreviewCard({ preview, choices, confirmations, onChoiceChange, onConfirmChange }: {

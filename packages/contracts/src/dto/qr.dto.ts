@@ -42,6 +42,13 @@ export class QrCodeQueryDto extends PaginationQueryDto {
   @IsIn(['ASSET', 'INVENTORY_ITEM', 'SCAN_CATALOG'])
   targetType?: QrTargetType;
 
+  @ApiProperty({ description: '目标标识（按目标筛选，如资产详情展示二维码）', required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  targetId?: number;
+
   @ApiProperty({ description: '状态', required: false, enum: ['ACTIVE', 'DISABLED', 'REVOKED'] })
   @IsOptional()
   @IsIn(['ACTIVE', 'DISABLED', 'REVOKED'])

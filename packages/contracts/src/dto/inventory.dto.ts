@@ -6,6 +6,13 @@ import { IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 库存条目查询（消耗品库存管理） */
 export class InventoryItemQueryDto extends PaginationQueryDto {
+  @ApiProperty({ description: '库存条目 id（详情取单条）', required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id?: number;
+
   @ApiProperty({ description: '品种 id', required: false, minimum: 1 })
   @IsOptional()
   @Type(() => Number)

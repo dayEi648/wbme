@@ -43,7 +43,7 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
 
   beforeAll(async () => {
     prisma = new PrismaService();
-    service = new UserAdminService(prisma);
+    service = new UserAdminService(prisma, { exists: async () => 0 } as never);
     authorization = new AuthorizationService(prisma);
     // CI 全新库只有迁移没有 seed：目录注册由本规格幂等保证，不依赖执行顺序
     await ensurePermissionCatalog(prisma);

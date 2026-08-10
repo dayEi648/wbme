@@ -886,24 +886,6 @@
         ],
         "type": "object"
       },
-      "UpdateDescriptionDto": {
-        "properties": {
-          "description": {
-            "description": "业务说明（≤500；空白字符串清除为 NULL）",
-            "maxLength": 500,
-            "type": "string"
-          },
-          "idempotencyKey": {
-            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
-            "maxLength": 128,
-            "type": "string"
-          }
-        },
-        "required": [
-          "description"
-        ],
-        "type": "object"
-      },
       "UpdatePermissionGroupDto": {
         "properties": {
           "description": {
@@ -4384,7 +4366,7 @@
     },
     "/api/v1/systems": {
       "get": {
-        "operationId": "SystemStructureController_listStructure",
+        "operationId": "SystemStructureController_listSystems",
         "parameters": [],
         "responses": {
           "200": {
@@ -4398,9 +4380,9 @@
             "description": ""
           }
         },
-        "summary": "系统与业务结构树（系统 → 板块 → 功能，按目录排序）",
+        "summary": "系统列表（编码/名称/开放状态；供系统设置书签切换状态）",
         "tags": [
-          "系统与业务结构"
+          "系统状态"
         ]
       }
     },
@@ -4441,97 +4423,7 @@
         },
         "summary": "调整系统开放状态（asset/hr/fin；backstage 恒开放不可调；BASE 不在目录 404）",
         "tags": [
-          "系统与业务结构"
-        ]
-      }
-    },
-    "/api/v1/systems/{systemCode}/sections/{sectionCode}/description": {
-      "put": {
-        "operationId": "SystemStructureController_updateSectionDescription",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "systemCode",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sectionCode",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDescriptionDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "维护业务板块的业务说明",
-        "tags": [
-          "系统与业务结构"
-        ]
-      }
-    },
-    "/api/v1/systems/functions/{functionCode}/description": {
-      "put": {
-        "operationId": "SystemStructureController_updateFunctionDescription",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "functionCode",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDescriptionDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "维护功能的业务说明",
-        "tags": [
-          "系统与业务结构"
+          "系统状态"
         ]
       }
     },

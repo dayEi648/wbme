@@ -4382,6 +4382,16 @@
             }
           },
           {
+            "description": "库存条目 id（详情取单条）",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
             "description": "品种 id",
             "in": "query",
             "name": "consumableId",
@@ -5026,6 +5036,16 @@
                 "SCAN_CATALOG"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "目标标识（按目标筛选，如资产详情展示二维码）",
+            "in": "query",
+            "name": "targetId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
             }
           },
           {

@@ -55,7 +55,8 @@ export interface CatalogSystemDefinition {
  * hr PRD §1（9 项）、fin PRD §1（3 项）；变更本常量即变更授权语义，
  * platform-core 下次启动时对账入库并递增全局权限目录版本。
  */
-export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
+export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [
+  {
     code: 'BACKSTAGE',
     name: '管理后台',
     productStatus: 'OPEN',
@@ -94,12 +95,6 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
         code: 'permission',
         name: '权限',
         functions: [
-          {
-            code: 'system_structure_manage',
-            name: '系统与业务结构管理',
-            description: '系统状态、业务板块维护',
-            dataScopeOptions: ['COMPANY'],
-          },
           {
             code: 'operation_log_view',
             name: '操作日志',
@@ -149,7 +144,7 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
   {
     code: 'ASSET',
     name: '资产系统',
-    productStatus: 'COMING_SOON',
+    productStatus: 'OPEN',
     sections: [
       {
         code: 'fixed-asset',
@@ -270,7 +265,7 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
   {
     code: 'HR',
     name: '人事系统',
-    productStatus: 'COMING_SOON',
+    productStatus: 'OPEN',
     sections: [
       {
         code: 'overtime',
@@ -349,7 +344,7 @@ export const PERMISSION_CATALOG: readonly CatalogSystemDefinition[] = [  {
   {
     code: 'FIN',
     name: '财务系统',
-    productStatus: 'COMING_SOON',
+    productStatus: 'OPEN',
     sections: [
       {
         code: 'contract-profit',
@@ -396,12 +391,6 @@ export const PERMISSION_MANAGE_FUNCTION_CODE = 'permission_manage';
  * 激活邀请、管理员发起密码重置、解锁账号、资料修改审批（backstage PRD §3/§5）。
  */
 export const USER_MANAGE_FUNCTION_CODE = 'user_manage';
-
-/**
- * "系统与业务结构管理"功能编码（backstage PRD §1 权限板块）：
- * 系统开放状态调整与板块/功能业务说明维护（backstage PRD §6）。
- */
-export const SYSTEM_STRUCTURE_MANAGE_FUNCTION_CODE = 'system_structure_manage';
 
 /** backstage「操作日志」功能编码（backstage PRD §1 权限板块） */
 export const OPERATION_LOG_VIEW_FUNCTION_CODE = 'operation_log_view';

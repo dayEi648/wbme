@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBeijingDateTime, formatDetailValue, formatDisplayValue, formatMoney } from './display-format';
+import { displayLabel, formatBeijingDateTime, formatDetailValue, formatDisplayValue, formatMoney } from './display-format';
 
 describe('展示格式化', () => {
   it('将 UTC 时间以北京时间显示', () => {
@@ -16,5 +16,11 @@ describe('展示格式化', () => {
       更新时间: '2026-08-10 09:23',
       contractAmount: '10,000.00',
     });
+  });
+
+  it('后台日志、授权与恢复预检字段使用中文标签', () => {
+    expect(displayLabel('errorCategory')).toBe('错误分类');
+    expect(displayLabel('phoneMasked')).toBe('手机号');
+    expect(displayLabel('backupTime')).toBe('备份时间');
   });
 });

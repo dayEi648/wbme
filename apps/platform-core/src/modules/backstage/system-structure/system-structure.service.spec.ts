@@ -12,7 +12,6 @@ try {
   // 环境变量由外部注入时跳过
 }
 import { PrismaService } from '../../../prisma.service';
-import { reconcilePermissionCatalog } from '../permission-catalog/permission-catalog.reconcile';
 import { AuthorizationService } from '../permission/authorization.service';
 import { FunctionPermissionGuard, REQUIRED_FUNCTION_KEY } from '../permission/function-permission.guard';
 import { SystemStructureService } from './system-structure.service';
@@ -25,12 +24,12 @@ const TEST_PHONE_PREFIX = '+8613938';
 const KEY_PREFIX = 't38-';
 
 /**
- * 系统与业务结构管理集成测试（backstage PRD §6；T3-7；真实 PostgreSQL）。
- * 覆盖：结构树查询、状态调整与守卫联动、backstage 恒开放不可调、
- * description 维护不递增 catalog_version 且对账不覆盖、越权 403。
- * 对真实系统（FIN）状态/说明的修改均在 finally 中还原。
+ * 系统开放状态管理集成测试（主 PRD §2.1、backstage PRD §6；T3-7；真实 PostgreSQL）。
+ * 覆盖：系统列表查询、状态调整与守卫联动、backstage 恒开放不可调、
+ * 状态调整不递增 catalog_version、越权 403。
+ * 对真实系统（FIN）状态的修改均在 finally 中还原。
  */
-describe.skipIf(!DATABASE_URL)('系统与业务结构管理（T3-7）', () => {
+describe.skipIf(!DATABASE_URL)('系统开放状态管理（T3-7）', () => {
   let prisma: PrismaService;
   let service: SystemStructureService;
   let authorization: AuthorizationService;
@@ -38,7 +37,7 @@ describe.skipIf(!DATABASE_URL)('系统与业务结构管理（T3-7）', () => {
   const testUserIds: number[] = [];
 
   let superOp: { id: number; name: string };
-  let structureAdmin: { id: number; name: string };
+  let settingsAdmin: { id: number; name: string };
   let plain: { id: number; name: string };
 
   beforeAll(async () => {
@@ -47,9 +46,9 @@ describe.skipIf(!DATABASE_URL)('系统与业务结构管理（T3-7）', () => {
     authorization = new AuthorizationService(prisma);
     await cleanupLeftovers();
     superOp = await createUser({ name: `${TEST_NAME_PREFIX}超管`, isSuperAdmin: true });
-    structureAdmin = await createUser({ name: `${TEST_NAME_PREFIX}结管` });
+    settingsAdmin = await createUser({ name: `${TEST_NAME_PREFIX}设置管理员` });
     await prisma.client.employeeGrant.create({
-      data: { userId: structureAdmin.id, functionCode: 'system_structure_manage', dataScope: 'COMPANY', grantedBy: superOp.id },
+      data: { userId: settingsAdmin.id, functionCode: 'system_settings', dataScope: 'COMPANY', grantedBy: superOp.id },
     });
     plain = await createUser({ name: `${TEST_NAME_PREFIX}无权` });
   });
@@ -107,16 +106,10 @@ describe.skipIf(!DATABASE_URL)('系统与业务结构管理（T3-7）', () => {
     );
   }
 
-  it('结构树查询：四个系统按目录排序，板块/功能齐全，BACKSTAGE 恒 OPEN', async () => {
-    const tree = await service.listStructure();
-    expect(tree.systems.map((system) => system.code)).toEqual(['BACKSTAGE', 'ASSET', 'HR', 'FIN']);
-    const backstage = tree.systems[0];
-    expect(backstage?.productStatus).toBe('OPEN');
-    expect(backstage?.sections).toHaveLength(4);
-    expect(backstage?.sections.reduce((count, section) => count + section.functions.length, 0)).toBe(10);
-    const fin = tree.systems.find((system) => system.code === 'FIN');
-    expect(fin?.sections.map((section) => section.code)).toEqual(['contract-profit', 'config']);
-    expect(fin?.sections[0]?.functions[0]).toMatchObject({ code: 'finance_view', name: '财务数据查看', sort: 0 });
+  it('系统列表查询：四个系统按目录排序，BACKSTAGE 恒 OPEN', async () => {
+    const list = await service.listSystems();
+    expect(list.systems.map((system) => system.code)).toEqual(['BACKSTAGE', 'ASSET', 'HR', 'FIN']);
+    expect(list.systems[0]?.productStatus).toBe('OPEN');
   });
 
   it('状态调整：FIN 开放后守卫放行该系统功能（超管）；backstage 不可调；BASE 404；不递增目录版本', async () => {
@@ -135,7 +128,7 @@ describe.skipIf(!DATABASE_URL)('系统与业务结构管理（T3-7）', () => {
       const log = await prisma.client.backstageOperationLog.findFirst({
         where: { operatorId: superOp.id, idempotencyKey: `${KEY_PREFIX}status-1` },
       });
-      expect(log?.feature).toBe('system_structure_manage');
+      expect(log?.feature).toBe('system_settings');
       expect(log?.summary).toContain('COMING_SOON → OPEN');
       // 幂等重放：同键返回原结果，日志不重复
       const replayed = await service.updateSystemStatus(superOp.id, 'FIN', 'OPEN', `${KEY_PREFIX}status-1`);
@@ -157,48 +150,9 @@ describe.skipIf(!DATABASE_URL)('系统与业务结构管理（T3-7）', () => {
     });
   });
 
-  it('description 维护：板块/功能说明更新持久化、不递增目录版本、启动对账不覆盖管理员维护值', async () => {
-    const versionBefore = await catalogVersion();
-    const finConfig = await prisma.client.businessSection.findFirstOrThrow({
-      where: { code: 'config', system: { code: 'FIN' } },
-    });
-    const fnRow = await prisma.client.function.findUniqueOrThrow({ where: { code: 'finance_config' } });
-    try {
-      await service.updateSectionDescription(superOp.id, 'FIN', 'config', '财务配置板块说明（管理员维护）', `${KEY_PREFIX}sec-1`);
-      await service.updateFunctionDescription(superOp.id, 'finance_config', '财务配置功能说明（管理员维护）', `${KEY_PREFIX}fn-1`);
-      expect((await prisma.client.businessSection.findUniqueOrThrow({ where: { id: finConfig.id } })).description).toBe(
-        '财务配置板块说明（管理员维护）',
-      );
-      expect((await prisma.client.function.findUniqueOrThrow({ where: { id: fnRow.id } })).description).toBe(
-        '财务配置功能说明（管理员维护）',
-      );
-      // description 变化不改变授权语义：不递增目录版本（主 PRD §3.1）
-      expect(await catalogVersion()).toBe(versionBefore);
-      // 启动对账不覆盖管理员维护的 description（T3-1 分工）
-      const report = await reconcilePermissionCatalog(prisma.client);
-      expect(report.semanticChanged).toBe(false);
-      expect((await prisma.client.function.findUniqueOrThrow({ where: { id: fnRow.id } })).description).toBe(
-        '财务配置功能说明（管理员维护）',
-      );
-      expect(await catalogVersion()).toBe(versionBefore);
-      // 清除为 NULL
-      await service.updateFunctionDescription(superOp.id, 'finance_config', '   ');
-      expect((await prisma.client.function.findUniqueOrThrow({ where: { id: fnRow.id } })).description).toBeNull();
-    } finally {
-      await prisma.client.businessSection.update({ where: { id: finConfig.id }, data: { description: finConfig.description } });
-      await prisma.client.function.update({ where: { id: fnRow.id }, data: { description: fnRow.description } });
-    }
-    await expect(service.updateSectionDescription(superOp.id, 'FIN', 'ghost', 'x')).rejects.toMatchObject({
-      entry: { code: 'RESOURCE_NOT_FOUND' },
-    });
-    await expect(service.updateFunctionDescription(superOp.id, 'ghost_function', 'x')).rejects.toMatchObject({
-      entry: { code: 'RESOURCE_NOT_FOUND' },
-    });
-  });
-
-  it('越权：无"系统与业务结构管理"授权 403；持有者放行', async () => {
-    await expect(runGuard('system_structure_manage', plain.id)).rejects.toMatchObject({ entry: { code: 'FORBIDDEN' } });
-    await expect(runGuard('system_structure_manage', structureAdmin.id)).resolves.toBe(true);
+  it('越权：无"系统设置"授权 403；持有者放行', async () => {
+    await expect(runGuard('system_settings', plain.id)).rejects.toMatchObject({ entry: { code: 'FORBIDDEN' } });
+    await expect(runGuard('system_settings', settingsAdmin.id)).resolves.toBe(true);
     expect(getRequestContext()?.grantedFunction).toBeUndefined();
   });
 });

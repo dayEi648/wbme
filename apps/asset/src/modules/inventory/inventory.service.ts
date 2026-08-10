@@ -78,6 +78,9 @@ export class InventoryService {
       return this.listItemsWithComputedFilters(query, page, pageSize);
     }
     const where: Prisma.InventoryItemWhereInput = {};
+    if (query.id) {
+      where.id = query.id;
+    }
     if (query.consumableId) {
       where.consumableId = query.consumableId;
     }

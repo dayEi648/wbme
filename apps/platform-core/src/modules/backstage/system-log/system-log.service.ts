@@ -41,7 +41,11 @@ export interface SecurityLogListItem {
   id: number;
   eventType: string;
   actorId: number | null;
+  /** 操作者姓名（经 backstage.user_accounts 视图关联；注销账号仍展示历史姓名） */
+  actorName: string | null;
   targetUserId: number | null;
+  /** 目标用户姓名（同上） */
+  targetUserName: string | null;
   result: string;
   reason: string | null;
   sourceIp: string | null;
@@ -74,7 +78,9 @@ interface SecurityLogRow {
   id: number;
   event_type: string;
   actor_id: number | null;
+  actor_name: string | null;
   target_user_id: number | null;
+  target_user_name: string | null;
   result: string;
   reason: string | null;
   source_ip: string | null;
@@ -250,10 +256,13 @@ export class SystemLogService {
     const offset = (query.page - 1) * query.pageSize;
     const listParams = [...effectiveParams, query.pageSize, offset];
     const sql = `
-      SELECT id, event_type, actor_id, target_user_id, result, reason, source_ip, request_id, created_at
-      FROM backstage.security_logs
+      SELECT s.id, s.event_type, s.actor_id, s.target_user_id, s.result, s.reason, s.source_ip, s.request_id, s.created_at,
+        actor.name AS actor_name, target.name AS target_user_name
+      FROM backstage.security_logs s
+      LEFT JOIN backstage.user_accounts actor ON actor.user_id = s.actor_id
+      LEFT JOIN backstage.user_accounts target ON target.user_id = s.target_user_id
       ${effectiveWhereSql}
-      ORDER BY ${tableQuery.orderBySql ?? 'id DESC'}
+      ORDER BY ${tableQuery.orderBySql ?? 's.id DESC'}
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
     `;
     const countSql = `SELECT COUNT(*)::bigint AS total FROM backstage.security_logs ${effectiveWhereSql}`;
@@ -360,8 +369,8 @@ export class SystemLogService {
       columns: [
         { header: '日志编号', value: (row) => row.id },
         { header: '事件类型', value: (row) => row.event_type },
-        { header: '主体账号', value: (row) => row.actor_id ?? '' },
-        { header: '目标账号', value: (row) => row.target_user_id ?? '' },
+        { header: '操作者', value: (row) => `${row.actor_name ?? ''}（${row.actor_id ?? ''}）` },
+        { header: '目标用户', value: (row) => (row.target_user_id === null ? '' : `${row.target_user_name ?? ''}（${row.target_user_id}）`) },
         { header: '结果', value: (row) => row.result },
         { header: '原因', value: (row) => row.reason ?? '' },
         { header: '来源 IP', value: (row) => row.source_ip ?? '' },
@@ -382,10 +391,13 @@ export class SystemLogService {
         const client = tx as PrismaService['client'];
         const listParams = [...effectiveParams, limit, offset];
         const sql = `
-          SELECT id, event_type, actor_id, target_user_id, result, reason, source_ip, request_id, created_at
-          FROM backstage.security_logs
+          SELECT s.id, s.event_type, s.actor_id, s.target_user_id, s.result, s.reason, s.source_ip, s.request_id, s.created_at,
+            actor.name AS actor_name, target.name AS target_user_name
+          FROM backstage.security_logs s
+          LEFT JOIN backstage.user_accounts actor ON actor.user_id = s.actor_id
+          LEFT JOIN backstage.user_accounts target ON target.user_id = s.target_user_id
           ${effectiveWhereSql}
-          ORDER BY ${tableQuery.orderBySql ?? 'id DESC'}
+          ORDER BY ${tableQuery.orderBySql ?? 's.id DESC'}
           LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
         `;
         return client.$queryRawUnsafe<SecurityLogRow[]>(sql, ...listParams);
@@ -511,7 +523,9 @@ function mapSecurityRow(row: SecurityLogRow): SecurityLogListItem {
     id: row.id,
     eventType: row.event_type,
     actorId: row.actor_id,
+    actorName: row.actor_name,
     targetUserId: row.target_user_id,
+    targetUserName: row.target_user_name,
     result: row.result,
     reason: row.reason,
     sourceIp: row.source_ip,

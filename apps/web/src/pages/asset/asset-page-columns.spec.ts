@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BORROW_HISTORY_COLUMNS, DISPOSAL_PENDING_COLUMNS, DISPOSAL_RECORDS_COLUMNS } from './AssetPage';
+import { BORROW_HISTORY_COLUMNS, buildScannedClaimInitialValues, DISPOSAL_PENDING_COLUMNS, DISPOSAL_RECORDS_COLUMNS } from './AssetPage';
 
 /**
  * M20/M28 复核修复的列契约回归测试：前端列 key 必须对得上后端查询返回字段
@@ -55,5 +55,12 @@ describe('AssetPage 列契约（M20/M28 回归防护）', () => {
     for (const key of keys) {
       expect(DISPOSAL_RECORDS_FIELDS.has(key), `列 ${key} 不在后端 listRecords 返回字段中`).toBe(true);
     }
+  });
+
+  it('库存二维码将条目 ID 预填到申领明细', () => {
+    expect(buildScannedClaimInitialValues('42')).toEqual({
+      items: '[\n  {\n    "inventoryItemId": 42,\n    "qty": 1,\n    "purpose": ""\n  }\n]',
+    });
+    expect(buildScannedClaimInitialValues('invalid')).toBeUndefined();
   });
 });

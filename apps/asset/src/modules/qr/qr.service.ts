@@ -116,6 +116,9 @@ export class QrService {
     if (query.targetType) {
       where.targetType = query.targetType;
     }
+    if (query.targetId) {
+      where.targetId = query.targetId;
+    }
     if (query.status) {
       where.status = query.status;
     }
@@ -130,7 +133,37 @@ export class QrService {
         take: pageSize,
       }),
     ]);
-    return { total, items: rows };
+    return { total, items: await this.withTargetNames(rows) };
+  }
+
+  /**
+   * 为列表补充目标名称（二维码管理页展示）：资产→资产名称、库存条目→品种名称、
+   * 申领目录→固定文案。目标已删除时按 ID 回退，不丢列表行。
+   */
+  private async withTargetNames(rows: Array<{ id: number; targetType: string; targetId: number | null }>): Promise<unknown[]> {
+    const assetIds = rows.filter((row) => row.targetType === 'ASSET').map((row) => row.targetId ?? -1);
+    const itemIds = rows.filter((row) => row.targetType === 'INVENTORY_ITEM').map((row) => row.targetId ?? -1);
+    const [assets, items] = await Promise.all([
+      assetIds.length > 0
+        ? this.prisma.client.asset.findMany({ where: { id: { in: assetIds } }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+      itemIds.length > 0
+        ? this.prisma.client.inventoryItem.findMany({
+            where: { id: { in: itemIds } },
+            select: { id: true, consumable: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+    const assetNameById = new Map(assets.map((asset) => [asset.id, asset.name]));
+    const itemNameById = new Map(items.map((item) => [item.id, item.consumable?.name ?? null]));
+    return rows.map((row) => {
+      const targetName = row.targetType === 'ASSET'
+        ? assetNameById.get(row.targetId ?? -1) ?? null
+        : row.targetType === 'INVENTORY_ITEM'
+          ? itemNameById.get(row.targetId ?? -1) ?? null
+          : '长期申领目录';
+      return { ...row, targetName };
+    });
   }
 
   /**

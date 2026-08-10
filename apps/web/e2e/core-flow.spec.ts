@@ -20,7 +20,8 @@ test.describe('核心业务链路', () => {
     await login(page);
     await page.getByText('管理后台').first().click();
     await expect(page).toHaveURL(/\/backstage/);
-    // 操作日志页签（默认或导航）
+    // 分组导航：展开「运维监控」子菜单后进入操作日志
+    await page.getByText('运维监控').click();
     await expect(page.getByText('操作日志').first()).toBeVisible({ timeout: 15_000 });
     await page.getByText('操作日志').first().click();
     // 表格加载：至少出现表格容器（数据可能为空，但应渲染表头）
@@ -31,8 +32,11 @@ test.describe('核心业务链路', () => {
     await login(page);
     await page.getByText('资产').first().click();
     await expect(page).toHaveURL(/\/asset/);
-    // 台账页签默认选中；表头渲染即列表契约可用
-    await expect(page.getByText('台账').first()).toBeVisible({ timeout: 15_000 });
+    // 分组导航：展开「固定资产」子菜单后进入固定资产台账；页面标题渲染即路由可用
+    await page.getByText('固定资产').click();
+    await expect(page.getByText('固定资产台账').first()).toBeVisible({ timeout: 15_000 });
+    await page.getByText('固定资产台账').first().click();
+    await expect(page.getByRole('heading', { name: '固定资产台账' })).toBeVisible({ timeout: 15_000 });
   });
 
   test('超管身份显式断言：门户可见管理后台入口（L38）', async ({ page }) => {
@@ -46,35 +50,39 @@ test.describe('核心业务链路', () => {
     await login(page);
     await page.getByText('管理后台').first().click();
     await expect(page).toHaveURL(/\/backstage/);
+    // 分组导航：展开「内容与配置」子菜单后进入系统公告
+    await page.getByText('内容与配置').click();
     await page.getByText('系统公告').first().click();
     await expect(page).toHaveURL(/\/backstage\/announcements/);
 
     const title = `E2E公告写链路${Date.now()}`;
-    // 新建草稿（ResourceFormModal：标题必填）
+    // 新建草稿（ResourceFormModal：标题必填，提交按钮为「保存」；表单控件限定在弹窗内匹配，
+    // 避免与列表表头「调整标题列宽」等 aria-label 歧义）
     await page.getByText('新建公告').click();
-    await page.getByLabel('标题').fill(title);
-    await page.getByLabel('内容').fill('E2E 写链路测试内容：发布后撤回');
-    await page.getByRole('button', { name: '确 定' }).click();
+    const dialog = page.getByRole('dialog', { name: '新建公告' });
+    await dialog.getByLabel('标题').fill(title);
+    await dialog.getByLabel('内容').fill('E2E 写链路测试内容：发布后撤回');
+    await dialog.getByRole('button', { name: '保 存' }).click();
     const row = page.locator('tr', { hasText: title });
     await expect(row).toBeVisible({ timeout: 15_000 });
     // 草稿态：仅「发布」入口（L32 门控：不显示撤回）
-    await expect(row.getByText('发布')).toBeVisible();
-    await expect(row.getByText('撤回')).toHaveCount(0);
+    await expect(row.getByText('发 布')).toBeVisible();
+    await expect(row.getByText('撤 回')).toHaveCount(0);
     await expect(row.getByText('DRAFT')).toBeVisible();
 
     // 发布 → 展示中：仅「撤回」入口
-    await row.getByText('发布').click();
+    await row.getByText('发 布').click();
     await page.getByRole('button', { name: '确 定' }).click();
-    await expect(row.getByText('撤回')).toBeVisible({ timeout: 15_000 });
-    await expect(row.getByText('发布')).toHaveCount(0);
+    await expect(row.getByText('撤 回')).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByText('发 布')).toHaveCount(0);
     await expect(row.getByText('PUBLISHING')).toBeVisible();
 
     // 撤回 → 终态：行内不再有任何操作入口
-    await row.getByText('撤回').click();
+    await row.getByText('撤 回').click();
     await page.getByRole('button', { name: '确 定' }).click();
     await expect(row.getByText('REVOKED')).toBeVisible({ timeout: 15_000 });
-    await expect(row.getByText('发布')).toHaveCount(0);
-    await expect(row.getByText('撤回')).toHaveCount(0);
+    await expect(row.getByText('发 布')).toHaveCount(0);
+    await expect(row.getByText('撤 回')).toHaveCount(0);
 
     // 失败回滚断言：删除后对同一公告重复发布 → 后端 RESOURCE_NOT_FOUND 404
     // （公告已删除，状态机拒绝；顺带完成 E2E 数据清理）

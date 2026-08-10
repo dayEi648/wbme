@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Drawer, Space, Tag, Typography } from 'antd';
+import { Badge, Button, Card, Drawer, Space, Tag, Tooltip, Typography } from 'antd';
 import { BellOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -92,7 +92,11 @@ export default function PortalPage() {
                   {system.name}
                 </Typography.Title>
                 <Space size="small">
-                  {system.productStatus === 'COMING_SOON' && <Tag color="orange">即将上线</Tag>}
+                  {system.productStatus === 'COMING_SOON' && (
+                    <Tooltip title="系统尚未开放，暂时无法进入">
+                      <Tag color="orange" style={{ cursor: 'not-allowed' }}>即将上线</Tag>
+                    </Tooltip>
+                  )}
                   {/* 待办角标：按系统拆分（base PRD §5：系统入口展示各自待处理数量） */}
                   <Badge count={portal.badgeBySystem[system.code] ?? 0} showZero={false} size="small" />
                 </Space>

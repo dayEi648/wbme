@@ -14,17 +14,17 @@ describe('功能权限目录权威定义（主 PRD §3.1、各系统 PRD §1）'
     expect(backstage?.productStatus).toBe('OPEN');
   });
 
-  it('目录规模与各系统 PRD §1 一致（4 系统 / 13 板块 / 37 功能）', () => {
+  it('目录规模与各系统 PRD §1 一致（4 系统 / 13 板块 / 36 功能）', () => {
     expect(PERMISSION_CATALOG).toHaveLength(4);
     const sectionCount = PERMISSION_CATALOG.reduce((count, system) => count + system.sections.length, 0);
     expect(sectionCount).toBe(13);
-    // backstage §1 十项、asset §1 十五项、hr §1 九项、fin §1 三项
-    const functionCountBySystem: Record<SystemCode, number> = { BACKSTAGE: 10, ASSET: 15, HR: 9, FIN: 3 };
+    // backstage §1 九项（批次 4 移除 system_structure_manage）、asset §1 十五项、hr §1 九项、fin §1 三项
+    const functionCountBySystem: Record<SystemCode, number> = { BACKSTAGE: 9, ASSET: 15, HR: 9, FIN: 3 };
     for (const system of PERMISSION_CATALOG) {
       const count = system.sections.reduce((sum, section) => sum + section.functions.length, 0);
       expect(count, `${system.code} 功能数量与 PRD §1 不一致`).toBe(functionCountBySystem[system.code]);
     }
-    expect(flattenPermissionCatalog()).toHaveLength(37);
+    expect(flattenPermissionCatalog()).toHaveLength(36);
   });
 
   it('稳定功能编码全平台唯一', () => {
