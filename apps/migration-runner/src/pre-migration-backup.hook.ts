@@ -7,7 +7,14 @@ import { spawn } from 'node:child_process';
  * 1. `PRE_MIGRATION_BACKUP_WAIT=1`：调用 platform-core 内部立即备份并轮询成功；
  * 2. `PRE_MIGRATION_BACKUP_CMD`：执行部署注入的 shell 命令；
  * 3. 均未配置：跳过（开发默认）。
+ *
+ * 空库豁免：触发备份失败时，若数据库为全新库（无任何业务表，无数据可备份）则跳过备份
+ * 继续迁移；否则照常中止。覆盖"首次部署不经 release.sh 直接 up -d"等 platform-core
+ * 尚未启动的场景（全新库不存在可备份数据，迁移前备份没有意义）。
  */
+
+/** 业务 schema 清单（与各部署单元迁移元数据落位一致：platform-core→base，其余同名） */
+const BUSINESS_SCHEMAS = ['base', 'backstage', 'asset', 'hr', 'fin'] as const;
 
 /** 命令执行结果 */
 export interface HookExecResult {
@@ -88,22 +95,66 @@ function defaultPlatformBackupClient(env: NodeJS.ProcessEnv): PlatformBackupClie
 }
 
 /**
+ * 判断数据库是否为全新库（业务 schema 无任何表，即无数据可备份）。
+ *
+ * @param env 环境变量（DATABASE_URL）
+ * @returns true 全新库；无法确认时返回 false（保守：不做豁免）
+ */
+async function isFreshDatabase(env: NodeJS.ProcessEnv): Promise<boolean> {
+  const databaseUrl = env.DATABASE_URL;
+  if (!databaseUrl) {
+    return false;
+  }
+  let client: import('pg').Client | undefined;
+  try {
+    const { Client } = await import('pg');
+    client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+    const { rows } = await client.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM information_schema.tables WHERE table_schema = ANY($1)`,
+      [[...BUSINESS_SCHEMAS]],
+    );
+    return Number(rows[0]?.count ?? 0) === 0;
+  } catch {
+    // 连接失败/查询失败：无法确认空库，不做豁免（保守中止由调用方抛错处理）
+    return false;
+  } finally {
+    await client?.end().catch(() => undefined);
+  }
+}
+
+/** 空库判定函数（测试注入替身） */
+export type FreshDbCheck = (env: NodeJS.ProcessEnv) => Promise<boolean>;
+
+/**
  * 执行迁移前备份钩子。
  *
  * @param exec 命令执行器
  * @param env 环境变量
  * @param platformClient 平台备份客户端（测试注入）
+ * @param freshDbCheck 空库判定（测试注入；默认直连 DATABASE_URL 查询）
  * @throws 备份失败时抛出（调用方停止迁移）
  */
 export async function runPreMigrationBackup(
   exec: HookExec = defaultExec,
   env: NodeJS.ProcessEnv = process.env,
   platformClient?: PlatformBackupClient,
+  freshDbCheck: FreshDbCheck = isFreshDatabase,
 ): Promise<void> {
   if (env.PRE_MIGRATION_BACKUP_WAIT === '1') {
     console.log('[pre-migration-backup] 通过 platform-core 立即备份 ...');
     const client = platformClient ?? defaultPlatformBackupClient(env);
-    const { backupId } = await client.triggerImmediateBackup();
+    let backupId: number;
+    try {
+      ({ backupId } = await client.triggerImmediateBackup());
+    } catch (error) {
+      // 空库豁免：全新库无数据可备份，跳过备份继续迁移（覆盖 platform-core 未启动的首次部署）
+      if (await freshDbCheck(env)) {
+        console.log('[pre-migration-backup] 全新数据库（无业务表）且备份触发失败，跳过迁移前备份（无数据可备份）');
+        return;
+      }
+      throw error;
+    }
     const timeoutMs = Number(env.PRE_MIGRATION_BACKUP_TIMEOUT_MS ?? 600_000);
     const ok = await client.waitBackupSucceeded(backupId, timeoutMs);
     if (!ok) {

@@ -56,22 +56,7 @@ else
   log "首次发布（无上次成功部署基线）"
 fi
 
-# ---- 4. 构建与部署 ----
-if [ -z "${SKIP_DEPLOY:-}" ]; then
-  log "构建镜像（tag=$TAG）..."
-  docker compose "${COMPOSE_OPTS[@]}" build
-
-  log "执行迁移（migration-runner；迁移前自动立即备份钩子）..."
-  docker compose "${COMPOSE_OPTS[@]}" run --rm migration-runner
-
-  log "更新全部容器（优雅停机由 stop_grace_period 保证）..."
-  WBME_TAG="$TAG" docker compose "${COMPOSE_OPTS[@]}" up -d
-else
-  # 重复发布：仍按状态文件 commit 构建镜像可跳过，但需要 WBME_TAG 与镜像一致
-  :
-fi
-
-# ---- 5. 就绪等待（全部应运行服务）----
+# 就绪等待工具（第 4/5 节共用）
 wait_ready() { # $1 服务名 $2 端口 [$3 探针路径 默认 /readyz]
   local svc="$1" port="$2" path="${3:-/readyz}" i
   for i in $(seq 1 60); do
@@ -93,6 +78,33 @@ wait_worker_healthy() {
   done
   fail "worker 未就绪（容器健康状态超时）"
 }
+
+# ---- 4. 构建与部署 ----
+if [ -z "${SKIP_DEPLOY:-}" ]; then
+  log "构建镜像（tag=$TAG）..."
+  docker compose "${COMPOSE_OPTS[@]}" build
+
+  if [ -n "$LAST_SHA" ]; then
+    # 升级部署：迁移前备份需要 platform-core（/internal/v1 内部端点）与 worker（执行备份）可用。
+    # 注意：readyz 含迁移版本检查（迁移前恒 503），此处以 healthz（进程探针，不含迁移检查）判定可用；
+    # 迁移完成后下方第 5 节以 readyz 复核全部服务。
+    log "拉起备份链路（platform-core / worker）..."
+    docker compose "${COMPOSE_OPTS[@]}" up -d platform-core worker
+    wait_ready platform-core 3001 /healthz
+    wait_worker_healthy
+  fi
+
+  log "执行迁移（migration-runner；迁移前自动立即备份钩子）..."
+  docker compose "${COMPOSE_OPTS[@]}" run --rm migration-runner
+
+  log "更新全部容器（优雅停机由 stop_grace_period 保证）..."
+  WBME_TAG="$TAG" docker compose "${COMPOSE_OPTS[@]}" up -d
+else
+  # 重复发布：仍按状态文件 commit 构建镜像可跳过，但需要 WBME_TAG 与镜像一致
+  :
+fi
+
+# ---- 5. 就绪等待（全部应运行服务）----
 wait_ready platform-core 3001
 wait_ready asset 3002
 wait_ready hr 3003

@@ -110,7 +110,9 @@ services:
     environment:
       <<: *backend-env
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
-      # 迁移前「立即备份」（主 PRD §9.9）：经 platform-core 内部接口触发并等待成功
+      # 迁移前「立即备份」（主 PRD §9.9）：经 platform-core 内部接口触发并等待成功。
+      # 时序由 release.sh 保证（升级部署先拉起 platform-core/worker 再运行本容器；
+      # 首次部署空库时钩子自动豁免跳过备份）
       PRE_MIGRATION_BACKUP_WAIT: "1"
       PLATFORM_CORE_INTERNAL_BASE_URL: http://platform-core:3001
       # PRE_MIGRATION_BACKUP_CMD 仍为命令行逃生通道；内部接口使用全平台共享 INTERNAL_SERVICE_TOKEN
@@ -141,6 +143,7 @@ services:
       DINGTALK_REDIRECT_URI: ${DINGTALK_REDIRECT_URI}
       OSS_BUCKET: ${OSS_BUCKET}
       OSS_REGION: ${OSS_REGION}
+      OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
       OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
       OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
       HR_INTERNAL_BASE_URL: http://hr:3003/internal/v1
@@ -172,6 +175,7 @@ services:
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
       OSS_BUCKET: ${OSS_BUCKET}
       OSS_REGION: ${OSS_REGION}
+      OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
       OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
@@ -226,6 +230,12 @@ services:
       HR_INTERNAL_BASE_URL: http://hr:3003/internal/v1
       ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
       RECOVERY_EXECUTOR_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      # Worker 执行备份上传与图片清理，需 OSS 配置（生产禁静默回退本地存储，S3）
+      OSS_BUCKET: ${OSS_BUCKET}
+      OSS_REGION: ${OSS_REGION}
+      OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
+      OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
+      OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
       PG_DUMP_PATH: /usr/bin/pg_dump
       PG_RESTORE_PATH: /usr/bin/pg_restore
       PSQL_PATH: /usr/bin/psql
@@ -259,6 +269,7 @@ services:
       RECOVERY_SKIP_REDIS_FLUSH: "0"
       OSS_BUCKET: ${OSS_BUCKET}
       OSS_REGION: ${OSS_REGION}
+      OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
       OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state

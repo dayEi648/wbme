@@ -39,12 +39,13 @@ ENV NODE_ENV=production
 WORKDIR /wbme
 
 # 备份/恢复处理器需要 PostgreSQL 18 客户端（pg_dump/pg_restore/psql，主 PRD §9.3）。
-# bookworm 默认源只到 15，使用清华大学 PostgreSQL 镜像源安装 18（与国内网络环境对齐）。
+# bookworm 默认源只到 15，使用阿里云 PostgreSQL 镜像源安装 18（与国内网络环境对齐；
+# 2026-08 实测：清华无 pgdg 路径、华为云仅同步到 16，阿里云/腾讯云 /postgresql/repos/apt 含 client-18）。
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
   && install -d /usr/share/postgresql-common/pgdg \
-  && curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/postgresql/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
-  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://mirrors.tuna.tsinghua.edu.cn/postgresql/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+  && curl -fsSL https://mirrors.aliyun.com/postgresql/repos/apt/ACCC4CF8.asc | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://mirrors.aliyun.com/postgresql/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
   && apt-get update \
   && apt-get install -y --no-install-recommends postgresql-client-18 \
   && rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/pgdg.list /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg

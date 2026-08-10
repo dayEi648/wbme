@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { runPreMigrationBackup, type HookExec, type PlatformBackupClient } from './pre-migration-backup.hook';
+import { runPreMigrationBackup, type FreshDbCheck, type HookExec, type PlatformBackupClient } from './pre-migration-backup.hook';
 
 /**
  * 迁移前备份钩子单测（主 PRD §9.9、实现规划 T0-6）：
- * 未配置跳过 / 已配置成功 / 失败阻断迁移。
+ * 未配置跳过 / 已配置成功 / 失败阻断迁移 / 空库豁免。
  */
 describe('runPreMigrationBackup（迁移前备份钩子）', () => {
   it('未配置 PRE_MIGRATION_BACKUP_CMD：跳过且不执行命令', async () => {
@@ -69,5 +69,37 @@ describe('runPreMigrationBackup（迁移前备份钩子）', () => {
       },
     };
     await expect(runPreMigrationBackup(exec, { PRE_MIGRATION_BACKUP_WAIT: '1' }, client)).rejects.toThrow('超时或失败');
+  });
+
+  it('PRE_MIGRATION_BACKUP_WAIT=1 触发失败且非空库：抛出阻断迁移', async () => {
+    const exec: HookExec = async () => ({ ok: false, code: 1 });
+    const client: PlatformBackupClient = {
+      async triggerImmediateBackup() {
+        throw new Error('连接拒绝');
+      },
+      async waitBackupSucceeded() {
+        return true;
+      },
+    };
+    const freshDbCheck: FreshDbCheck = async () => false;
+    await expect(
+      runPreMigrationBackup(exec, { PRE_MIGRATION_BACKUP_WAIT: '1' }, client, freshDbCheck),
+    ).rejects.toThrow('连接拒绝');
+  });
+
+  it('PRE_MIGRATION_BACKUP_WAIT=1 触发失败但为全新库：空库豁免，跳过备份放行迁移', async () => {
+    const exec: HookExec = async () => ({ ok: false, code: 1 });
+    const client: PlatformBackupClient = {
+      async triggerImmediateBackup() {
+        throw new Error('连接拒绝');
+      },
+      async waitBackupSucceeded() {
+        return true;
+      },
+    };
+    const freshDbCheck: FreshDbCheck = async () => true;
+    await expect(
+      runPreMigrationBackup(exec, { PRE_MIGRATION_BACKUP_WAIT: '1' }, client, freshDbCheck),
+    ).resolves.toBeUndefined();
   });
 });
