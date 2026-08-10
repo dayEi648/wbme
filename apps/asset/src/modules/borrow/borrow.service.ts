@@ -118,9 +118,12 @@ export class BorrowService {
    * 归还批准副作用：锁定记录 → returned_qty += qty → 回库到原批次（ISSUE 流水段恢复）。
    *
    * @param tx 事务客户端
-   * @param head 审批头
+   * @param head 审批头（含处理人；流水操作人 = 真实审批处理人，L8）
    */
-  async applyReturnApproved(tx: Prisma.TransactionClient, head: { id: number; applicantId: number }): Promise<void> {
+  async applyReturnApproved(
+    tx: Prisma.TransactionClient,
+    head: { id: number; applicantId: number; processorId: number | null; processorName: string | null },
+  ): Promise<void> {
     const items = await tx.borrowActionItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
     for (const item of items) {
       const record = await this.lockBorrowRecord(tx, item.borrowRecordId);
@@ -131,7 +134,15 @@ export class BorrowService {
       if ((await this.availableActionQty(tx, record)) < item.qty) {
         throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
       }
-      await this.restoreRecord(tx, record, item.qty, 'RETURN', head.id, head.applicantId);
+      await this.restoreRecord(
+        tx,
+        record,
+        item.qty,
+        'RETURN',
+        head.id,
+        head.processorId ?? head.applicantId,
+        head.processorName ?? '审批系统',
+      );
     }
   }
 
@@ -144,7 +155,8 @@ export class BorrowService {
    * @param qty 归还数量（≤ 可申请数量）
    * @param refType 流水业务来源（RETURN / AGENT_SETTLEMENT / DIRECT_DISPOSAL）
    * @param refId 业务来源标识
-   * @param operatorId 操作人
+   * @param operatorId 操作人 id
+   * @param operatorName 操作人姓名（L8：真实处理人，不再硬编码"审批系统"）
    * @returns 本次写入的 RETURN 库存流水 ID，用于处置记录追溯
    * @throws STOCK_CONFLICT 数量超限/批次分配不足或批次归属异常
    */
@@ -155,6 +167,7 @@ export class BorrowService {
     refType: string,
     refId: number,
     operatorId: number,
+    operatorName: string,
   ): Promise<number[]> {
     if ((await this.availableActionQty(tx, record)) < qty) {
       throw new BusinessException(inventoryErrors.STOCK_CONFLICT);
@@ -247,7 +260,7 @@ export class BorrowService {
         bookAfter: bookQty + take,
         refType,
         refId,
-        operator: { id: operatorId, name: '审批系统' },
+        operator: { id: operatorId, name: operatorName },
       });
       returnFlowIds.push(flowId);
       bookQty += take;
@@ -492,29 +505,49 @@ export function buildBorrowWhereSql(options: {
     clauses.push(`user_id = ${options.userId}`);
   }
   if (options.departmentId !== undefined) {
-    // 借出时部门快照 [{id,name}] 包含该部门（jsonb 数组元素匹配）
-    clauses.push(`department_snapshot @> '[{"id": ${options.departmentId}}]'::jsonb`);
+    // 借出时部门快照包含该部门（兼容数组与单对象形状，L6：单对象快照不再被 @> 数组匹配静默漏过）
+    clauses.push(`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(
+        CASE WHEN jsonb_typeof(department_snapshot) = 'array' THEN department_snapshot
+             ELSE jsonb_build_array(department_snapshot) END
+      ) el WHERE el->>'id' = '${options.departmentId}'
+    )`);
   }
   if (options.departmentIds !== undefined) {
     if (options.departmentIds.size === 0) {
       return 'WHERE 1 = 0';
     }
     const ids = [...options.departmentIds].join(',');
-    // PERSONAL 按借出时部门快照匹配闭包；AGENT 按发起人（审批头）或受领人名单快照匹配闭包
+    // 快照兼容数组与单对象形状（L6）：jsonb_array_elements 直接作用于单对象快照会抛错，
+    // 统一先 CASE 展开为数组；PERSONAL 按借出时部门快照匹配闭包；
+    // AGENT 按发起人（审批头）或受领人名单快照匹配闭包
     clauses.push(`(
       (record_type = 'PERSONAL' AND EXISTS (
-        SELECT 1 FROM jsonb_array_elements(department_snapshot) el WHERE el->>'id' IN (${ids})
+        SELECT 1 FROM jsonb_array_elements(
+          CASE WHEN jsonb_typeof(department_snapshot) = 'array' THEN department_snapshot
+               ELSE jsonb_build_array(department_snapshot) END
+        ) el WHERE el->>'id' IN (${ids})
       ))
       OR (record_type = 'AGENT' AND (
         EXISTS (
           SELECT 1 FROM asset.approval_requests ar
           WHERE ar.id = request_id AND ar.applicant_department_snapshot IS NOT NULL
-            AND EXISTS (SELECT 1 FROM jsonb_array_elements(ar.applicant_department_snapshot) el WHERE el->>'id' IN (${ids}))
+            AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(ar.applicant_department_snapshot) = 'array' THEN ar.applicant_department_snapshot
+                     ELSE jsonb_build_array(ar.applicant_department_snapshot) END
+              ) el WHERE el->>'id' IN (${ids})
+            )
         )
         OR EXISTS (
           SELECT 1 FROM asset.agent_recipients arp
           WHERE arp.request_id = request_id
-            AND EXISTS (SELECT 1 FROM jsonb_array_elements(arp.department_snapshot) el WHERE el->>'id' IN (${ids}))
+            AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(arp.department_snapshot) = 'array' THEN arp.department_snapshot
+                     ELSE jsonb_build_array(arp.department_snapshot) END
+              ) el WHERE el->>'id' IN (${ids})
+            )
         )
       ))
     )`);

@@ -1,14 +1,23 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  ASSET_CONFIG_FUNCTION_CODE,
+  BORROW_HISTORY_FUNCTION_CODE,
   BusinessException,
   CONSUMABLE_APPLY_FUNCTION_CODE,
+  CONSUMABLE_APPLY_HISTORY_FUNCTION_CODE,
   FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
   FIXED_ASSET_VIEW_FUNCTION_CODE,
   INVENTORY_MANAGE_FUNCTION_CODE,
   MY_ASSETS_FUNCTION_CODE,
+  MY_BORROW_FUNCTION_CODE,
+  PROXY_APPLY_FUNCTION_CODE,
   QrCodeCreateDto,
   QrCodeQueryDto,
+  STOCK_CHANGE_APPLY_FUNCTION_CODE,
+  STOCK_CHANGE_HISTORY_FUNCTION_CODE,
+  STOCK_IN_APPLY_FUNCTION_CODE,
+  STOCK_IN_HISTORY_FUNCTION_CODE,
   assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
@@ -259,7 +268,38 @@ export class QrService {
       };
     }
     // SCAN_CATALOG：长期有效申领目录入口
+    // 权限校验（L9）：须持有任一资产功能才可使用申领目录；无权限与无效码同样返回 QR_INVALID 不泄露
+    if (!(await this.canUseAssetAny(userId))) {
+      throw new BusinessException(assetErrors.QR_INVALID);
+    }
     return { targetType: 'SCAN_CATALOG', targetId: null, entry: { type: 'scan-catalog' } };
+  }
+
+  /** 是否持有任一资产系统功能（资产扫码各分支的公共准入：系统开放 + 授权） */
+  private async canUseAssetAny(userId: number): Promise<boolean> {
+    const assetFunctionCodes = [
+      MY_ASSETS_FUNCTION_CODE,
+      FIXED_ASSET_VIEW_FUNCTION_CODE,
+      FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
+      CONSUMABLE_APPLY_FUNCTION_CODE,
+      CONSUMABLE_APPLY_HISTORY_FUNCTION_CODE,
+      PROXY_APPLY_FUNCTION_CODE,
+      MY_BORROW_FUNCTION_CODE,
+      BORROW_HISTORY_FUNCTION_CODE,
+      INVENTORY_MANAGE_FUNCTION_CODE,
+      STOCK_IN_APPLY_FUNCTION_CODE,
+      STOCK_IN_HISTORY_FUNCTION_CODE,
+      STOCK_CHANGE_APPLY_FUNCTION_CODE,
+      STOCK_CHANGE_HISTORY_FUNCTION_CODE,
+      ASSET_CONFIG_FUNCTION_CODE,
+    ] as const;
+    for (const functionCode of assetFunctionCodes) {
+      const access = await getFunctionAccess(this.prisma.client, userId, functionCode);
+      if (access.registered && access.systemOpen && access.allowed) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** 资产可见性：我的资产（本人）/ 固定资产查看 / 固定资产维护（数据范围）任一 */

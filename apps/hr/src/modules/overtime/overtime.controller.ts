@@ -55,10 +55,10 @@ export class OvertimeController {
     return this.submission.submit(operator, dto);
   }
 
-  /** 取消本人/代提的待审批批次（批准或驳回后不能取消） */
+  /** 取消本人/代提的待审批加班批次（批准或驳回后不能取消；断言目标为加班申请，L12） */
   @Post('applications/:id/cancel')
   async cancel(@CurrentUser() userId: number, @Param('id', ParseIntPipe) id: number): Promise<{ ok: true }> {
-    await this.approval.cancel(id, userId);
+    await this.approval.cancel(id, userId, 'OVERTIME');
     return { ok: true };
   }
 
@@ -279,10 +279,15 @@ export class OvertimeController {
   }
 }
 
-/** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC） */
+/** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC）；非法月份显式抛校验错误（L14，不静默进位） */
 function monthRangeOf(month: string): { start: Date; end: Date } {
-  const [year, monthIndex] = month.split('-').map(Number);
-  return { start: new Date(Date.UTC(year!, monthIndex! - 1, 1)), end: new Date(Date.UTC(year!, monthIndex!, 1)) };
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (!match) {
+    throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { message: '月份格式非法：YYYY-MM' });
+  }
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  return { start: new Date(Date.UTC(year, monthIndex, 1)), end: new Date(Date.UTC(year, monthIndex + 1, 1)) };
 }
 
 /** Date → YYYY-MM-DD（UTC 日历值） */

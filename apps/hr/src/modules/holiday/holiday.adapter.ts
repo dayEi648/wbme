@@ -67,10 +67,11 @@ export class HolidayAdapter {
 
   /** 单次解析（同日期并发由 resolve 合并；失败清理后重试） */
   private async resolveOnce(date: string): Promise<NormalizedHoliday> {
-    // 1) 24 小时内的已保存成功结果直接复用
+    // 1) 24 小时内的已保存成功结果直接复用（source 透传原始供应商标识，L11：
+    //    覆盖为 'saved' 会使快照失去供应商标识且与降级复用无法区分）
     const cached = await this.findFreshCached(date);
     if (cached) {
-      return { ...cached, source: 'saved' };
+      return cached;
     }
     // 2) 外部调用（有界限流；严格校验；成功 UPSERT）
     try {
@@ -94,11 +95,12 @@ export class HolidayAdapter {
         throw error;
       }
     }
-    // 3) 依赖失败降级：复用任意已保存结果（不限 24h，日志记录本次依赖失败）
+    // 3) 依赖失败降级：复用任意已保存结果（不限 24h，日志记录本次依赖失败；
+    //    source 透传原始供应商标识，L11）
     const anySaved = await this.findAnySaved(date);
     if (anySaved) {
       this.logger.warn(`节假日 API 不可用（${date}），复用已保存结果`);
-      return { ...anySaved, source: 'saved' };
+      return anySaved;
     }
     // 4) 离线兜底（版本控制静态数据；命中不落库，快照记录降级来源标识）
     const offline = this.lookupOffline(date);

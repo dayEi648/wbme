@@ -36,9 +36,8 @@
 ## 4. CI（GitHub Actions）
 
 - 触发：push `main` 与 pull_request。
-- 门禁内容：pnpm 安装（npmmirror 镜像源）→ lint → typecheck → Vitest 单元测试 → 构建。
-- 工程基座阶段后扩展：Prisma 迁移可执行性校验（临时 PostgreSQL 上 `migrate deploy`）、Playwright E2E、镜像构建。
-- 说明：runner 为 GitHub 托管（海外执行），依赖安装统一使用 npmmirror 镜像与开发机保持一致。
+- 门禁内容（与 ci.yml 实际 job 对齐）：pnpm 安装（npmmirror 镜像源）→ Prisma Client 生成 → 包构建 → lint → typecheck → 迁移可执行性校验（临时 PostgreSQL 上 `migrate deploy`）→ Vitest 单元测试（真实 PostgreSQL + Redis）→ 全仓构建 → 各服务 OpenAPI 契约校验（`openapi:verify`）→ 生产 Compose 展开校验（`docker compose config -q`）→ Playwright E2E（认证/门户/核心链路）。
+- 说明：runner 为 GitHub 托管（海外执行），依赖安装统一使用 npmmirror 镜像与开发机保持一致；镜像构建不在 CI 执行，由 `deploy/release.sh` 发布时完成。
 
 ## 5. 开发环境
 

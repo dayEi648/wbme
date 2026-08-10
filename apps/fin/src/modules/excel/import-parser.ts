@@ -1,6 +1,13 @@
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import {
+  PROJECT_NAME_MAX_LENGTH,
+  PROJECT_PAYMENT_NODE_MAX_LENGTH,
+  PROJECT_REMARK_MAX_LENGTH,
+  PROJECT_SHORT_TEXT_MAX_LENGTH,
+  PROJECT_SUBCONTRACTORS_MAX_ITEMS,
+} from '@wbme/contracts';
+import {
   AMOUNT_COLUMNS,
   AUTO_CALC_COLUMNS,
   COL,
@@ -210,6 +217,8 @@ export async function parseImportBuffer(buffer: Buffer): Promise<ParseResult | P
     const nameText = texts[COLUMN_NAME_INDEX] ?? null;
     const isGroup = (texts[0] ?? null) === null && nameText !== '' && isBlank(texts[2] ?? null) && isBlank(texts[3] ?? null);
     if (isGroup) {
+      // L23：分组行执行与数据行相同的公式白名单校验（手工列含公式即报错）
+      errors.push(...validateRowFormulas(r, formulas));
       rows.push({ rowNumber: r, kind: 'group', groupName: nameText ?? undefined, cells: texts, formulas });
       continue;
     }
@@ -251,6 +260,17 @@ function readRowCells(sheet: ExcelJS.Worksheet, rowNumber: number): Array<{ text
   return cells;
 }
 
+/** 公式白名单校验（手工列出现公式即行级错误；数据行与分组行共用，L23） */
+function validateRowFormulas(rowNumber: number, formulas: boolean[]): RowError[] {
+  const errors: RowError[] = [];
+  for (let c = 1; c <= COLUMN_COUNT; c++) {
+    if ((formulas[c - 1] ?? false) && !AUTO_CALC_COLUMNS.includes(c)) {
+      errors.push({ rowNumber, field: headerName(c), reason: '手工字段不允许包含公式' });
+    }
+  }
+  return errors;
+}
+
 /** 项目数据行校验（金额/日期/年度/多值列/公式白名单） */
 function validateProjectRow(rowNumber: number, texts: Array<string | null>, formulas: boolean[]): RowError[] {
   const errors: RowError[] = [];
@@ -263,6 +283,11 @@ function validateProjectRow(rowNumber: number, texts: Array<string | null>, form
     }
     if (text === null || text === '') {
       continue;
+    }
+    // 文本长度上限（L22：与页面 DTO @MaxLength 一致的共享常量，导入不绕过页面约束）
+    const textLimit = TEXT_LIMIT_BY_COLUMN.get(c);
+    if (textLimit !== undefined && text.length > textLimit) {
+      errors.push({ rowNumber, field: headerName(c), reason: `“${text.slice(0, 12)}…”超过 ${textLimit} 个字符上限` });
     }
     if (AMOUNT_COLUMNS.includes(c)) {
       for (const part of splitMultiValue(text, MULTI_VALUE_COLUMNS.includes(c))) {
@@ -278,9 +303,17 @@ function validateProjectRow(rowNumber: number, texts: Array<string | null>, form
       errors.push({ rowNumber, field: headerName(c), reason: `年度“${text}”不是 1000～9999 的四位公历年` });
     }
     if (c === COL.SUBCONTRACTORS) {
-      // 分包方保留用户文字和顺序；规范化（空白归一）后完全相同的重复项拒绝导入（fin PRD §4）
+      // 分包方保留用户文字和顺序；规范化（空白归一）后完全相同的重复项拒绝导入（fin PRD §4）；
+      // 每项长度与项数上限与页面 DTO 一致（L22）
+      const parts = splitMultiValue(text, true);
+      if (parts.length > PROJECT_SUBCONTRACTORS_MAX_ITEMS) {
+        errors.push({ rowNumber, field: headerName(c), reason: `分包方超过 ${PROJECT_SUBCONTRACTORS_MAX_ITEMS} 项上限` });
+      }
       const seen = new Set<string>();
-      for (const part of splitMultiValue(text, true)) {
+      for (const part of parts) {
+        if (part.length > PROJECT_SHORT_TEXT_MAX_LENGTH) {
+          errors.push({ rowNumber, field: headerName(c), reason: `分包方“${part.slice(0, 12)}…”超过 ${PROJECT_SHORT_TEXT_MAX_LENGTH} 个字符上限` });
+        }
         const norm = part.replace(/\s+/g, ' ').trim();
         if (seen.has(norm)) {
           errors.push({ rowNumber, field: headerName(c), reason: `分包方“${part}”与同行其他项重复` });
@@ -292,6 +325,16 @@ function validateProjectRow(rowNumber: number, texts: Array<string | null>, form
   }
   return errors;
 }
+
+/** 文本列长度上限（与页面 ProjectCreateDto 共享常量一致，L22） */
+const TEXT_LIMIT_BY_COLUMN: ReadonlyMap<number, number> = new Map([
+  [COL.NAME, PROJECT_NAME_MAX_LENGTH],
+  [COL.PARTY_A, PROJECT_SHORT_TEXT_MAX_LENGTH],
+  [COL.GENERAL_CONTRACTOR, PROJECT_SHORT_TEXT_MAX_LENGTH],
+  [COL.MANAGEMENT_FEE, PROJECT_SHORT_TEXT_MAX_LENGTH],
+  [COL.PAYMENT_NODE, PROJECT_PAYMENT_NODE_MAX_LENGTH],
+  [COL.REMARK, PROJECT_REMARK_MAX_LENGTH],
+]);
 
 /** 多值列拆分（LF 分隔；CRLF/CR 先规范化为 LF，忽略纯空行） */
 export function splitMultiValue(text: string, multi: boolean): string[] {

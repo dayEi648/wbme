@@ -30,13 +30,21 @@ export class AdminInvitationService {
   async issueActivationInvitation(adminId: number, targetUserId: number): Promise<{ activationUrl: string; activationQr: string }> {
     const user = await this.prisma.client.user.findUnique({
       where: { id: targetUserId },
-      select: { id: true, status: true, phone: true, deletedAt: true },
+      select: { id: true, status: true, phone: true, deletedAt: true, isSuperAdmin: true },
     });
     if (!user || user.deletedAt !== null) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
     }
     if (user.status !== 'PENDING_ACTIVATION') {
       throw new BusinessException(accountErrors.USER_NOT_PENDING);
+    }
+    // 超管账号的激活凭证只能由另一名超管生成（与重置邀请同口径，backstage PRD §3）；
+    // 待激活账号理论不可能是超管，此处为防御性一致校验，防止数据异常时低权限管理员签发超管凭证
+    if (user.isSuperAdmin) {
+      const operator = await this.prisma.client.user.findUnique({ where: { id: adminId }, select: { isSuperAdmin: true } });
+      if (!operator?.isSuperAdmin) {
+        throw new BusinessException(frameworkErrors.FORBIDDEN);
+      }
     }
 
     const rawToken = this.token.generate();

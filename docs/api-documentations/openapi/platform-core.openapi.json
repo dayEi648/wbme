@@ -375,6 +375,7 @@
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_SCOPE_INVALID",
                   "EXPORT_TIMEOUT",
                   "FLOW_SESSION_INVALID",
                   "FORBIDDEN",
@@ -2386,7 +2387,7 @@
             "description": ""
           }
         },
-        "summary": "P6 我的操作日志导出（仅当前用户记录；结构化筛选与列表一致）。",
+        "summary": "P6 我的操作日志导出（仅当前用户记录；结构化筛选与列表一致；M2 补限流）。",
         "tags": [
           "个人中心"
         ]
@@ -3382,7 +3383,7 @@
             "description": ""
           }
         },
-        "summary": "批量删除权限组（软删除；全有或全无）",
+        "summary": "批量删除权限组（软删除；全有或全无）；限流与批量授权/撤销同档（主 PRD §9.7）",
         "tags": [
           "权限组"
         ]
@@ -3709,7 +3710,7 @@
             "description": ""
           }
         },
-        "summary": "签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10）。\nCookie 透传设置（path=/recovery；生产 Nginx 同域代理 /recovery/* → 恢复执行器）。",
+        "summary": "签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10）。\nCookie 透传设置（path=/recovery；生产链路为演练机命令行直连恢复执行器\n3090 端口携带 Cookie——Nginx 无反代 /recovery/*，M32 复核修正）。",
         "tags": [
           "数据备份"
         ]

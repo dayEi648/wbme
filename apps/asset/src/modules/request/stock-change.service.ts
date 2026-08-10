@@ -138,7 +138,10 @@ export class StockChangeService {
    * @param tx 事务客户端
    * @param head 审批头
    */
-  async applyApproved(tx: Prisma.TransactionClient, head: { id: number; applicantId: number }): Promise<void> {
+  async applyApproved(
+    tx: Prisma.TransactionClient,
+    head: { id: number; applicantId: number; processorId: number | null; processorName: string | null },
+  ): Promise<void> {
     const lines = await tx.stockChangeItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
     const itemIds = [...new Set(lines.map((line) => line.inventoryItemId))];
     const locked = await lockInventoryItems(tx, itemIds);
@@ -171,7 +174,8 @@ export class StockChangeService {
           bookAfter: after,
           refType: 'STOCK_CHANGE',
           refId: head.id,
-          operator: { id: head.applicantId, name: '审批系统' },
+          // 操作人 = 真实审批处理人（L8：原误用申请人 id，且姓名硬编码）
+          operator: { id: head.processorId ?? head.applicantId, name: head.processorName ?? '审批系统' },
         });
         before = after;
       }

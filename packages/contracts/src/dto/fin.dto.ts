@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -17,6 +18,13 @@ import {
 } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
 import { BATCH_LIMIT, IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
+
+/** 项目文本长度上限（与页面 DTO 一致；Excel 导入校验共用，L22） */
+export const PROJECT_NAME_MAX_LENGTH = 200;
+export const PROJECT_SHORT_TEXT_MAX_LENGTH = 200;
+export const PROJECT_PAYMENT_NODE_MAX_LENGTH = 500;
+export const PROJECT_REMARK_MAX_LENGTH = 1000;
+export const PROJECT_SUBCONTRACTORS_MAX_ITEMS = 50;
 
 /** 自然日（YYYY-MM-DD；主 PRD §9.10 不经时区换算） */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -60,10 +68,10 @@ export class DictRefItemDto {
 
 /** 项目创建（fin PRD §3：名称+年度业务唯一键；非自动金额可留空，留空按 0 参与公式） */
 export class ProjectCreateDto extends IdempotentDto {
-  @ApiProperty({ description: '项目名称（保留原文展示；与年度共同构成业务唯一键）', maxLength: 200 })
+  @ApiProperty({ description: '项目名称（保留原文展示；与年度共同构成业务唯一键）', maxLength: PROJECT_NAME_MAX_LENGTH })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(200)
+  @MaxLength(PROJECT_NAME_MAX_LENGTH)
   name!: string;
 
   @ApiProperty({ description: '年度（四位公历年 1000～9999）', example: 2026 })
@@ -102,31 +110,31 @@ export class ProjectCreateDto extends IdempotentDto {
   @Min(1)
   bizCategoryId?: number;
 
-  @ApiProperty({ description: '甲方', required: false, maxLength: 200 })
+  @ApiProperty({ description: '甲方', required: false, maxLength: PROJECT_SHORT_TEXT_MAX_LENGTH })
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(PROJECT_SHORT_TEXT_MAX_LENGTH)
   partyA?: string;
 
-  @ApiProperty({ description: '总包方', required: false, maxLength: 200 })
+  @ApiProperty({ description: '总包方', required: false, maxLength: PROJECT_SHORT_TEXT_MAX_LENGTH })
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(PROJECT_SHORT_TEXT_MAX_LENGTH)
   generalContractor?: string;
 
-  @ApiProperty({ description: '管理费（可能不为数字）', required: false, maxLength: 200 })
+  @ApiProperty({ description: '管理费（可能不为数字）', required: false, maxLength: PROJECT_SHORT_TEXT_MAX_LENGTH })
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(PROJECT_SHORT_TEXT_MAX_LENGTH)
   managementFee?: string;
 
-  @ApiProperty({ description: '分包方（手输数组）', required: false, type: [String], maxItems: 50 })
+  @ApiProperty({ description: '分包方（手输数组）', required: false, type: [String], maxItems: PROJECT_SUBCONTRACTORS_MAX_ITEMS })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(50)
+  @ArrayMaxSize(PROJECT_SUBCONTRACTORS_MAX_ITEMS)
   @ArrayUnique()
   @IsString({ each: true })
-  @MaxLength(200, { each: true })
+  @MaxLength(PROJECT_SHORT_TEXT_MAX_LENGTH, { each: true })
   subcontractors?: string[];
 
   @ApiProperty({ description: '合同开始日期（YYYY-MM-DD）', required: false, example: '2026-01-01' })
@@ -147,10 +155,10 @@ export class ProjectCreateDto extends IdempotentDto {
   @IsValidatedBy(isNonNegativeAmount, { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
   contractAmount?: string;
 
-  @ApiProperty({ description: '主合同付款节点', required: false, maxLength: 500 })
+  @ApiProperty({ description: '主合同付款节点', required: false, maxLength: PROJECT_PAYMENT_NODE_MAX_LENGTH })
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(PROJECT_PAYMENT_NODE_MAX_LENGTH)
   paymentNode?: string;
 
   @ApiProperty({ description: '暂定/审定金额（语义随项目进度切换）', required: false, example: '80000.00' })
@@ -171,10 +179,10 @@ export class ProjectCreateDto extends IdempotentDto {
   @IsValidatedBy(isNonNegativeAmount, { message: '金额必须是 ≥ 0 且最多两位小数的十进制字符串' })
   miscExpense?: string;
 
-  @ApiProperty({ description: '项目级备注', required: false, maxLength: 1000 })
+  @ApiProperty({ description: '项目级备注', required: false, maxLength: PROJECT_REMARK_MAX_LENGTH })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(PROJECT_REMARK_MAX_LENGTH)
   remark?: string;
 }
 
@@ -396,6 +404,11 @@ export class ImportChoiceDto {
   @IsInt()
   @Min(0)
   dataRevision?: number;
+
+  @ApiProperty({ description: '覆盖数据丢失警告确认（预览返回 dataLossWarning=true 的覆盖行必须为 true，L26）', required: false })
+  @IsOptional()
+  @IsBoolean()
+  confirmDataLossWarning?: boolean;
 }
 
 /** 导入确认请求（选择映射 + 幂等键；服务端重新解析同一文件并校验） */

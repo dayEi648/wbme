@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { BusinessException, exportErrors, FINANCE_MAINTAIN_FUNCTION_CODE, type ProjectQueryDto } from '@wbme/contracts';
 import type { Redis } from '@wbme/server';
 import { randomUUID } from 'node:crypto';
@@ -47,6 +47,8 @@ export type ExportScope = 'all' | 'filtered';
  */
 @Injectable()
 export class ExportService {
+  private readonly logger = new Logger(ExportService.name);
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     private readonly workerPool: XlsxWorkerPool,
@@ -61,6 +63,7 @@ export class ExportService {
    * @param scope 数据范围（all=权限范围内全部未删除；filtered=当前筛选条件）
    * @param query 筛选参数（filtered 时生效）
    * @param signal 取消信号
+   * @param feature 导出操作日志功能编码（L24：按用户实际权限选 finance_maintain / finance_view）
    */
   async export(
     operator: FinOperationLogOperator,
@@ -68,6 +71,7 @@ export class ExportService {
     scope: ExportScope,
     query: ProjectQueryDto,
     signal?: AbortSignal,
+    feature: string = FINANCE_MAINTAIN_FUNCTION_CODE,
   ): Promise<void> {
     const lockKey = redisKey(REDIS_NAMESPACE.LOCK, 'export', operator.id);
     const lockToken = randomUUID();
@@ -208,25 +212,32 @@ export class ExportService {
             const subtotal = calcSubtotal(groupRows);
             return { bizCategoryName: groupName, rows: groupRows, subtotal };
           });
-          checkTimeout();
-
-          // 工作簿生成（CPU 密集 → 工作池；快照数据在内存中随任务传递）
-          const result = await this.workerPool.run<Buffer | { buffer: ArrayBuffer }>(
-            'build',
-            { groups },
-            [],
-            signal,
-          );
-          return { groups, buffer: unwrapBuildBuffer(result) };
+          return groups;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: EXPORT_TIMEOUT_MS + 10_000 },
       );
 
+      // 工作簿生成移出事务（L21：事务只持有读取/排序快照，构建在提交后于工作池执行，
+      // 缩短 Repeatable Read 快照持有时间；构建是纯内存计算，不依赖事务上下文）
+      checkTimeout();
+      const result = await this.workerPool.run<Buffer | { buffer: ArrayBuffer }>(
+        'build',
+        { groups },
+        [],
+        signal,
+      );
+      const buffer = unwrapBuildBuffer(result);
+
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-      res.end(groups.buffer);
-      // 导出成功（服务端完成文件生成并正常结束响应）后写成功操作日志（主 PRD §3.3）
-      await this.writeExportLog(operator, scope);
+      res.end(buffer);
+      // 导出成功日志在响应完成发送（finish）后写（L20：客户端断连/传输中断时 'finish'
+      // 不触发，不记录成功；日志写失败不影响已成功的响应）
+      res.on('finish', () => {
+        void this.writeExportLog(operator, scope, feature).catch((error: unknown) => {
+          this.logger.error(`导出操作日志写入失败：${error instanceof Error ? error.message : String(error)}`);
+        });
+      });
     } catch (error) {
       // 响应头已发送时（传输中断）不重写响应；其余异常按统一错误结构返回
       if (!res.headersSent) {
@@ -284,11 +295,11 @@ export class ExportService {
     return where;
   }
 
-  /** 导出成功操作日志（服务端完成文件生成并正常结束响应后；主 PRD §3.3） */
-  private async writeExportLog(operator: FinOperationLogOperator, scope: ExportScope): Promise<void> {
+  /** 导出成功操作日志（响应完成发送后；主 PRD §3.3；feature 按用户实际权限，L24） */
+  private async writeExportLog(operator: FinOperationLogOperator, scope: ExportScope, feature: string): Promise<void> {
     await writeFinOperationLog(this.prisma.client, {
       operator,
-      feature: FINANCE_MAINTAIN_FUNCTION_CODE,
+      feature,
       actionType: 'EXPORT',
       summary: `在利润分析中${scope === 'all' ? '导出了全部' : '按筛选条件导出了'}项目利润分析`,
     });

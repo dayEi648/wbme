@@ -455,15 +455,29 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
 
     const preview = await imports.preview(OPERATOR, buffer);
     expect(preview.summary.created).toBe(1);
-    const choice = preview.created[0] as { rowNumber: number };
 
     const key = 'fin-confirm-m17';
-    // 首次确认：创建
-    const first = await imports.confirm(OPERATOR, buffer, [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE' }], key);
+    // 首次确认：新增行无需选择（默认创建；L18：对新增行提交 OVERWRITE 属预览过期语义）
+    const first = await imports.confirm(OPERATOR, buffer, [], key);
     expect(first.summary.created).toBe(1);
 
+    // L18：对预览中的"新增"行提交 OVERWRITE → IMPORT_PREVIEW_STALE（禁止静默转新增）
+    const workbook0 = await loadTemplateWorkbook();
+    const sheet0 = workbook0.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet0.getCell(3, COL.NAME).value = `${projectName}未确认即覆盖`;
+    sheet0.getCell(3, COL.YEAR).value = 2026;
+    const buffer0 = Buffer.from(await workbook0.xlsx.writeBuffer());
+    const preview0 = await imports.preview(OPERATOR, buffer0);
+    const choice0 = preview0.created[0] as { rowNumber: number };
+    await expect(
+      imports.confirm(OPERATOR, buffer0, [{ rowNumber: choice0.rowNumber, decision: 'OVERWRITE' }], `${key}-overwrite`),
+    ).rejects.toThrow('预览期间项目数据已变化');
+    // 确认失败整批回滚：该行未创建
+    const notCreated = await prisma.client.project.findFirst({ where: { name: `${projectName}未确认即覆盖` } });
+    expect(notCreated).toBeNull();
+
     // 同键同文件重试：重放首次结果（主 PRD §3.3：同一幂等键的重试返回原结果），不重复创建
-    const replay = await imports.confirm(OPERATOR, buffer, [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE' }], key);
+    const replay = await imports.confirm(OPERATOR, buffer, [], key);
     expect(replay.summary.created).toBe(1);
     const createdRows = await prisma.client.project.findMany({ where: { name: projectName } });
     expect(createdRows).toHaveLength(1);
@@ -474,7 +488,7 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     sheet2.getCell(3, COL.NAME).value = `${projectName}异文件`;
     sheet2.getCell(3, COL.YEAR).value = 2026;
     const buffer2 = Buffer.from(await workbook2.xlsx.writeBuffer());
-    await expect(imports.confirm(OPERATOR, buffer2, [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE' }], key)).rejects.toThrow('幂等键已被其他请求使用');
+    await expect(imports.confirm(OPERATOR, buffer2, [], key)).rejects.toThrow('幂等键已被其他请求使用');
 
     // 用例自清理（CLAUDE.md：测试后清理临时数据；动态项目名无法进 afterAll 固定名单，
     // 先删操作记录再删项目——M17 复核修复发现残留）

@@ -28,9 +28,10 @@
 | `IMPORT_PREVIEW_STALE` | 409 | 预览后数据变化（确认事务 dataRevision 前置失败），整批回滚 |
 | `IMPORT_PROJECT_DELETED` | 409 | 导入命中软删除项目（只提示冲突，不自动恢复） |
 | `IMPORT_SHEET_INVALID` | 400 | 工作表结构/28 列有序表头/A1:AB1 合并与 V2 模板签名不匹配 |
-| `IMPORT_CONFIRM_MISMATCH` | 400 | 确认选择与重新解析的行不一致（行号/目标项目/版本缺失） |
+| `IMPORT_CONFIRM_MISMATCH` | 400 | 确认选择与重新解析的行不一致（行号不存在/目标项目或版本缺失/覆盖警告未确认，L18/L26） |
 | `IMPORT_ALREADY_RUNNING` | 429 | 单用户导入并发占用冲突（预览与确认共用导入锁；与导出锁相互独立） |
 | `IMPORT_TIMEOUT` | 503 | 导入超过 120 秒固定总时限（受控取消并完整回滚） |
+| `EXPORT_SCOPE_INVALID` | 400 | 导出范围只支持 `all` / `filtered`（L25：不复用导入模板错误码） |
 
 ---
 
@@ -86,8 +87,8 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/profit/excel/import/preview` | multipart 单文件预览：解析 + 匹配生成「新增/待选择/跳过/冲突/错误」精简清单（不回传整行副本；待选择项携带目标 `dataRevision` 与覆盖丢失明细日期/备注的警告标记；无服务端状态） |
-| `POST` | `/profit/excel/import/confirm` | 携带同一文件 + 选择映射（Excel 行号 → 覆盖/跳过）+ 幂等键确认：重新解析并以行号解释选择；覆盖以 `dataRevision` 条件更新（预览后变化 → `IMPORT_PREVIEW_STALE` 整批回滚）；新增/覆盖/明细重建/审计批量写入同一事务（全有或全无）；覆盖会物理删除原金额明细（日期/备注清空重建），审计保留替换前后完整快照 |
+| `POST` | `/profit/excel/import/preview` | multipart 单文件预览：解析 + 匹配生成「新增/待选择/跳过/冲突/错误」精简清单（不回传整行副本；待选择项携带目标 `dataRevision` 与覆盖丢失明细日期/备注的警告标记；冲突状态含 `YEAR_REQUIRED`（空年度无法新增），L17；无服务端状态） |
+| `POST` | `/profit/excel/import/confirm` | 携带同一文件 + 选择映射（Excel 行号 → 覆盖/跳过）+ 幂等键确认：重新解析并以行号解释选择；确认前校验全部选择行号存在于重解析结果（否则 `IMPORT_CONFIRM_MISMATCH`）；对"新增"行提交 OVERWRITE → `IMPORT_PREVIEW_STALE`（禁止静默转新增，L18）；覆盖以 `dataRevision` 条件更新（预览后变化 → 整批回滚）；预览标记覆盖丢失警告（`dataLossWarning=true`）的目标必须提交 `confirmDataLossWarning: true`（审计记录确认标记，L26）；新增/覆盖/明细重建/审计批量写入同一事务（全有或全无）；覆盖会物理删除原金额明细（日期/备注清空重建），审计保留替换前后完整快照 |
 
 匹配规则：带年度行按规范化名称 + 年度精确匹配；空年度行按名称唯一匹配（不猜测年份，多条同名 →
 `IMPORT_YEAR_AMBIGUOUS`，无记录新增 → `IMPORT_YEAR_REQUIRED_FOR_NEW`）；软删除命中只冲突不恢复；

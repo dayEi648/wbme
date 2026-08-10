@@ -1,10 +1,18 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
-import { BusinessException, financeErrors, frameworkErrors, ImportConfirmDto, ProjectQueryDto } from '@wbme/contracts';
+import {
+  BusinessException,
+  financeErrors,
+  FINANCE_MAINTAIN_FUNCTION_CODE,
+  FINANCE_VIEW_FUNCTION_CODE,
+  frameworkErrors,
+  ImportConfirmDto,
+  ProjectQueryDto,
+} from '@wbme/contracts';
 import { CurrentUser, RequestTimeout } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
-import { assertFinanceMaintainAccess, assertFinanceReadAccess } from '../../shared/cross-schema-auth';
+import { assertFinanceMaintainAccess, assertFinanceReadAccess, getFunctionAccess } from '../../shared/cross-schema-auth';
 import { loadFinOperationLogOperator } from '../../shared/fin-operation-log.util';
 import { ExcelImportLockGuard } from './excel-import-lock.guard';
 import { ExportService } from './export.service';
@@ -79,10 +87,17 @@ export class ExcelController {
   ): Promise<void> {
     await assertFinanceReadAccess(this.prisma.client, userId);
     if (scope !== 'all' && scope !== 'filtered') {
-      throw new BusinessException(financeErrors.IMPORT_SHEET_INVALID, { fields: [{ field: 'scope', reason: '导出范围只支持 all/filtered' }] });
+      // L25：导出范围非法使用独立错误码，不复用导入模板错误
+      throw new BusinessException(financeErrors.EXPORT_SCOPE_INVALID, { fields: [{ field: 'scope', reason: '导出范围只支持 all/filtered' }] });
     }
     const operator = await loadFinOperationLogOperator(this.prisma.client, userId);
-    await this.exports.export(operator, res, scope, query, abortSignal(req, res));
+    // 导出操作日志按用户实际权限记录（L24：仅查看权限记 finance_view）
+    const maintain = await getFunctionAccess(this.prisma.client, userId, FINANCE_MAINTAIN_FUNCTION_CODE);
+    const feature =
+      maintain.registered && maintain.allowed && maintain.systemOpen
+        ? FINANCE_MAINTAIN_FUNCTION_CODE
+        : FINANCE_VIEW_FUNCTION_CODE;
+    await this.exports.export(operator, res, scope, query, abortSignal(req, res), feature);
   }
 }
 

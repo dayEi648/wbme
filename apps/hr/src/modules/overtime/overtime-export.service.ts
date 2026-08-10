@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
@@ -133,11 +134,14 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
-/** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC 构造） */
+/** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC 构造）；非法月份显式抛校验错误（L14，不静默进位） */
 function monthRange(month?: string): { start: Date; end: Date } {
-  const match = /^(\d{4})-(\d{2})$/.exec(month ?? currentMonth());
-  const year = Number(match?.[1] ?? 1970);
-  const monthIndex = Number(match?.[2] ?? 1) - 1;
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month ?? currentMonth());
+  if (!match) {
+    throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { message: '月份格式非法：YYYY-MM' });
+  }
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
   return { start: new Date(Date.UTC(year, monthIndex, 1)), end: new Date(Date.UTC(year, monthIndex + 1, 1)) };
 }
 

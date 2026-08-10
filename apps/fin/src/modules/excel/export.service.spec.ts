@@ -71,7 +71,22 @@ function buildService(workerPool: Pick<XlsxWorkerPool, 'run'>): {
     set: vi.fn().mockResolvedValue('OK'),
     eval: vi.fn().mockResolvedValue(1),
   };
-  const res = { setHeader: vi.fn(), end: vi.fn() } as unknown as Response;
+  // Express Response 最小 mock：end 后异步触发 finish（与真实 Express 一致——生产代码在
+  // end() 之后才注册 finish 监听，同步触发会错过监听器；L20：导出成功日志在响应完成发送后写）
+  const finishListeners: Array<() => void> = [];
+  const res = {
+    setHeader: vi.fn(),
+    end: vi.fn(() => {
+      setImmediate(() => {
+        finishListeners.forEach((listener) => listener());
+      });
+    }),
+    on: vi.fn((event: string, listener: () => void) => {
+      if (event === 'finish') {
+        finishListeners.push(listener);
+      }
+    }),
+  } as unknown as Response;
   const service = new ExportService(prisma as never, workerPool as never, redis as never);
   return { service, res, mocks: { operationLogCreate, redisEval: redis.eval } };
 }
@@ -113,8 +128,10 @@ describe('ExportService 导出响应（工作池结果解包）', () => {
     const { service, res, mocks } = buildService(workerPool);
 
     await service.export(OPERATOR, res, 'all', {} as never);
-
-    expect(mocks.operationLogCreate).toHaveBeenCalledTimes(1);
+    // 成功日志在 res 'finish' 事件回调中异步写入：轮询等待 finish 触发与日志落库
+    await vi.waitFor(() => {
+      expect(mocks.operationLogCreate).toHaveBeenCalledTimes(1);
+    });
     expect(mocks.operationLogCreate.mock.calls[0]?.[0]).toMatchObject({
       data: { operatorId: OPERATOR.id, feature: expect.any(String), actionType: 'EXPORT' },
     });
@@ -123,6 +140,20 @@ describe('ExportService 导出响应（工作池结果解包）', () => {
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
+  });
+
+  it('响应中断（无 finish）不写成功操作日志（L20）', async () => {
+    const workerPool = { run: vi.fn().mockResolvedValue({ buffer: new ArrayBuffer(4) }) };
+    const { service, res, mocks } = buildService(workerPool);
+    // 模拟客户端断连：end 触发但 finish 监听器从不执行（真实 Express 中断时不触发 finish）
+    const end = res.end as unknown as ReturnType<typeof vi.fn>;
+    end.mockImplementation(() => undefined);
+
+    await service.export(OPERATOR, res, 'all', {} as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.operationLogCreate).not.toHaveBeenCalled();
+    expect(mocks.redisEval).toHaveBeenCalledTimes(1);
   });
 });
 

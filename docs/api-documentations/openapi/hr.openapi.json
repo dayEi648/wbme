@@ -195,6 +195,7 @@
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_SCOPE_INVALID",
                   "EXPORT_TIMEOUT",
                   "FLOW_SESSION_INVALID",
                   "FORBIDDEN",
@@ -2113,7 +2114,7 @@
             "description": ""
           }
         },
-        "summary": "取消本人/代提的待审批批次（批准或驳回后不能取消）",
+        "summary": "取消本人/代提的待审批加班批次（批准或驳回后不能取消；断言目标为加班申请，L12）",
         "tags": [
           "Overtime"
         ]

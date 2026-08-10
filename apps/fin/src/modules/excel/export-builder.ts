@@ -199,16 +199,33 @@ function writeGroupRow(sheet: ExcelJS.Worksheet, rowNumber: number, groupName: s
   sheet.getRow(rowNumber).height = 20;
 }
 
-/** 分类小计行（A 列“小计”+ 关键列小计值；浅灰底 + 粗体） */
-function writeSubtotalRow(sheet: ExcelJS.Worksheet, rowNumber: number, subtotal: ExportSubtotal): void {
-  const cells: CellValue[] = [SUBTOTAL_MARKER];
+/** 分类小计行（A 列“小计”+ 关键列小计值；浅灰底 + 粗体）。
+ *  L19：四个金额列写 `=SUM(起:止)` 公式并保留数值缓存（Excel 打开时重算，
+ *  公式与缓存一致）；毛利率列是组内汇总后计算（equity/received），不可 SUM，保留数值。 */
+function writeSubtotalRow(
+  sheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  subtotal: ExportSubtotal,
+  fromRow: number,
+): void {
+  const cells: Array<CellValue | { formula: string; result: number }> = [SUBTOTAL_MARKER];
   for (let c = 2; c <= COLUMN_COUNT; c++) {
     cells.push(null);
   }
-  cells[COL.TOTAL_INVOICED - 1] = Number(subtotal.totalInvoiced);
-  cells[COL.TOTAL_RECEIVED - 1] = Number(subtotal.totalReceived);
-  cells[COL.TOTAL_SUBCONTRACT_PAID - 1] = Number(subtotal.totalSubcontractPaid);
-  cells[COL.EQUITY - 1] = Number(subtotal.equity);
+  const sumRange = `${excelColumn(COL.TOTAL_INVOICED)}${fromRow}:${excelColumn(COL.TOTAL_INVOICED)}${rowNumber - 1}`;
+  cells[COL.TOTAL_INVOICED - 1] = { formula: `SUM(${sumRange})`, result: Number(subtotal.totalInvoiced) };
+  cells[COL.TOTAL_RECEIVED - 1] = {
+    formula: `SUM(${excelColumn(COL.TOTAL_RECEIVED)}${fromRow}:${excelColumn(COL.TOTAL_RECEIVED)}${rowNumber - 1})`,
+    result: Number(subtotal.totalReceived),
+  };
+  cells[COL.TOTAL_SUBCONTRACT_PAID - 1] = {
+    formula: `SUM(${excelColumn(COL.TOTAL_SUBCONTRACT_PAID)}${fromRow}:${excelColumn(COL.TOTAL_SUBCONTRACT_PAID)}${rowNumber - 1})`,
+    result: Number(subtotal.totalSubcontractPaid),
+  };
+  cells[COL.EQUITY - 1] = {
+    formula: `SUM(${excelColumn(COL.EQUITY)}${fromRow}:${excelColumn(COL.EQUITY)}${rowNumber - 1})`,
+    result: Number(subtotal.equity),
+  };
   cells[COL.GROSS_MARGIN - 1] = subtotal.grossMargin === null ? null : Number(subtotal.grossMargin);
   for (let c = 1; c <= COLUMN_COUNT; c++) {
     const cell = sheet.getCell(rowNumber, c);
@@ -254,6 +271,7 @@ export async function buildExportBuffer(
     const groupName = group.bizCategoryName ?? UNCLASSIFIED_GROUP;
     writeGroupRow(sheet, rowNumber, groupName);
     rowNumber += 1;
+    const dataStartRow = rowNumber;
     for (const row of group.rows) {
       seq += 1;
       const cells = rowCells(row, seq);
@@ -264,7 +282,7 @@ export async function buildExportBuffer(
       rowNumber += 1;
     }
     if (group.rows.length > 0) {
-      writeSubtotalRow(sheet, rowNumber, group.subtotal);
+      writeSubtotalRow(sheet, rowNumber, group.subtotal, dataStartRow);
       rowNumber += 1;
     }
   }

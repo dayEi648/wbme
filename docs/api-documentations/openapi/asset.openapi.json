@@ -1095,6 +1095,7 @@
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_SCOPE_INVALID",
                   "EXPORT_TIMEOUT",
                   "FLOW_SESSION_INVALID",
                   "FORBIDDEN",

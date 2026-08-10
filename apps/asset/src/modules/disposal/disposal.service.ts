@@ -98,14 +98,28 @@ export class DisposalService {
     // 范围条件（下沉 SQL 分页，消除 LIMIT 500 内存过滤；与处置记录视图同一闭包语义）：
     // PERSONAL 按借出时部门快照闭包；AGENT 按受领人名单部门快照闭包。
     // 闭包语义与审批中心一致（主 PRD §3.2 全部对象部门 ∈ 审批人闭包）：
-    // 任一部门命中即显示会泄露范围外记录（多部门员工快照场景），此处全部部门须在闭包内
+    // 任一部门命中即显示会泄露范围外记录（多部门员工快照场景），此处全部部门须在闭包内。
+    // 快照兼容数组与单对象形状（L6）：先 CASE 展开为数组再 array_length/array_elements，
+    // 与 listRecords 的守卫口径一致（单对象快照不再抛错）。
+    // NULL 快照守卫：CASE 展开为 '[]' 使 array_length=0 → 不匹配 → 快照缺失的记录对任何
+    // 部门范围审批人不可见（回归修复：jsonb_typeof(NULL) → [null] → 长度 1 会错误放行；
+    // 与 listRecords 的"快照缺失不可见"及 borrow 历史的 NULL 行为口径一致）。
+    // 注：AGENT 分支 NULL 快照行为与修复前一致（可见），未随 PERSONAL 调整。
     const scopeSql =
       scope.kind === 'COMPANY'
         ? Prisma.empty
         : Prisma.sql`AND (
-            (br.record_type = 'PERSONAL' AND jsonb_array_length(br.department_snapshot) > 0
+            (br.record_type = 'PERSONAL' AND jsonb_array_length(
+                CASE WHEN br.department_snapshot IS NULL THEN '[]'::jsonb
+                     WHEN jsonb_typeof(br.department_snapshot) = 'array' THEN br.department_snapshot
+                     ELSE jsonb_build_array(br.department_snapshot) END
+              ) > 0
               AND NOT EXISTS (
-                SELECT 1 FROM jsonb_array_elements(br.department_snapshot) el
+                SELECT 1 FROM jsonb_array_elements(
+                  CASE WHEN br.department_snapshot IS NULL THEN '[]'::jsonb
+                       WHEN jsonb_typeof(br.department_snapshot) = 'array' THEN br.department_snapshot
+                       ELSE jsonb_build_array(br.department_snapshot) END
+                ) el
                 WHERE (el->>'id')::int <> ALL(${[...closure] as number[]})
               )
             )
@@ -113,9 +127,15 @@ export class DisposalService {
               SELECT 1 FROM asset.agent_recipients arp
               WHERE arp.request_id = br.agent_request_id
                 AND (
-                  jsonb_array_length(arp.department_snapshot) = 0
+                  jsonb_array_length(
+                    CASE WHEN jsonb_typeof(arp.department_snapshot) = 'array' THEN arp.department_snapshot
+                         ELSE jsonb_build_array(arp.department_snapshot) END
+                  ) = 0
                   OR EXISTS (
-                    SELECT 1 FROM jsonb_array_elements(arp.department_snapshot) el
+                    SELECT 1 FROM jsonb_array_elements(
+                      CASE WHEN jsonb_typeof(arp.department_snapshot) = 'array' THEN arp.department_snapshot
+                           ELSE jsonb_build_array(arp.department_snapshot) END
+                    ) el
                     WHERE (el->>'id')::int <> ALL(${[...closure] as number[]})
                   )
                 )
@@ -227,7 +247,7 @@ export class DisposalService {
             },
           });
           if (item.method === 'RETURN') {
-            const flowIds = await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', disposalRecord.id, operator.id);
+            const flowIds = await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', disposalRecord.id, operator.id, operator.name);
             await tx.directDisposalRecord.update({
               where: { id: disposalRecord.id },
               data: { stockFlowRefs: { ids: flowIds } as Prisma.InputJsonValue },
@@ -484,7 +504,7 @@ export class DisposalService {
         },
       });
       if (item.method === 'RETURN') {
-        const flowIds = await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', disposalRecord.id, operator.id);
+        const flowIds = await this.borrow.restoreRecord(tx, record, item.qty, 'DIRECT_DISPOSAL', disposalRecord.id, operator.id, operator.name);
         await tx.directDisposalRecord.update({
           where: { id: disposalRecord.id },
           data: { stockFlowRefs: { ids: flowIds } as Prisma.InputJsonValue },

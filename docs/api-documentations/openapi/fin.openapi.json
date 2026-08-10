@@ -72,6 +72,7 @@
                   "DISPOSAL_FORBIDDEN",
                   "EMERGENCY_BACKUP_FAILED",
                   "EXPORT_ALREADY_RUNNING",
+                  "EXPORT_SCOPE_INVALID",
                   "EXPORT_TIMEOUT",
                   "FLOW_SESSION_INVALID",
                   "FORBIDDEN",
@@ -311,6 +312,11 @@
       },
       "FinDictItemBatchDeleteDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "ids": {
             "description": "字典项 id 列表（1～100 个，不重复）",
             "items": {

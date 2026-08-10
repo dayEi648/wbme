@@ -21,8 +21,8 @@ import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from './base.dto';
 /** 自然日格式：YYYY-MM-DD（主 PRD §9.10） */
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-/** 月份格式：YYYY-MM */
-export const MONTH_PATTERN = /^\d{4}-\d{2}$/;
+/** 月份格式：YYYY-MM（L14：月份限定 01–12，拒绝 `2026-13` 静默进位） */
+export const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** 加班起止分钟交叉字段校验；必须使用约束类以访问完整 DTO，而非把函数误传给 @Validate。 */
 @ValidatorConstraint({ name: 'overtimeTimeRange', async: false })

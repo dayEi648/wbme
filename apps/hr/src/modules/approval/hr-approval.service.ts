@@ -150,14 +150,19 @@ export class HrApprovalService {
   }
 
   /**
-   * 测试/内部：创建 PENDING 审批头 + SUBMIT 动作（及类型明细）。
+   * 测试辅助：创建 PENDING 审批头 + SUBMIT 动作（及类型明细）。
+   *
+   * 仅 hr-approval.service.spec 调用，未挂任何路由；非测试进程直接抛错（L15），
+   * 防止误接入控制器绕过权限校验写真实审批单。
    *
    * @param input 申请类型与申请人
    * @returns 审批头 id
-   * @throws PENDING_LIMIT_REACHED 岗位变更单待审批冲突
+   * @throws FORBIDDEN 非测试环境；PENDING_LIMIT_REACHED 岗位变更单待审批冲突
    */
-  /** 测试辅助：仅 hr-approval.service.spec 调用，未挂任何路由，禁止接入控制器（会绕过权限校验写真实审批单） */
   async submitTestHeader(input: SubmitTestHeaderInput): Promise<{ requestId: number }> {
+    if (process.env.VITEST !== 'true') {
+      throw new BusinessException(frameworkErrors.FORBIDDEN);
+    }
     const now = new Date();
     const deptSnapshot = (input.applicantDepartmentSnapshot ?? { id: 1, name: '占位部门' }) as Prisma.InputJsonValue;
 
@@ -278,12 +283,17 @@ export class HrApprovalService {
    *
    * @param id 审批头 id
    * @param actorId 操作人
+   * @param expectedType 预期申请类型（L12：加班路由传入 'OVERTIME'，
+   *   防止通用取消接口被跨类型误用；不传则不做类型断言）
    */
-  async cancel(id: number, actorId: number): Promise<void> {
+  async cancel(id: number, actorId: number, expectedType?: string): Promise<void> {
     const transition = resolveProcessTransition('CANCEL', 'USER');
     await this.prisma.client.$transaction(async (tx) => {
       const head = await tx.hrApprovalRequest.findUnique({ where: { id } });
       if (!head) {
+        throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+      }
+      if (expectedType !== undefined && head.requestType !== expectedType) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
       }
       if (head.applicantId !== actorId && head.proxyId !== actorId) {

@@ -16,6 +16,7 @@ import { BorrowService } from './borrow/borrow.service';
 import { AgentClaimService } from './claim/agent-claim.service';
 import { ClaimService } from './claim/claim.service';
 import { DictService } from './catalog/dict.service';
+import { DisposalService } from './disposal/disposal.service';
 import { ConsumableController } from './consumable/consumable.controller';
 import { ConsumableService } from './consumable/consumable.service';
 import { InventoryController } from './inventory/inventory.controller';
@@ -58,6 +59,7 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
   let prisma: PrismaService;
   let approval: AssetApprovalService;
   let borrow: BorrowService;
+  let disposal: DisposalService;
   let claim: ClaimService;
   let agentSettlement: AgentSettlementService;
   let stockIn: StockInService;
@@ -224,6 +226,7 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
         ClaimService,
         AgentClaimService,
         BorrowService,
+        DisposalService,
         AgentSettlementService,
         AssetApprovalSideEffect,
         AssetApprovalService,
@@ -239,6 +242,7 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     }).compile();
     approval = moduleRef.get(AssetApprovalService);
     borrow = moduleRef.get(BorrowService);
+    disposal = moduleRef.get(DisposalService);
     claim = moduleRef.get(ClaimService);
     agentSettlement = moduleRef.get(AgentSettlementService);
     stockIn = moduleRef.get(StockInService);
@@ -331,7 +335,7 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     const returnFlowIds = await prisma.client.$transaction(async (tx) => {
       const record = await borrow.lockBorrowRecord(tx, recordId!);
       expect(record).not.toBeNull();
-      return borrow.restoreRecord(tx, record!, 2, 'TEST_RETURN', requestId, adminId);
+      return borrow.restoreRecord(tx, record!, 2, 'TEST_RETURN', requestId, adminId, '管理员');
     });
     const returnFlows = await prisma.client.stockFlow.findMany({ where: { id: { in: returnFlowIds } } });
     expect(returnFlows.map((flow) => flow.batchId)).toEqual([reusableBatchSecondId]);
@@ -342,6 +346,45 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     expect(restoredAllocations.map((allocation) => allocation.returnedQty)).toEqual([0, 2]);
     // 清理借还记录（避免影响其他用例）
     await prisma.client.$executeRaw`DELETE FROM asset.borrow_records WHERE request_id = ${requestId}`;
+  });
+
+  it('L6 待处置范围：NULL 部门快照不可见；单对象/数组闭包内快照可见；闭包外部门不可见', async () => {
+    // 部门闭包数据：deptApproverId ∈ deptA → closure = [deptA]
+    // 待处置列表只展示已注销员工的未结清借还（whereSql: ua.status='DEACTIVATED'），
+    // 故构造一名已注销员工并关联 4 条 PERSONAL 记录，快照形状四态：
+    // NULL（修复前会经 jsonb_build_array(NULL) → [null] → array_length=1 错误放行，
+    // L6 回归修复后应不可见）、单对象、数组[deptA]（闭包内）、数组[deptB]（闭包外）
+    const [nullSnapshotId, singleSnapshotId, arrayInId, arrayOutId] = [BASE + 90, BASE + 91, BASE + 92, BASE + 93];
+    const deactivatedUserId = BASE + 94;
+    await prisma.client.$executeRaw`
+      INSERT INTO base.users (id, name, gender, phone, status, is_super_admin, password_hash, created_at, updated_at)
+      VALUES (${deactivatedUserId}, '关口测试已注销员工', 'MALE', '+8613900000906', 'DEACTIVATED', false, 'test-hash', NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
+    `;
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.borrow_records
+        (id, record_type, user_id, user_name, agent_request_id, request_id, inventory_item_id, consumable_name, spec,
+         warehouse_name, warehouse_path, qty, returned_qty, written_off_qty, borrowed_at, due_at, created_at, department_snapshot)
+      VALUES
+        (${nullSnapshotId}, 'PERSONAL', ${deactivatedUserId}, '关口测试已注销员工', NULL, ${agentReqId}, ${reusableItemId}, 'L6空快照', '标准', '关口测试库位', '关口测试库位', 1, 0, 0, NOW(), NOW() + INTERVAL '30 days', NOW(), NULL),
+        (${singleSnapshotId}, 'PERSONAL', ${deactivatedUserId}, '关口测试已注销员工', NULL, ${agentReqId}, ${reusableItemId}, 'L6单对象快照', '标准', '关口测试库位', '关口测试库位', 1, 0, 0, NOW(), NOW() + INTERVAL '30 days', NOW(), ${JSON.stringify({ id: deptA, name: '关口测试A部门' })}::jsonb),
+        (${arrayInId}, 'PERSONAL', ${deactivatedUserId}, '关口测试已注销员工', NULL, ${agentReqId}, ${reusableItemId}, 'L6数组闭包内', '标准', '关口测试库位', '关口测试库位', 1, 0, 0, NOW(), NOW() + INTERVAL '30 days', NOW(), ${JSON.stringify([{ id: deptA, name: '关口测试A部门' }])}::jsonb),
+        (${arrayOutId}, 'PERSONAL', ${deactivatedUserId}, '关口测试已注销员工', NULL, ${agentReqId}, ${reusableItemId}, 'L6数组闭包外', '标准', '关口测试库位', '关口测试库位', 1, 0, 0, NOW(), NOW() + INTERVAL '30 days', NOW(), ${JSON.stringify([{ id: deptB, name: '关口测试B部门' }])}::jsonb)
+    `;
+    try {
+      const { items } = await disposal.listPending(deptApproverId, {});
+      const recordIds = (items as Array<{ record_id: number }>).map((row) => row.record_id);
+      expect(recordIds).toContain(singleSnapshotId);
+      expect(recordIds).toContain(arrayInId);
+      expect(recordIds).not.toContain(nullSnapshotId);
+      expect(recordIds).not.toContain(arrayOutId);
+    } finally {
+      // 清理（含失败路径，避免影响其他用例）
+      await prisma.client.$executeRaw`
+        DELETE FROM asset.borrow_records WHERE id IN (${nullSnapshotId}, ${singleSnapshotId}, ${arrayInId}, ${arrayOutId})
+      `;
+      await prisma.client.$executeRaw`DELETE FROM base.users WHERE id = ${deactivatedUserId}`;
+    }
   });
 
   it('新增关口：仅固定资产维护的部门档列表不会越权显示其他部门资产', async () => {

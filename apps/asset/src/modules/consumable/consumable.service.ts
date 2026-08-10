@@ -446,13 +446,23 @@ export class ConsumableService {
    * @returns 是否已有业务事实
    */
   private async hasBusinessFacts(tx: Prisma.TransactionClient, consumableId: number): Promise<boolean> {
+    // 与 countReferenced 的 PENDING 明细口径对齐（L7）：待审批申领/库存变更明细
+    // 同样构成业务事实（其批准后必然产生库存流水/借还记录）
     const rows = await tx.$queryRaw<Array<{ total: bigint }>>`
       SELECT (
         (SELECT COUNT(*) FROM asset.batches WHERE consumable_id = ${consumableId}) +
         (SELECT COUNT(*) FROM asset.stock_in_items WHERE consumable_id = ${consumableId}) +
         (SELECT COUNT(*) FROM asset.stock_flows sf
           INNER JOIN asset.inventory_items ii ON ii.id = sf.inventory_item_id
-          WHERE ii.consumable_id = ${consumableId})
+          WHERE ii.consumable_id = ${consumableId}) +
+        (SELECT COUNT(*) FROM asset.consumable_request_items cri
+          INNER JOIN asset.approval_requests r ON r.id = cri.request_id
+          INNER JOIN asset.inventory_items ii ON ii.id = cri.inventory_item_id
+          WHERE ii.consumable_id = ${consumableId} AND r.status = 'PENDING') +
+        (SELECT COUNT(*) FROM asset.stock_change_items sci
+          INNER JOIN asset.approval_requests r ON r.id = sci.request_id
+          INNER JOIN asset.inventory_items ii ON ii.id = sci.inventory_item_id
+          WHERE ii.consumable_id = ${consumableId} AND r.status = 'PENDING')
       ) AS total
     `;
     return Number(rows[0]?.total ?? 0) > 0;
@@ -481,6 +491,11 @@ export class ConsumableService {
         (SELECT COUNT(*) FROM asset.consumable_request_items cri
           INNER JOIN asset.approval_requests r ON r.id = cri.request_id
           INNER JOIN asset.inventory_items ii ON ii.id = cri.inventory_item_id
+          WHERE ii.consumable_id = ANY(${ids as number[]})
+            AND r.status = 'PENDING') +
+        (SELECT COUNT(*) FROM asset.stock_change_items sci
+          INNER JOIN asset.approval_requests r ON r.id = sci.request_id
+          INNER JOIN asset.inventory_items ii ON ii.id = sci.inventory_item_id
           WHERE ii.consumable_id = ANY(${ids as number[]})
             AND r.status = 'PENDING')
       ) AS total

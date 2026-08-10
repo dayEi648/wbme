@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { PrismaService } from '../../prisma.service';
 
 /** 月度汇总行（按日分组） */
@@ -136,11 +137,14 @@ export function minutesToHours(minutes: number): number {
   return Math.round((minutes / 60) * 100) / 100;
 }
 
-/** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC 构造，@db.Date 日历值） */
+/** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC 构造，@db.Date 日历值）；非法月份显式抛校验错误（L14，不静默进位） */
 function monthRange(month?: string): { start: Date; end: Date } {
-  const match = /^(\d{4})-(\d{2})$/.exec(month ?? currentMonth());
-  const year = Number(match?.[1] ?? 1970);
-  const monthIndex = Number(match?.[2] ?? 1) - 1;
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month ?? currentMonth());
+  if (!match) {
+    throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { message: '月份格式非法：YYYY-MM' });
+  }
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
   const start = new Date(Date.UTC(year, monthIndex, 1));
   const end = new Date(Date.UTC(year, monthIndex + 1, 1));
   return { start, end };

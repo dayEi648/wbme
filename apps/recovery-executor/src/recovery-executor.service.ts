@@ -71,6 +71,8 @@ export class RecoveryExecutorService {
   private manifest: RestoreControlManifest | null = null;
   /** 管道单飞互斥：同一进程内只允许一条恢复管道执行 */
   private pipelineInFlight = false;
+  /** 优雅停机标记（主 PRD §9.13）：置位后就绪探针失败、恢复管道停止推进（保持维护状态） */
+  private shuttingDown = false;
 
   /**
    * @param deps 运行时依赖；缺省按环境变量构造（测试注入替身）
@@ -87,14 +89,26 @@ export class RecoveryExecutorService {
   }
 
   /**
+   * 优雅停机标记（主 PRD §9.13）：SIGTERM/SIGINT 时由入口调用，
+   * 就绪探针立即失败、恢复管道在阶段边界停止推进（不启动新的破坏性步骤）。
+   */
+  beginShutdown(): void {
+    this.shuttingDown = true;
+    this.logger.warn('收到停机信号：就绪探针置为失败，恢复管道将不再推进新阶段');
+  }
+
+  /**
    * 就绪检查（主 PRD §9.13）：状态目录可读写 + 控制通道与依赖配置完整。
    *
    * 数据库/OSS 当前不可连接不视为不就绪（恢复本就可能用于处理数据库损坏），
-   * 仅当恢复状态目录不可写或控制配置缺失时返回不就绪。
+   * 仅当恢复状态目录不可写、控制配置缺失或已进入优雅停机时返回不就绪。
    *
    * @returns 就绪结果（reason 仅写服务端日志，不进入探针响应）
    */
   async readiness(): Promise<{ ready: boolean; reason?: string }> {
+    if (this.shuttingDown) {
+      return { ready: false, reason: '优雅停机中' };
+    }
     try {
       await mkdir(this.stateDir, { recursive: true });
       const probe = join(this.stateDir, '.readiness-probe');
@@ -254,6 +268,12 @@ export class RecoveryExecutorService {
       const manifest = this.manifest;
       const startIndex = Math.max(0, stages.findIndex((s) => s === manifest.stage));
       for (let i = startIndex; i < stages.length; i += 1) {
+        // 优雅停机：在阶段边界停止推进（当前破坏性阶段先安全结束；清单保留、维护状态保持，
+        // 由超管后续重试；主 PRD §9.13）
+        if (this.shuttingDown) {
+          this.logger.warn('优雅停机中，恢复管道停止推进（当前阶段可安全结束后退出）');
+          return;
+        }
         const stage = stages[i]!;
         this.manifest.stage = stage;
         this.manifest.updatedAt = new Date().toISOString();
@@ -389,6 +409,10 @@ export class RecoveryExecutorService {
         );
         if (rows.length === 0) {
           return;
+        }
+        // 优雅停机：不再等待写连接排空，立即中止（保持维护状态，由超管稍后重试）
+        if (this.shuttingDown) {
+          throw new Error('优雅停机中，中止停写等待；恢复未完成保持维护状态');
         }
         if (Date.now() >= deadline) {
           const detail = rows

@@ -3,6 +3,10 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import cookieParser from 'cookie-parser';
 import { RecoveryExecutorModule } from './recovery-executor.module';
+import { RecoveryExecutorService } from './recovery-executor.service';
+
+/** 优雅停机宽限（毫秒，主 PRD §9.13：固定有界时间，超时强制退出） */
+const SHUTDOWN_GRACE_MS = 30_000;
 
 try {
   loadEnvFile(resolve(__dirname, '../../../.env'));
@@ -13,13 +17,43 @@ try {
 /**
  * 恢复执行器入口（backstage PRD §10）。
  * 不依赖 Redis 启动；承载 /recovery 内部控制路由。
+ *
+ * 优雅停机（主 PRD §9.13）：SIGTERM/SIGINT → 就绪探针立即失败（beginShutdown）→
+ * 有界宽限内等待当前恢复阶段到达安全边界 → app.close（HTTP 停止 + 客户端关闭）→ 退出。
+ * 恢复管道在阶段边界停止推进，未完成的恢复保持维护状态（清单保留，超管可重试）。
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(RecoveryExecutorModule);
   app.use(cookieParser());
-  const port = Number(process.env.RECOVERY_EXECUTOR_PORT ?? 3010);
+  const port = Number(process.env.RECOVERY_EXECUTOR_PORT ?? 3090);
   await app.listen(port);
   console.log(`recovery-executor listening on http://localhost:${port}`);
+
+  const recovery = app.get(RecoveryExecutorService);
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    recovery.beginShutdown();
+    console.log(`[recovery-executor] 收到 ${signal}，开始优雅停机 ...`);
+    const timer = setTimeout(() => {
+      console.error('[recovery-executor] 优雅停机超时，强制退出');
+      process.exit(1);
+    }, SHUTDOWN_GRACE_MS);
+    timer.unref();
+    try {
+      await app.close();
+      clearTimeout(timer);
+      process.exit(0);
+    } catch (error) {
+      console.error('[recovery-executor] 停机失败', error);
+      process.exit(1);
+    }
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 void bootstrap().catch((error: unknown) => {

@@ -8,6 +8,9 @@ export interface ApprovalHeadForSideEffect {
   applicantName: string;
   /** 申请人部门快照（提交时快照，借还记录「借出时部门快照」数据源；可能为 null） */
   applicantDepartmentSnapshot: Prisma.JsonValue | null;
+  /** 处理人（批准副作用执行时已写入审批头；库存流水操作人以真实处理人为准，L8） */
+  processorId: number | null;
+  processorName: string | null;
 }
 
 /**

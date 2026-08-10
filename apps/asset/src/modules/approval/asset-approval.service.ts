@@ -265,6 +265,8 @@ export class AssetApprovalService {
         applicantId: head.applicantId,
         applicantName: head.applicantName,
         applicantDepartmentSnapshot: head.applicantDepartmentSnapshot,
+        processorId,
+        processorName,
       };
       if (action === 'APPROVE') {
         if (this.sideEffect) {
@@ -343,6 +345,7 @@ export class AssetApprovalService {
       throwIfTransitionLost(updated.count);
 
       // T7：取消释放业务占用（库存/额度/借还派生占用；与终态同一事务）
+      // 用户取消无审批处理人：processorId/processorName 传 null（release 不依赖处理人）
       if (this.sideEffect) {
         await this.sideEffect.applyRelease(tx, {
           id: head.id,
@@ -350,6 +353,8 @@ export class AssetApprovalService {
           applicantId: head.applicantId,
           applicantName: head.applicantName,
           applicantDepartmentSnapshot: head.applicantDepartmentSnapshot,
+          processorId: null,
+          processorName: null,
         });
       }
 

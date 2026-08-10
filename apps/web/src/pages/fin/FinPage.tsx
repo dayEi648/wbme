@@ -1,4 +1,4 @@
-import { Button, Card, Drawer, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Typography, Upload, theme, type UploadFile } from 'antd';
+import { Button, Card, Checkbox, Drawer, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Typography, Upload, theme, type UploadFile } from 'antd';
 import { DownloadOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -325,18 +325,53 @@ export function ProfitAnalysis() {
     {/* 导入导出内嵌业务页面（M23，产品决策：所有导入导出归属业务页面）；导出对查看人员可用 */}
     <ExcelImportExport canMaintain={canEdit} />
     <Card loading={loading} styles={{ body: { padding: 0 } }}>
-      <Table<RecordValue> rowKey={(row) => String(row.id)} dataSource={rows} pagination={false} scroll={{ x: 'max-content' }} columns={[
-        { key: 'name', title: '项目名称', fixed: 'left', width: 220, render: renderCell('name') },
-        { key: 'year', title: '年度', width: 110, render: renderCell('year') },
-        { key: 'partyA', title: '甲方', width: 200, render: renderCell('partyA') },
-        { key: 'contractAmount', title: '合同金额', width: 160, render: renderCell('contractAmount') },
-        { key: 'tentativeAuditedAmount', title: '暂定/审定金额', width: 180, render: renderCell('tentativeAuditedAmount') },
-        { key: 'invoicedAmount', title: '累计开票', width: 140, render: (value) => String(value ?? '0') },
-        { key: 'receivedAmount', title: '累计收款', width: 140, render: (value) => String(value ?? '0') },
-        { key: 'remainingInvoiceAmount', title: '剩余未开票', width: 150, render: negative },
-        { key: 'remainingReceiptAmount', title: '剩余未收款', width: 150, render: negative },
-        { key: 'grossMargin', title: '毛利率', width: 120, render: formatPercentage },
-      ]} />
+      <div className="wbme-desktop-table">
+        <Table<RecordValue> rowKey={(row) => String(row.id)} dataSource={rows} pagination={false} scroll={{ x: 'max-content' }} columns={[
+          { key: 'name', title: '项目名称', fixed: 'left', width: 220, render: renderCell('name') },
+          { key: 'year', title: '年度', width: 110, render: renderCell('year') },
+          { key: 'partyA', title: '甲方', width: 200, render: renderCell('partyA') },
+          { key: 'contractAmount', title: '合同金额', width: 160, render: renderCell('contractAmount') },
+          { key: 'tentativeAuditedAmount', title: '暂定/审定金额', width: 180, render: renderCell('tentativeAuditedAmount') },
+          { key: 'invoicedAmount', title: '累计开票', width: 140, render: (value) => String(value ?? '0') },
+          { key: 'receivedAmount', title: '累计收款', width: 140, render: (value) => String(value ?? '0') },
+          { key: 'remainingInvoiceAmount', title: '剩余未开票', width: 150, render: negative },
+          { key: 'remainingReceiptAmount', title: '剩余未收款', width: 150, render: negative },
+          { key: 'grossMargin', title: '毛利率', width: 120, render: formatPercentage },
+        ]} />
+      </div>
+      {/* L30：移动端卡片化（编辑态卡片复用 renderCell 控件与同一保存接口） */}
+      <div className="wbme-mobile-cards" style={{ padding: 16 }}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          {rows.map((row) => (
+            <Card key={String(row.id)} size="small">
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                  <Typography.Text strong>{String(row.name ?? '—')}</Typography.Text>
+                  <Typography.Text type="secondary">{row.year === null || row.year === undefined ? '' : `${String(row.year)} 年`}</Typography.Text>
+                </div>
+                {[
+                  { key: 'partyA', label: '甲方' },
+                  { key: 'contractAmount', label: '合同金额' },
+                  { key: 'tentativeAuditedAmount', label: '暂定/审定金额' },
+                  { key: 'invoicedAmount', label: '累计开票' },
+                  { key: 'receivedAmount', label: '累计收款' },
+                  { key: 'remainingInvoiceAmount', label: '剩余未开票', negative: true },
+                  { key: 'remainingReceiptAmount', label: '剩余未收款', negative: true },
+                ].map(({ key, label, negative: isNegative }) => (
+                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
+                    <Typography.Text type="secondary">{label}</Typography.Text>
+                    <span>{isNegative ? negative(row[key]) : renderCell(key)(row[key], row)}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                  <Typography.Text type="secondary">毛利率</Typography.Text>
+                  <span>{formatPercentage(row.grossMargin)}</span>
+                </div>
+              </Space>
+            </Card>
+          ))}
+        </Space>
+      </div>
     </Card>
     {totals ? <Card title="当前筛选范围汇总"><Space wrap>{Object.entries(totals).map(([key, value]) => <Typography.Text key={key}>{key}：{String(value ?? '—')}</Typography.Text>)}</Space></Card> : null}
     <Modal
@@ -372,6 +407,8 @@ function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [choices, setChoices] = useState<Record<number, 'OVERWRITE' | 'SKIP'>>({});
+  // L26：覆盖数据丢失警告确认（行号 → 是否勾选确认）
+  const [confirmWarnings, setConfirmWarnings] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
   const selectFile = (uploadFile: UploadFile) => {
     const original = uploadFile.originFileObj;
@@ -383,6 +420,7 @@ function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
     setFile(original);
     setPreview(null);
     setChoices({});
+    setConfirmWarnings({});
     return false;
   };
   const previewFile = async () => {
@@ -394,6 +432,7 @@ function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
       const nextPreview = await upload<ImportPreview>('/profit/excel/import/preview', form, { service: 'fin' });
       setPreview(nextPreview);
       setChoices(Object.fromEntries((nextPreview.pendingChoice ?? []).map((item) => [item.rowNumber, 'SKIP'])));
+      setConfirmWarnings({});
       feedback.success('导入预览已生成');
     } catch (error) {
       feedback.error(error, '导入预览失败');
@@ -407,12 +446,13 @@ function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
     try {
       const form = new FormData();
       form.append('file', file);
-      form.append('choices', JSON.stringify(importChoices(preview, choices)));
+      form.append('choices', JSON.stringify(importChoices(preview, choices, confirmWarnings)));
       await upload('/profit/excel/import/confirm', form, { service: 'fin', idempotencyKey: crypto.randomUUID() });
       feedback.success('Excel 导入已完成');
       setPreview(null);
       setFile(null);
       setChoices({});
+      setConfirmWarnings({});
     } catch (error) {
       feedback.error(error, 'Excel 导入确认失败');
     } finally {
@@ -430,11 +470,11 @@ function ExcelImportExport({ canMaintain }: { canMaintain: boolean }) {
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     {canMaintain ? <Card title="导入"><Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>仅接受服务端导出的 V2 模板；预览与确认均在当前请求中限时处理，不留存原文件。</Typography.Paragraph>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Upload accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" maxCount={1} beforeUpload={selectFile} onRemove={() => { setFile(null); setPreview(null); setChoices({}); }}>
+        <Upload accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" maxCount={1} beforeUpload={selectFile} onRemove={() => { setFile(null); setPreview(null); setChoices({}); setConfirmWarnings({}); }}>
           <Button icon={<ImportOutlined />}>选择 Excel 文件</Button>
         </Upload>
-        <Space wrap><Button type="primary" disabled={!file} loading={loading} onClick={() => void previewFile()}>生成预览</Button><Button disabled={!preview || loading} onClick={() => void confirmFile()}>确认导入</Button></Space>
-        {preview ? <ImportPreviewCard preview={preview} choices={choices} onChoiceChange={(rowNumber, decision) => setChoices((current) => ({ ...current, [rowNumber]: decision }))} /> : null}
+        <Space wrap><Button type="primary" disabled={!file} loading={loading} onClick={() => void previewFile()}>生成预览</Button><Button disabled={!preview || loading || hasUnconfirmedWarning(preview, choices, confirmWarnings)} onClick={() => void confirmFile()}>确认导入</Button></Space>
+        {preview ? <ImportPreviewCard preview={preview} choices={choices} confirmations={confirmWarnings} onChoiceChange={(rowNumber, decision) => setChoices((current) => ({ ...current, [rowNumber]: decision }))} onConfirmChange={(rowNumber, confirmed) => setConfirmWarnings((current) => ({ ...current, [rowNumber]: confirmed }))} /> : null}
       </Space>
     </Card> : null}
     <Card title="导出"><Space wrap><Button icon={<DownloadOutlined />} onClick={() => void exportFile('all')}>导出全部</Button><Button icon={<ExportOutlined />} onClick={() => void exportFile('filtered')}>导出已筛选</Button></Space></Card>
@@ -448,7 +488,13 @@ function FinanceConfig() {
   </Space>;
 }
 
-function ImportPreviewCard({ preview, choices, onChoiceChange }: { preview: ImportPreview; choices: Record<number, 'OVERWRITE' | 'SKIP'>; onChoiceChange: (rowNumber: number, decision: 'OVERWRITE' | 'SKIP') => void }) {
+function ImportPreviewCard({ preview, choices, confirmations, onChoiceChange, onConfirmChange }: {
+  preview: ImportPreview;
+  choices: Record<number, 'OVERWRITE' | 'SKIP'>;
+  confirmations: Record<number, boolean>;
+  onChoiceChange: (rowNumber: number, decision: 'OVERWRITE' | 'SKIP') => void;
+  onConfirmChange: (rowNumber: number, confirmed: boolean) => void;
+}) {
   const pending = preview.pendingChoice ?? [];
   return <Card size="small" title="导入预览">
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -459,6 +505,10 @@ function ImportPreviewCard({ preview, choices, onChoiceChange }: { preview: Impo
         { key: 'year', title: '年度', dataIndex: 'year', width: 100 },
         { key: 'warning', title: '提示', render: (_, row) => row.dataLossWarning ? '覆盖会清空原明细的日期/备注' : '—' },
         { key: 'decision', title: '处理', render: (_, row) => <Select value={choices[row.rowNumber] ?? 'SKIP'} style={{ minWidth: 120 }} options={[{ label: '跳过', value: 'SKIP' }, { label: '覆盖', value: 'OVERWRITE' }]} onChange={(value: 'OVERWRITE' | 'SKIP') => onChoiceChange(row.rowNumber, value)} /> },
+        // L26：覆盖数据丢失警告须显式勾选确认（未确认时确认导入按钮禁用）
+        { key: 'confirm', title: '警告确认', render: (_, row) => row.dataLossWarning
+          ? <Checkbox checked={confirmations[row.rowNumber] ?? false} disabled={(choices[row.rowNumber] ?? 'SKIP') !== 'OVERWRITE'} onChange={(event) => onConfirmChange(row.rowNumber, event.target.checked)}>已阅读并确认</Checkbox>
+          : null },
       ]} /> : null}
       {(preview.created?.length ?? 0) > 0 ? <Typography.Text type="success">将新增 {preview.created?.length} 行。</Typography.Text> : null}
       {(preview.conflicts?.length ?? 0) > 0 ? <Typography.Text type="warning">存在 {preview.conflicts?.length} 行冲突，不能导入。</Typography.Text> : null}
@@ -467,12 +517,21 @@ function ImportPreviewCard({ preview, choices, onChoiceChange }: { preview: Impo
   </Card>;
 }
 
-function importChoices(preview: ImportPreview | null, choices: Record<number, 'OVERWRITE' | 'SKIP'>): Array<{ rowNumber: number; decision: 'OVERWRITE' | 'SKIP'; projectId: number; dataRevision: number }> {
+/** 是否存在"覆盖 + 有数据丢失警告 + 未勾选确认"的待导入行（L26：有则禁用确认按钮） */
+function hasUnconfirmedWarning(preview: ImportPreview | null, choices: Record<number, 'OVERWRITE' | 'SKIP'>, confirmations: Record<number, boolean>): boolean {
+  return (preview?.pendingChoice ?? []).some(
+    (item) => item.dataLossWarning && (choices[item.rowNumber] ?? 'SKIP') === 'OVERWRITE' && confirmations[item.rowNumber] !== true,
+  );
+}
+
+function importChoices(preview: ImportPreview | null, choices: Record<number, 'OVERWRITE' | 'SKIP'>, confirmations: Record<number, boolean>): Array<{ rowNumber: number; decision: 'OVERWRITE' | 'SKIP'; projectId: number; dataRevision: number; confirmDataLossWarning?: boolean }> {
   return (preview?.pendingChoice ?? []).map((item) => ({
     rowNumber: item.rowNumber,
     decision: choices[item.rowNumber] ?? 'SKIP',
     projectId: item.projectId,
     dataRevision: item.dataRevision,
+    // L26：仅对有警告的覆盖行提交确认标记
+    confirmDataLossWarning: item.dataLossWarning ? confirmations[item.rowNumber] ?? false : undefined,
   }));
 }
 

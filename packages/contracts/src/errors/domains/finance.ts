@@ -131,4 +131,12 @@ export const financeErrors = {
     httpStatus: 400,
     message: '确认选择与预览结果不一致，请重新预览',
   },
+  /** 导出范围非法（L25：不再复用导入模板错误码；仅支持 all/filtered，主 PRD §10.3） */
+  EXPORT_SCOPE_INVALID: {
+    code: 'EXPORT_SCOPE_INVALID',
+    type: 'VALIDATION',
+    domain: 'FINANCE',
+    httpStatus: 400,
+    message: '导出范围只支持 all（导出所有）与 filtered（导出已筛选）',
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

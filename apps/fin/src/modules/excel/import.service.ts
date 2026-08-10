@@ -93,9 +93,9 @@ export interface PendingChoiceItem extends PreviewRowItem {
   dataLossWarning: boolean;
 }
 
-/** 冲突条目（软删除命中 / 同名歧义 / 文件内重复） */
+/** 冲突条目（软删除命中 / 同名歧义 / 文件内重复 / 空年度无法新增） */
 export interface ConflictItem extends PreviewRowItem {
-  status: 'DELETED' | 'AMBIGUOUS' | 'DUPLICATE';
+  status: 'DELETED' | 'AMBIGUOUS' | 'DUPLICATE' | 'YEAR_REQUIRED';
   reason: string;
 }
 
@@ -562,9 +562,17 @@ export class ImportService {
         continue;
       }
       if (item.status === 'DELETED' || item.status === 'AMBIGUOUS' || item.status === 'DUPLICATE' || item.status === 'YEAR_REQUIRED') {
+        // L17：空年度无法新增独立映射为 YEAR_REQUIRED，不再落入 DUPLICATE
         conflicts.push({
           ...preview,
-          status: item.status === 'DELETED' ? 'DELETED' : item.status === 'AMBIGUOUS' ? 'AMBIGUOUS' : 'DUPLICATE',
+          status:
+            item.status === 'DELETED'
+              ? 'DELETED'
+              : item.status === 'AMBIGUOUS'
+                ? 'AMBIGUOUS'
+                : item.status === 'YEAR_REQUIRED'
+                  ? 'YEAR_REQUIRED'
+                  : 'DUPLICATE',
           reason: item.conflictReason ?? '',
         });
       } else {
@@ -608,21 +616,46 @@ export class ImportService {
     const createdRows = new Set(preview.created.map((row) => row.rowNumber));
     const pendingRows = new Map(preview.pendingChoice.map((row) => [row.rowNumber, row]));
 
+    // L18：确认前遍历全部 choices 校验行号存在于重解析结果（行号引用了不存在的行 → 拒绝整批，
+    // 不静默忽略；防止预览与确认之间的数据行集合漂移被无感吞掉）
+    for (const choice of choices) {
+      if (!inputByRow.has(choice.rowNumber)) {
+        throw new BusinessException(financeErrors.IMPORT_CONFIRM_MISMATCH, {
+          fields: [{ rowNumber: choice.rowNumber, reason: '该行号在本次解析结果中不存在，请重新预览' }],
+        });
+      }
+    }
+
     const dicts = await loadDictContext(tx);
 
     // 选择映射校验：行号必须引用真实存在的项目行；覆盖行必须带 projectId/dataRevision；
     // 待选择行未提交选择默认跳过；新增行提交 SKIP 或未提交也跳过
     const toCreate: Array<{ input: ProjectRowInput; businessKey: string }> = [];
-    const toOverwrite: Array<{ input: ProjectRowInput; businessKey: string; targetId: number; dataRevision: number }> = [];
+    const toOverwrite: Array<{
+      input: ProjectRowInput;
+      businessKey: string;
+      targetId: number;
+      dataRevision: number;
+      dataLossWarningConfirmed: boolean;
+    }> = [];
     let skippedCount = 0;
     for (const input of inputs) {
       const businessKey = normalizeProjectName(input.name);
       if (createdRows.has(input.rowNumber)) {
         const choice = choiceByRow.get(input.rowNumber);
-        if (choice && choice.decision !== 'SKIP') {
-          toCreate.push({ input, businessKey });
-        } else {
+        // L18：对"新增"行提交 OVERWRITE 属于预览过期语义（该行在预览时不是覆盖目标），
+        // 抛 IMPORT_PREVIEW_STALE 禁止静默转新增
+        if (choice && choice.decision === 'OVERWRITE') {
+          throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
+            fields: [{ rowNumber: input.rowNumber, reason: '该行在预览中为新增项目，不能选择覆盖（预览已过期，请重新预览）' }],
+          });
+        }
+        // fin PRD §4：选择映射只针对覆盖/跳过行；新增行未提交选择（前端不生成 choice）
+        // 即默认创建，仅显式 SKIP 才跳过（修复原"无 choice → 跳过"导致新增导入不可用）
+        if (choice?.decision === 'SKIP') {
           skippedCount += 1;
+        } else {
+          toCreate.push({ input, businessKey });
         }
         continue;
       }
@@ -636,7 +669,19 @@ export class ImportService {
         if (choice.projectId === undefined || choice.dataRevision === undefined || choice.projectId !== pending.projectId) {
           throw new BusinessException(financeErrors.IMPORT_CONFIRM_MISMATCH);
         }
-        toOverwrite.push({ input, businessKey, targetId: choice.projectId, dataRevision: choice.dataRevision });
+        // L26：预览标记了覆盖数据丢失警告（dataLossWarning=true）的目标必须显式确认
+        if (pending.dataLossWarning === true && choice.confirmDataLossWarning !== true) {
+          throw new BusinessException(financeErrors.IMPORT_CONFIRM_MISMATCH, {
+            fields: [{ rowNumber: input.rowNumber, reason: '该目标覆盖将丢失明细日期/备注，请确认覆盖数据丢失警告' }],
+          });
+        }
+        toOverwrite.push({
+          input,
+          businessKey,
+          targetId: choice.projectId,
+          dataRevision: choice.dataRevision,
+          dataLossWarningConfirmed: pending.dataLossWarning === true,
+        });
       } else if (inputByRow.has(input.rowNumber)) {
         // 冲突/错误行：不参与写入（也不计跳过）
         continue;
@@ -753,6 +798,10 @@ export class ImportService {
 
     checkTimeout();
     // 3. 审计（与业务变更同一事务；新增/覆盖/跳过逐项目记录）
+    // L26：覆盖目标的警告确认标记按项目 id 收集（审计 IMPORT_OVERWRITE 记录引用）
+    const overwriteConfirmedByProject = new Map<number, boolean>(
+      toOverwrite.map((item) => [item.targetId, item.dataLossWarningConfirmed]),
+    );
     const operations: Prisma.ProjectOperationUncheckedCreateInput[] = [];
     for (const id of createdIds) {
       operations.push({
@@ -771,7 +820,11 @@ export class ImportService {
         operatorName: operator.name,
         action: 'IMPORT_OVERWRITE',
         before: item.beforeDetails as unknown as Prisma.InputJsonValue,
-        after: item.afterDetails as unknown as Prisma.InputJsonValue,
+        // L26：记录覆盖数据丢失警告是否已被操作人显式确认（审计可追溯）
+        after: {
+          ...(item.afterDetails as unknown as Record<string, unknown>),
+          dataLossWarningConfirmed: overwriteConfirmedByProject.get(item.projectId) ?? false,
+        } as Prisma.InputJsonValue,
       });
     }
     for (const input of inputs) {

@@ -171,6 +171,9 @@ services:
       RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
       # 维护标记/恢复状态目录（只读：标记由恢复执行器写入）
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
+      # 健康状态页服务探针（L37）：本服务与恢复执行器各自的健康 URL
+      PLATFORM_CORE_HEALTH_URL: http://platform-core:3001
+      RECOVERY_EXECUTOR_HEALTH_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}/recovery
       HEALTH_DISK_USAGE_RATIO: ${HEALTH_DISK_USAGE_RATIO:-0.85}
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
@@ -261,7 +264,11 @@ services:
       PG_DUMP_PATH: /usr/bin/pg_dump
       PG_RESTORE_PATH: /usr/bin/pg_restore
       PSQL_PATH: /usr/bin/psql
-    # 无 HTTP 端口：进程存活即健康（Redis 连接已在启动强检中校验；§9.8）
+      # L37：最小健康探针（/healthz 存活、/readyz 就绪）供健康状态页探测
+      WORKER_HEALTH_URL: http://worker:3105
+      WORKER_HEALTH_PORT: "3105"
+    # 存活探针：进程存活即健康（Redis 连接已在启动强检中校验；§9.8）；
+    # 就绪探针（Redis 失效时为 503）只供健康状态页与发布检查，不 kill 容器（§9.8）
     healthcheck:
       test: ["CMD-SHELL", "kill -0 1 || exit 1"]
       interval: 15s

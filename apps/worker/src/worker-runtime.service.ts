@@ -60,6 +60,23 @@ export class WorkerRuntimeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 停机标记（L37/主 PRD §9.13）：入口收到 SIGTERM/SIGINT 时先置位，
+   * 就绪探针立即返回失败；onModuleDestroy 幂等复用同一标记。
+   */
+  beginShutdown(): void {
+    this.shuttingDown = true;
+  }
+
+  /**
+   * 健康状态（L37/backstage PRD §11：各部署单元提供存活/就绪两级状态）。
+   * 存活 = 进程活着（/healthz 恒 200）；就绪 = Redis 连接正常且未进入停机。
+   * Redis 失效时进程存活但不再领取新任务（主 PRD §9.8），就绪探针反映为失败。
+   */
+  getHealth(): { ready: boolean } {
+    return { ready: !this.shuttingDown && this.redis?.status === 'ready' };
+  }
+
+  /**
    * 优雅停机：停止调度、关闭 Worker、释放连接。
    */
   async onModuleDestroy(): Promise<void> {

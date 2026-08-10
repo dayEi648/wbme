@@ -94,7 +94,11 @@ export class StockInService {
    * @param tx 事务客户端
    * @param head 审批头（含申请人）
    */
-  async applyApproved(tx: Prisma.TransactionClient, head: { id: number }, processorId: number): Promise<void> {
+  async applyApproved(
+    tx: Prisma.TransactionClient,
+    head: { id: number; processorId: number | null; processorName: string | null },
+    processorId: number,
+  ): Promise<void> {
     const lines = await tx.stockInItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
     if (lines.length === 0) {
       return;
@@ -180,7 +184,7 @@ export class StockInService {
         bookAfter: item.bookQty + line.qty,
         refType: 'STOCK_IN',
         refId: head.id,
-        operator: { id: processorId, name: '审批系统' },
+        operator: { id: processorId, name: head.processorName ?? '审批系统' },
       });
     }
   }

@@ -32,6 +32,8 @@ export interface DataColumn {
   defaultVisible?: boolean;
   width?: number;
   fixed?: 'left' | 'right';
+  /** 字段类型（L29：number 列渲染使用等宽数字字体 tabular-nums） */
+  type?: 'text' | 'enum' | 'number' | 'date';
   /** 将原始行字段转换为受控 React 节点。 */
   render?: (value: unknown, row: RecordValue) => ReactNode;
 }
@@ -138,6 +140,7 @@ const OPERATOR_OPTIONS: Readonly<Record<NonNullable<FilterField['type']>, Array<
   ],
   number: [
     { label: '等于', value: 'EQUALS' },
+    { label: '不等于', value: 'NOT_EQUALS' },
     { label: '大于', value: 'GREATER_THAN' },
     { label: '大于等于', value: 'GREATER_THAN_OR_EQUAL' },
     { label: '小于', value: 'LESS_THAN' },
@@ -226,6 +229,15 @@ function asText(value: unknown): string {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+/**
+ * 单元格是否按数字渲染（应用等宽数字字体 tabular-nums，L29）：
+ * 显式声明 type:'number'，或列值本身为数值类型即视为数字列——
+ * 多数调用方列定义未声明 type（数据源即数值），值探测避免依赖各页面逐一接线。
+ */
+export function isNumericCell(column: DataColumn, value: unknown): boolean {
+  return column.type === 'number' || typeof value === 'number';
 }
 
 /**
@@ -396,7 +408,11 @@ export function DataTable({
       title: <ResizableColumnTitle title={column.title} width={columnWidths[column.key] ?? column.width ?? 160} onResize={(width) => resizeColumn(column.key, width)} />,
       width: columnWidths[column.key] ?? column.width,
       fixed: columnFixed[column.key] ?? column.fixed,
-      render: (_: unknown, row: RecordValue) => column.render?.(row[column.key], row) ?? asText(row[column.key]),
+      // L29：数字/金额列使用等宽数字字体（tabular-nums），列内数字上下对齐（isNumericCell）
+      render: (_: unknown, row: RecordValue) => {
+        const content = column.render?.(row[column.key], row) ?? asText(row[column.key]);
+        return isNumericCell(column, row[column.key]) ? <span style={{ fontVariantNumeric: 'tabular-nums' }}>{content}</span> : content;
+      },
     })),
     ...(rowActions ? [{ key: '__actions', title: '操作', fixed: 'right' as const, render: (_: unknown, row: RecordValue) => <span onClick={(event) => event.stopPropagation()}>{rowActions(row)}</span> }] : []),
   ];
@@ -705,7 +721,10 @@ export function DataTable({
                       {visibleColumns.map((column) => (
                         <div key={column.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                           <Typography.Text type="secondary">{column.title}</Typography.Text>
-                          <span>{column.render?.(row[column.key], row) ?? asText(row[column.key])}</span>
+                          {/* L29：数字/金额列使用等宽数字字体，与桌面表格一致（isNumericCell） */}
+                          <span style={isNumericCell(column, row[column.key]) ? { fontVariantNumeric: 'tabular-nums' } : undefined}>
+                            {column.render?.(row[column.key], row) ?? asText(row[column.key])}
+                          </span>
                         </div>
                       ))}
                       {rowActions ? <div onClick={(event) => event.stopPropagation()}>{rowActions(row)}</div> : null}
@@ -738,10 +757,17 @@ export function DataTable({
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {filters.length > 1 ? (
             <Card size="small" title="条件组合">
+              {/* L31：存在条件组时组间恒为 OR（主 PRD §2.7「组内 AND、组间 OR」），
+                  开关仅作用于主条件之间；文案如实标注避免误导 */}
               <Segmented<FilterLogic>
                 block
                 value={filterLogic}
-                options={[{ label: '同时满足（AND）', value: 'AND' }, { label: '满足任一（OR）', value: 'OR' }]}
+                options={filterGroups.length > 0
+                  ? [
+                      { label: '主条件同时满足（组间取任一）', value: 'AND' },
+                      { label: '主条件满足任一（组间取任一）', value: 'OR' },
+                    ]
+                  : [{ label: '同时满足（AND）', value: 'AND' }, { label: '满足任一（OR）', value: 'OR' }]}
                 onChange={(value) => setFilterLogic(value)}
               />
             </Card>

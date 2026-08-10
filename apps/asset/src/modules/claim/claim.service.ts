@@ -223,7 +223,14 @@ export class ClaimService {
    */
   async applyApproved(
     tx: Prisma.TransactionClient,
-    head: { id: number; applicantId: number; applicantName: string; applicantDepartmentSnapshot: Prisma.JsonValue | null },
+    head: {
+      id: number;
+      applicantId: number;
+      applicantName: string;
+      applicantDepartmentSnapshot: Prisma.JsonValue | null;
+      processorId: number | null;
+      processorName: string | null;
+    },
     processorId: number,
   ): Promise<void> {
     const lines = await tx.consumableRequestItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
@@ -257,7 +264,7 @@ export class ClaimService {
           bookAfter: after,
           refType: 'CONSUMABLE_REQUEST',
           refId: head.id,
-          operator: { id: processorId, name: '审批系统' },
+          operator: { id: processorId, name: head.processorName ?? '审批系统' },
         });
         before = after;
       }

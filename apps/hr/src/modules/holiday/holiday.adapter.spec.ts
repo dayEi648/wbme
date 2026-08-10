@@ -72,7 +72,7 @@ describeDb('节假日适配器（T6-4）', () => {
     expect(row?.providerId).toBe('ailcc');
   });
 
-  it('24 小时内已保存结果直接复用（source=saved，不调用外部）', async () => {
+  it('24 小时内已保存结果直接复用（source 透传原始供应商 ailcc，不调用外部）', async () => {
     const date = '2026-03-03'; // 周二
     usedDates.push(date);
     gateway.handler = async (d) => workdayResponse(d, 2);
@@ -83,11 +83,11 @@ describeDb('节假日适配器（T6-4）', () => {
       return workdayResponse(d, 2);
     };
     const result = await adapter.resolve(date);
-    expect(result.source).toBe('saved');
+    expect(result.source).toBe('ailcc');
     expect(calls).toBe(0);
   });
 
-  it('外部失败 + 已有任意已保存结果 → 复用并降级（source=saved）', async () => {
+  it('外部失败 + 已有任意已保存结果 → 复用并降级（source 透传原始供应商 ailcc）', async () => {
     const date = '2026-03-04'; // 周三
     usedDates.push(date);
     gateway.handler = async (d) => holidayResponse(d, 3);
@@ -97,7 +97,7 @@ describeDb('节假日适配器（T6-4）', () => {
     };
     const result = await adapter.resolve(date);
     expect(result.dateType).toBe('HOLIDAY');
-    expect(result.source).toBe('saved');
+    expect(result.source).toBe('ailcc');
   });
 
   it('外部失败 + 无已保存结果 + 离线兜底命中 → source=offline-2026（不落库）', async () => {

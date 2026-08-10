@@ -156,7 +156,7 @@ export class AgentClaimService {
    */
   async applyApproved(
     tx: Prisma.TransactionClient,
-    head: { id: number; applicantDepartmentSnapshot: Prisma.JsonValue | null },
+    head: { id: number; applicantDepartmentSnapshot: Prisma.JsonValue | null; processorId: number | null; processorName: string | null },
     processorId: number,
   ): Promise<void> {
     const lines = await tx.consumableRequestItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
@@ -189,7 +189,7 @@ export class AgentClaimService {
           bookAfter: after,
           refType: 'AGENT_REQUEST',
           refId: head.id,
-          operator: { id: processorId, name: '审批系统' },
+          operator: { id: processorId, name: head.processorName ?? '审批系统' },
         });
         before = after;
       }
@@ -255,10 +255,14 @@ export class AgentClaimService {
    * @returns 部门快照数组（[{ id, name }] 去重）或 null
    */
   private async mergeRecipientSnapshots(tx: Prisma.TransactionClient, requestId: number): Promise<Prisma.InputJsonValue> {
+    // 快照形状兼容数组与单对象（L6）：单对象快照先 CASE 展开为数组，避免 jsonb_array_elements 抛错
     const rows = await tx.$queryRaw<Array<{ snapshot: Prisma.JsonValue | null }>>`
       SELECT jsonb_agg(DISTINCT dept) AS snapshot
       FROM asset.agent_recipients ar
-      CROSS JOIN LATERAL jsonb_array_elements(ar.department_snapshot) AS dept
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(ar.department_snapshot) = 'array' THEN ar.department_snapshot
+             ELSE jsonb_build_array(ar.department_snapshot) END
+      ) AS dept
       WHERE ar.request_id = ${requestId}
     `;
     // 受领人均无部门时 jsonb_agg 为 NULL → 写 JSON null

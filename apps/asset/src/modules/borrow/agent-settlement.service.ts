@@ -112,7 +112,11 @@ export class AgentSettlementService {
    * @param head 审批头
    * @param processorId 处理人
    */
-  async applyApproved(tx: Prisma.TransactionClient, head: { id: number; applicantId: number }, processorId: number): Promise<void> {
+  async applyApproved(
+    tx: Prisma.TransactionClient,
+    head: { id: number; applicantId: number; processorId: number | null; processorName: string | null },
+    processorId: number,
+  ): Promise<void> {
     const items = await tx.agentSettlementItem.findMany({ where: { requestId: head.id }, orderBy: { id: 'asc' } });
     // 按借还记录 id 升序锁定全部记录（固定顺序）
     const recordIds = [...new Set(items.map((item) => item.borrowRecordId))].sort((a, b) => a - b);
@@ -127,7 +131,7 @@ export class AgentSettlementService {
     for (const item of items) {
       const record = locked.get(item.borrowRecordId)!;
       if (item.method === 'RETURN') {
-        await this.borrow.restoreRecord(tx, record, item.qty, 'AGENT_SETTLEMENT', head.id, processorId);
+        await this.borrow.restoreRecord(tx, record, item.qty, 'AGENT_SETTLEMENT', head.id, processorId, head.processorName ?? '审批系统');
       } else {
         await this.borrow.writeOffRecord(tx, record, item.qty);
       }

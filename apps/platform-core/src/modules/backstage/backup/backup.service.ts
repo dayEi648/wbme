@@ -115,18 +115,22 @@ export class BackupService {
   }
 
   /**
-   * 发起立即备份（幂等：同用户同分钟窗口稳定 taskUuid）。
+   * 发起立即备份。
+   *
+   * 幂等语义：显式幂等键重试返回原结果；未传键时自动键为随机 UUID（每次触发都是新操作）。
+   * "重复点击不得重复创建同一任务"由 RUNNING 互斥锁兜底（backstage PRD §10）；
+   * 不用分钟窗口作为自动键，否则"触发成功后异步任务失败"时同分钟重试被重放阻塞、
+   * 无法重新触发（L3）。
    */
   async triggerImmediateBackup(operatorId: number, dto: ImmediateBackupDto): Promise<unknown> {
     await this.assertNoActiveRestore();
     const operator = await loadOperationLogOperator(this.prisma.client, operatorId);
-    const windowKey = new Date().toISOString().slice(0, 16);
-    const fingerprint = fingerprintPayload({ windowKey });
+    const fingerprint = fingerprintPayload({ operatorId });
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: DATA_BACKUP_FUNCTION_CODE,
       scope: IDEMPOTENCY_SCOPE.IMMEDIATE_BACKUP,
-      idempotencyKey: dto.idempotencyKey ?? `immediate:${operatorId}:${windowKey}`,
+      idempotencyKey: dto.idempotencyKey ?? `immediate:${operatorId}:${randomUUID()}`,
       fingerprint,
       run: async (tx) => {
         const { backupId, taskUuid } = await this.createImmediateBackupTask(tx, operatorId, 'USER');

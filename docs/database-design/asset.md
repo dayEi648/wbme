@@ -521,4 +521,20 @@
 
 结构与 `base.user_table_prefs`（B-5）完全一致（`user_id` 不建外键），只存 asset 页面偏好（筛选预设 + 列设置，主 PRD §10.2）。
 
-**表间关系**：`asset_categories` 自引用（顶级/子分类）；`assets` 1—N `asset_transfers`/`asset_changes`/`repair_orders`；`repair_orders` 1—N `repair_order_actions`；`consumables` 1—N `inventory_items` 1—N `batches`；`inventory_transfers` 1—N `transfer_batch_items`；`approval_requests` 1—N `approval_actions` 及各业务明细表；`consumable_request_items` 1—N 关系仅受领人名单（A-21）并列挂接同一申请；`quota_occupations`/`borrow_records` 独立引用申请。
+### A-31 `borrow_batch_allocations` 借还批次分配明细
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `integer` | PK，serial4 自增 | |
+| `borrow_record_id` | `integer` | NOT NULL → `borrow_records.id`（级联删除） | 借还记录 1—N 分配明细 |
+| `batch_id` | `integer` | NOT NULL → `batches.id`（RESTRICT） | 借出来源批次（归还必须回到原批次） |
+| `issued_qty` | `integer` | NOT NULL | 该批次借出数量 |
+| `returned_qty` | `integer` | NOT NULL `DEFAULT 0` | 已归还数量 |
+| `created_at` | `timestamptz` | NOT NULL `DEFAULT now()` | |
+
+- 唯一约束：`(borrow_record_id, batch_id)`（一次借出同一批次只分配一行）
+- CHECK：`issued_qty > 0`、`returned_qty >= 0 AND returned_qty <= issued_qty`
+- **恢复规则**：归还按"最后借出先归还"（分配行倒序）逐段恢复对应批次的 `remaining_qty` 与条目账面（`book_qty` 递增），保证归还只回到尚未归还份额的原始批次；新增记录在申领批准出库时按 FIFO 出库分配写入，历史记录由迁移按 ISSUE 流水回填
+- 查询索引：`(batch_id)`
+
+**表间关系**：`asset_categories` 自引用（顶级/子分类）；`assets` 1—N `asset_transfers`/`asset_changes`/`repair_orders`；`repair_orders` 1—N `repair_order_actions`；`consumables` 1—N `inventory_items` 1—N `batches`；`inventory_transfers` 1—N `transfer_batch_items`；`approval_requests` 1—N `approval_actions` 及各业务明细表；`consumable_request_items` 1—N 关系仅受领人名单（A-21）并列挂接同一申请；`quota_occupations`/`borrow_records` 独立引用申请；`borrow_records` 1—N `borrow_batch_allocations`（A-31，归还回库的核心配套表）。

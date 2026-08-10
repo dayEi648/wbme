@@ -76,7 +76,8 @@ wait_ready() { # $1 服务名 $2 端口 [$3 探针路径 默认 /readyz]
   done
   fail "服务 $svc 未就绪（$port$path 超时）"
 }
-# worker 无 HTTP 端口：以容器健康状态为准（kill -0 进程存活 + 启动强检已过）
+# worker 业务无 HTTP 端口（L37 起仅健康探针 3105 供健康状态页探测）；
+# 发布等待以容器健康状态为准（kill -0 进程存活 + 启动强检已过）
 wait_worker_healthy() {
   local i cid
   for i in $(seq 1 60); do
@@ -89,6 +90,9 @@ wait_worker_healthy() {
 
 # ---- 4. 构建与部署 ----
 if [ -z "${SKIP_DEPLOY:-}" ]; then
+  # L35：统一构建/启动镜像 tag（compose image 为 wbme/backend:${WBME_TAG:-local}），
+  # 避免 build 打 :local、up -d 用 :$TAG 触发二次构建
+  export WBME_TAG="$TAG"
   log "构建镜像（tag=$TAG）..."
   docker compose "${COMPOSE_OPTS[@]}" build
 
@@ -106,7 +110,7 @@ if [ -z "${SKIP_DEPLOY:-}" ]; then
   docker compose "${COMPOSE_OPTS[@]}" run --rm migration-runner
 
   log "更新全部容器（优雅停机由 stop_grace_period 保证）..."
-  WBME_TAG="$TAG" docker compose "${COMPOSE_OPTS[@]}" up -d
+  docker compose "${COMPOSE_OPTS[@]}" up -d
 else
   # 重复发布：仍按状态文件 commit 构建镜像可跳过，但需要 WBME_TAG 与镜像一致
   :
@@ -128,10 +132,11 @@ done
 log "全部服务就绪"
 
 # ---- 6. 发布核验（§9.12 日志驱动 / §9.14 特权、端口、时钟）----
-log "核验日志驱动（local 20m×5）..."
+log "核验日志驱动（local 20m×5+compress）..."
 for cid in $(docker compose "${COMPOSE_OPTS[@]}" ps -q); do
-  docker inspect --format '{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config "max-size"}}|{{index .HostConfig.LogConfig.Config "max-file"}}' "$cid" \
-    | grep -q '^local|20m|5$' || fail "容器 $cid 日志驱动不符合 §9.12（local 20m×5）"
+  # L33：运行期核验补 compress 标志（compose 配置 local 20m×5+compress，见 §9.12）
+  docker inspect --format '{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config "max-size"}}|{{index .HostConfig.LogConfig.Config "max-file"}}|{{index .HostConfig.LogConfig.Config "compress"}}' "$cid" \
+    | grep -q '^local|20m|5|true$' || fail "容器 $cid 日志驱动不符合 §9.12（local 20m×5 compress）"
 done
 
 log "核验安全边界（无特权/Socket 挂载）..."
