@@ -31,7 +31,8 @@ FROM nginx:1.27-alpine AS web
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /wbme/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
-# 官方镜像以非 root 的 nginx 用户运行；健康检查由 Compose 执行
+# 官方 nginx 镜像 master 进程（PID 1）以 root 运行、worker 降权 nginx（镜像固定行为）；
+# 特权收窄由 Compose 完成（cap_drop ALL + no-new-privileges + read_only）；健康检查由 Compose 执行
 
 # ---- 后端运行时 ----
 FROM node:24-bookworm-slim AS runtime

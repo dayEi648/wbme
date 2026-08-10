@@ -1,8 +1,13 @@
-/** OSS 对象键前缀：用户图片（与备份隔离） */
-export const OSS_PREFIX_IMAGES = 'images/';
+/** 前缀规范化：环境变量值可能不带尾部斜杠（.env.production.example 示例值），统一补 `/` */
+function normalizePrefix(value: string): string {
+  return value.endsWith('/') ? value : `${value}/`;
+}
 
-/** OSS 对象键前缀：数据库备份（与图片隔离） */
-export const OSS_PREFIX_BACKUPS = 'backups/';
+/** OSS 对象键前缀：用户图片（与备份隔离）；环境变量 OSS_PREFIX_IMAGES 可覆盖（默认 images/） */
+export const OSS_PREFIX_IMAGES = normalizePrefix(process.env.OSS_PREFIX_IMAGES ?? 'images');
+
+/** OSS 对象键前缀：数据库备份（与图片隔离）；环境变量 OSS_PREFIX_BACKUPS 可覆盖（默认 backups/） */
+export const OSS_PREFIX_BACKUPS = normalizePrefix(process.env.OSS_PREFIX_BACKUPS ?? 'backups');
 
 /** 图片上传预签名有效期（秒） */
 export const IMAGE_PRESIGN_EXPIRES_SECONDS = 300;

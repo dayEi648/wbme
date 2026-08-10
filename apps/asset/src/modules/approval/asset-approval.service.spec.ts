@@ -223,4 +223,23 @@ describeDb('asset 审批头（T5-3）', () => {
     expect(mine.items).toHaveLength(1);
     expect(mine.items[0]).toMatchObject({ applicantId, requestType: 'CONSUMABLE_REQUEST', status: 'PENDING' });
   });
+
+  it('process 幂等（M7）：同键重试重放原结果且不重复写审批动作', async () => {
+    const applicantId = BASE_APPLICANT + 27;
+    const { requestId } = await service.submitTestHeader({
+      requestType: 'RETURN',
+      applicantId,
+      applicantName: '幂等处理申请人',
+    });
+    const key = 'asset-approval-process-m7';
+    const first = await service.process(requestId, 'APPROVE', processorId, undefined, key);
+    // 同键重试：重放原结果（主 PRD §3.2 幂等键重试返回原结果），不抛 STATUS_CONFLICT
+    const replay = await service.process(requestId, 'APPROVE', processorId, undefined, key);
+    expect(replay).toBe(first);
+
+    // 审批头仅一条 APPROVED 状态流转，无重复副作用
+    const header = await prisma.client.approvalRequest.findUnique({ where: { id: requestId } });
+    expect(header?.status).toBe('APPROVED');
+    expect(header?.processedAt).not.toBeNull();
+  });
 });

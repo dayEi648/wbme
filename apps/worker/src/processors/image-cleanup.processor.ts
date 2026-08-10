@@ -21,7 +21,8 @@ export async function processImageCleanup(task: BackgroundTaskRow, ctx: Processo
   const retentionHours = await readRetentionHours(ctx);
   const cutoff = new Date(Date.now() - retentionHours * 60 * 60 * 1000);
 
-  const objects = await storage.listPrefixWithMeta('images/');
+  const { OSS_PREFIX_IMAGES } = await import('@wbme/files');
+  const objects = await storage.listPrefixWithMeta(OSS_PREFIX_IMAGES);
   if (objects.length === 0) {
     return;
   }
@@ -52,6 +53,9 @@ export async function processImageCleanup(task: BackgroundTaskRow, ctx: Processo
       continue;
     }
     await storage.deleteObject(key);
+    // 同步清理正式对象注册表（M5 复核修复）：否则 image_objects 行无界增长，
+    // 且对象已删的注册表项仍可签发预签名 URL（客户端最终 OSS 404）
+    await ctx.sql.query('DELETE FROM backstage.image_objects WHERE object_key = $1', [key]);
     removed += 1;
   }
   console.log(`[image-cleanup] 完成：删除 ${removed} 个未关联对象，保留 ${skipped} 个（含正式关联）`);

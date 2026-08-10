@@ -99,8 +99,6 @@ export default function FinPage() {
     switch (section) {
       case 'projects':
         return <Projects />;
-      case 'profit':
-        return <ProfitAnalysis />;
       case 'excel':
         return <ExcelImportExport />;
       case 'operations':
@@ -111,7 +109,13 @@ export default function FinPage() {
         return <SystemHome systemName="财务系统" welcome="维护工程合同、金额明细、利润分析和财务配置。" items={NAVIGATION} />;
     }
   }, [section]);
-  return <AppShell systemName="财务系统" homePath="/fin" items={NAVIGATION}>{body}</AppShell>;
+  return <AppShell systemName="财务系统" homePath="/fin" items={NAVIGATION}>
+    {body}
+    {/* 利润分析常驻渲染（M22 复核修复）：离开保护基于 location 变化检测，
+        若组件随 section 切换卸载，卸载与导航发生在同一 commit，确认弹窗永远不出现；
+        display:none 隐藏非当前页，组件保持挂载使保护对站内切换真实生效 */}
+    <div style={{ display: section === 'profit' ? undefined : 'none' }}><ProfitAnalysis /></div>
+  </AppShell>;
 }
 
 function Projects() {

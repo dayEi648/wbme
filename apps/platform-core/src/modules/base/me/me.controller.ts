@@ -1,5 +1,5 @@
 import { ApiProperty, ApiTags } from '@nestjs/swagger';
-import { Body, Controller, Get, Inject, Post, Put, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import {
   BusinessException,
   frameworkErrors,
@@ -8,7 +8,7 @@ import {
   PaginationQueryDto,
   PositionApplicationSubmitDto,
 } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import type { Response } from 'express';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PrismaService } from '../../../prisma.service';
@@ -129,8 +129,10 @@ export class MeController {
     return this.operationLog.listMine(userId, { page: query.page, pageSize: query.pageSize, filters: query.filters, sorts: query.sorts });
   }
 
-  /** P6 我的操作日志导出（仅当前用户记录；结构化筛选与列表一致）。 */
+  /** P6 我的操作日志导出（仅当前用户记录；结构化筛选与列表一致；M2 补限流）。 */
   @Get('operation-logs/export')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'me-operation-log-export', keyType: 'user', limit: 20, windowSeconds: 3600, envPrefix: 'ME_EXPORT' })
   async exportMyOperationLogs(
     @CurrentUser() userId: number,
     @Query() query: PaginationQueryDto,

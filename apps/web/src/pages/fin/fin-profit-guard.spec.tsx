@@ -16,17 +16,24 @@ import { ProfitAnalysis } from './FinPage';
  */
 vi.mock('antd', async (importOriginal) => {
   const actual = await importOriginal<typeof import('antd')>();
+  const { createPortal } = await import('react-dom');
   return {
     ...actual,
+    // 真实 antd Modal 渲染在 body 顶层 portal（不受父容器 display:none 影响）；
+    // mock 同样经 portal 渲染，否则容器结构下（利润分析常驻 display:none）弹窗
+    // 被 testing-library 视为不可见，测试与生产行为不一致
     Modal: ({ open, onOk, onCancel, children }: { open?: boolean; onOk?: () => void; onCancel?: () => void; children?: React.ReactNode }) =>
-      open ? (
-        <div data-testid="leave-modal">
-          <p>未保存的编辑内容</p>
-          <button onClick={onCancel}>留在本页</button>
-          <button onClick={onOk}>放弃并离开</button>
-          {children}
-        </div>
-      ) : null,
+      open
+        ? createPortal(
+            <div data-testid="leave-modal">
+              <p>未保存的编辑内容</p>
+              <button onClick={onCancel}>留在本页</button>
+              <button onClick={onOk}>放弃并离开</button>
+              {children}
+            </div>,
+            document.body,
+          )
+        : null,
   };
 });
 
@@ -64,11 +71,30 @@ function NavProbe() {
   );
 }
 
+/**
+ * 与生产 FinPage 一致的容器结构（M22 复核修复）：
+ * 利润分析常驻渲染（非当前页 display:none），其余 section 由 switch 切换——
+ * 若 ProfitAnalysis 随切换卸载，location 检测 effect 不会以新 location 执行，
+ * 站内离开保护即失效；本容器结构使测试与生产行为一致，防回归。
+ */
+function ContainerLike() {
+  const { pathname } = useLocation();
+  const section = pathname.split('/')[2] ?? '';
+  return (
+    <div>
+      {section !== 'profit' ? <div data-testid="other-page">其他页面</div> : null}
+      <div style={{ display: section === 'profit' ? undefined : 'none' }}>
+        <ProfitAnalysis />
+      </div>
+      <NavProbe />
+    </div>
+  );
+}
+
 function renderProfit() {
   return render(
     <MemoryRouter initialEntries={['/fin/profit']}>
-      <ProfitAnalysis />
-      <NavProbe />
+      <ContainerLike />
     </MemoryRouter>,
   );
 }

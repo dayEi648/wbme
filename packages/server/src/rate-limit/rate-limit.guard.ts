@@ -29,10 +29,22 @@ export interface RateLimitOptions {
   key?: string;
   /** keyType='cookie'/'query' 时读取的 cookie/query 参数名 */
   keyName?: string;
-  /** 窗口内允许次数 */
+  /** 窗口内允许次数（默认值；设置 envPrefix 后可由环境变量 RATE_LIMIT_<PREFIX>_LIMIT 覆盖） */
   limit: number;
-  /** 窗口长度（秒） */
+  /** 窗口长度（秒）（默认值；设置 envPrefix 后可由环境变量 RATE_LIMIT_<PREFIX>_WINDOW_SECONDS 覆盖） */
   windowSeconds: number;
+  /** 可配置限流（主 PRD §9.7）：设置后 limit/windowSeconds 支持环境变量覆盖，非法值回退默认 */
+  envPrefix?: string;
+}
+
+/** 读取环境变量覆盖（非法/缺失回退默认值）；不存在 envPrefix 时恒用默认值 */
+function resolvedLimit(option: RateLimitOptions, field: 'limit' | 'windowSeconds'): number {
+  if (!option.envPrefix) {
+    return option[field];
+  }
+  const raw = process.env[`RATE_LIMIT_${option.envPrefix}_${field === 'limit' ? 'LIMIT' : 'WINDOW_SECONDS'}`];
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : option[field];
 }
 
 /**
@@ -73,11 +85,13 @@ export class RateLimitGuard implements CanActivate {
         continue;
       }
       const redisKeyName = redisKey(REDIS_NAMESPACE.RATE_LIMIT, option.scope, key);
+      const limit = resolvedLimit(option, 'limit');
+      const windowSeconds = resolvedLimit(option, 'windowSeconds');
       const count = await this.redis.incr(redisKeyName);
       if (count === 1) {
-        await this.redis.expire(redisKeyName, option.windowSeconds);
+        await this.redis.expire(redisKeyName, windowSeconds);
       }
-      if (count > option.limit) {
+      if (count > limit) {
         throw new BusinessException(frameworkErrors.RATE_LIMITED);
       }
     }

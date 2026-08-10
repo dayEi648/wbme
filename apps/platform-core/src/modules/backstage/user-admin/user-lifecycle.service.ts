@@ -119,8 +119,11 @@ export class UserLifecycleService {
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
       run: async (tx) => {
-        await lockUserRowsForUpdate(tx, dto.userIds);
+        // 先锁全部可用超管行（loadDeactivationTargets 内部 FOR UPDATE）再锁批内目标行：
+        // 目标锁在前会与另一并发批次交叉成环（批 A 持目标A 等全超管、批 B 持目标B 等全超管
+        // → 40P01 死锁中止），全超管锁最先获取使所有注销/卸任在锁上串行化（S8 复核修复）
         const targets = await this.loadDeactivationTargets(tx, dto.userIds, operator);
+        await lockUserRowsForUpdate(tx, dto.userIds);
         const now = new Date();
         for (const target of targets) {
           const lifecycleVersion = target.lifecycleVersion + 1;

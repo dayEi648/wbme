@@ -119,11 +119,12 @@ export class XlsxWorkerPool implements OnModuleDestroy {
             task.reject(new Error('任务已取消'));
             return;
           }
-          // 正在执行：terminate 对应 worker 并重建（尽快释放内存）
+          // 正在执行：reject 任务（调用方立即收到取消，避免挂到路由超时）并 terminate 对应 worker 重建（尽快释放内存）
           for (const [worker, current] of this.pendingTasks) {
             if (current === task) {
               this.pendingTasks.set(worker, null);
               this.busy.delete(worker);
+              task.reject(new Error('任务已取消'));
               void worker.terminate().then(() => {
                 if (!this.stopped) {
                   const index = this.workers.indexOf(worker);

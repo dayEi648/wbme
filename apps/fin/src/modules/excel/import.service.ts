@@ -413,9 +413,13 @@ export class ImportService {
       businessKey: normalizeProjectName(input.name),
       year: input.year as number,
     }));
+    // keyClauses 为空时（全空年度行输入）必须省略 AND 分支：Prisma 的 AND: [] 恒真，
+    // 会令整个 OR 恒真导致 findMany 无过滤全表读取（M18 复核修复）
     const [projects] = await Promise.all([
       this.prisma.client.project.findMany({
-        where: { OR: [{ AND: keyClauses }, ...(names.length > 0 ? [{ businessKey: { in: names } }] : [])] },
+        where: {
+          OR: [...(keyClauses.length > 0 ? [{ AND: keyClauses }] : []), ...(names.length > 0 ? [{ businessKey: { in: names } }] : [])],
+        },
         orderBy: { id: 'asc' },
       }),
     ]);

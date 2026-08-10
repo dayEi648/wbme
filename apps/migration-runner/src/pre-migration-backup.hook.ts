@@ -55,9 +55,12 @@ function defaultPlatformBackupClient(env: NodeJS.ProcessEnv): PlatformBackupClie
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
           'X-WBME-Caller': 'migration-runner',
-          'X-Idempotency-Key': `pre-migration:${Date.now()}`,
         },
-        body: JSON.stringify({ idempotencyKey: `pre-migration:${new Date().toISOString().slice(0, 10)}` }),
+        // 不传幂等键：由服务端生成分钟级自动键（internal:caller:windowKey）。
+        // 若钩子传天级键而服务端指纹按分钟，同日重试（备份失败修复后再发版等）会
+        // 因同键异指纹抛 409 锁死发布链路直到次日——改服务端自动键后同分钟重试重放、
+        // 跨分钟重试新建备份（S4 复核修复）。
+        body: '{}',
       });
       if (!res.ok) {
         throw new Error(`立即备份请求失败: HTTP ${res.status}`);

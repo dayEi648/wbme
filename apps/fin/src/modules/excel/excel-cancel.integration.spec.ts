@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { loadEnvFile } from 'node:process';
+import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import http from 'node:http';
 import { Test } from '@nestjs/testing';
@@ -32,6 +34,14 @@ import { PrismaService } from '../../prisma.service';
  * 3. HTTP 层：上传中断（请求体发送一半断开）→ handler 不执行，无写入；
  * 4. HTTP 层：响应关闭（完整发送后客户端断开）→ res 'close' 触发取消 → 无写入。
  */
+
+// 加载仓库根 .env（集成测试使用真实本地 PostgreSQL/Redis；与 fin-integration.spec 一致——
+// 缺省时 hasDb 恒 false，整套测试被 describe.skip 静默跳过，S7 验收证据落空）
+try {
+  loadEnvFile(resolve(process.cwd(), '../../.env'));
+} catch {
+  // 环境变量由外部注入时跳过
+}
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const describeDb = hasDb ? describe : describe.skip;
@@ -106,6 +116,8 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
   let server: http.Server;
   let operatorId = 0;
   let targetProjectId = 0;
+  /** 测试前 FIN 系统 product_status 原值（afterAll 恢复） */
+  let finSystemPrevStatus: string | null = null;
 
   beforeAll(async () => {
     // vitest 无 dist worker 产物：解析/构建在调用线程内联执行
@@ -124,6 +136,16 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
       RETURNING id
     `;
     operatorId = userRows[0]!.id;
+
+    // 系统开放校验（ExcelImportLockGuard → assertFinanceMaintainAccess）经
+    // backstage.function_registry 视图（functions × systems）读取 product_status：
+    // dev 库 FIN 系统可能为 COMING_SOON，守卫会在 Multer/handler 前抛 503，
+    // 使 HTTP 层用例 3/4 测到的是权限拒绝而非取消传播（S7 复核修复）——先置 OPEN，afterAll 恢复
+    const finSystemRows = await prisma.client.$queryRaw<Array<{ id: number; product_status: string }>>`
+      SELECT id, product_status FROM backstage.systems WHERE code = 'FIN'
+    `;
+    finSystemPrevStatus = finSystemRows[0]?.product_status ?? null;
+    await prisma.client.$executeRaw`UPDATE backstage.systems SET product_status = 'OPEN' WHERE code = 'FIN'`;
 
     // 覆盖目标项目（dataRevision=1，取消后必须保持不变）
     await prisma.client.$executeRaw`
@@ -169,6 +191,9 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
     `;
     await prisma.client.$executeRaw`DELETE FROM fin.projects WHERE business_key LIKE '取消回滚%'`;
     await prisma.client.$executeRaw`DELETE FROM base.users WHERE phone = ${TEST_PHONE}`;
+    if (finSystemPrevStatus !== null) {
+      await prisma.client.$executeRaw`UPDATE backstage.systems SET product_status = ${finSystemPrevStatus} WHERE code = 'FIN'`;
+    }
     await app?.close();
     await prisma.client.$disconnect();
     await redis.quit();

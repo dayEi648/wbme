@@ -441,4 +441,39 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     const notCreated = await prisma.client.project.findFirst({ where: { name: '带错误新增项目' } });
     expect(notCreated).toBeNull();
   });
+
+  it('确认幂等（M17）：同键同文件重放原结果；同键异文件 409（指纹含文件内容哈希）', async () => {
+    const projectName = `幂等确认新增项目${Date.now()}`;
+    // 前置清理：跨运行/并发残留不干扰业务键判定
+    await prisma.client.$executeRaw`DELETE FROM fin.projects WHERE name = ${projectName}`;
+
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(3, COL.NAME).value = projectName;
+    sheet.getCell(3, COL.YEAR).value = 2026;
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    const preview = await imports.preview(OPERATOR, buffer);
+    expect(preview.summary.created).toBe(1);
+    const choice = preview.created[0] as { rowNumber: number };
+
+    const key = 'fin-confirm-m17';
+    // 首次确认：创建
+    const first = await imports.confirm(OPERATOR, buffer, [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE' }], key);
+    expect(first.summary.created).toBe(1);
+
+    // 同键同文件重试：重放首次结果（主 PRD §3.3：同一幂等键的重试返回原结果），不重复创建
+    const replay = await imports.confirm(OPERATOR, buffer, [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE' }], key);
+    expect(replay.summary.created).toBe(1);
+    const createdRows = await prisma.client.project.findMany({ where: { name: projectName } });
+    expect(createdRows).toHaveLength(1);
+
+    // 同键异文件（名称不同 → 文件内容哈希不同）：409 而非静默重放（M17 复核修复）
+    const workbook2 = await loadTemplateWorkbook();
+    const sheet2 = workbook2.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet2.getCell(3, COL.NAME).value = `${projectName}异文件`;
+    sheet2.getCell(3, COL.YEAR).value = 2026;
+    const buffer2 = Buffer.from(await workbook2.xlsx.writeBuffer());
+    await expect(imports.confirm(OPERATOR, buffer2, [{ rowNumber: choice.rowNumber, decision: 'OVERWRITE' }], key)).rejects.toThrow('幂等键已被其他请求使用');
+  });
 });

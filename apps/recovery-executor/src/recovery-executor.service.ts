@@ -383,7 +383,7 @@ export class RecoveryExecutorService {
            WHERE datname = current_database()
              AND pid <> pg_backend_pid()
              AND backend_type = 'client backend'
-             AND state = 'active'
+             AND state IN ('active', 'idle in transaction')
              AND xact_start IS NOT NULL
              AND query NOT ILIKE '%pg_stat_activity%'`,
         );

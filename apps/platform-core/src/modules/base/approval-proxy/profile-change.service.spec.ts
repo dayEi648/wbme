@@ -107,4 +107,19 @@ describe('资料修改审批（P3/X1）', () => {
     expect(approved?.name).toBe('审批生效名');
     expect(approved?.gender).toBe('FEMALE');
   });
+
+  it('submit 幂等（M1）：同键重试返回原结果，不重复建单', async () => {
+    const employeeId = await createUser(false, '+8613900000504');
+    const key = 'profile-change-m1';
+    const first = await service.submitProfileChange(employeeId, false, { name: '幂等姓名' }, key);
+    expect(first.applied).toBe(false);
+    // 同键重试：重放原结果（主 PRD §3.3），不抛单待审批限制
+    const replay = await service.submitProfileChange(employeeId, false, { name: '幂等姓名' }, key);
+    expect(replay).toMatchObject(first);
+    // 仅一条待审批单
+    const pending = await prisma.client.approvalRequest.findMany({
+      where: { applicantId: employeeId, status: 'PENDING' },
+    });
+    expect(pending).toHaveLength(1);
+  });
 });
