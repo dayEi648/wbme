@@ -133,6 +133,23 @@ describeDb('hr 审批头（T5-3）', () => {
     expect(pending).toBe(2);
   });
 
+  it('cancel 携带预期类型时类型不匹配拒绝（L12：加班取消接口只接受 OVERTIME）', async () => {
+    const applicantId = BASE_APPLICANT + 2;
+    const { requestId } = await service.submitTestHeader({
+      requestType: 'OVERTIME',
+      applicantId,
+      applicantName: '加班申请人',
+    });
+    // 类型不匹配 → RESOURCE_NOT_FOUND（不泄露存在性，与申请人校验同口径）
+    await expect(service.cancel(requestId, applicantId, 'POSITION_CHANGE')).rejects.toMatchObject({
+      entry: { code: 'RESOURCE_NOT_FOUND' },
+    });
+    // 匹配类型且本人操作 → 成功取消
+    await service.cancel(requestId, applicantId, 'OVERTIME');
+    const after = await prisma.client.hrApprovalRequest.findUnique({ where: { id: requestId } });
+    expect(after?.status).toBe('CANCELLED');
+  });
+
   it('并发 process → 仅一个成功，另一个 STATUS_CONFLICT', async () => {
     const applicantId = BASE_APPLICANT + 2;
     const { requestId } = await service.submitTestHeader({

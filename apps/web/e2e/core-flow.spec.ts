@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * 核心业务链路 E2E（管理后台与资产台账读路径）。
+ * 核心业务链路 E2E（管理后台/资产台账读路径 + 公告写链路闭环，T10-4）。
  * 前置：登录链路同 auth.spec.ts；E2E 用户为超管（全部功能可见）。
  */
 const PHONE = process.env.E2E_USER_PHONE ?? '+8613800000001';
@@ -15,7 +15,7 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
   await expect(page).toHaveURL(/\/portal/, { timeout: 15_000 });
 }
 
-test.describe('核心业务链路（读路径）', () => {
+test.describe('核心业务链路', () => {
   test('管理后台操作日志表格加载并可筛选', async ({ page }) => {
     await login(page);
     await page.getByText('管理后台').first().click();
@@ -80,11 +80,17 @@ test.describe('核心业务链路（读路径）', () => {
     // （公告已删除，状态机拒绝；顺带完成 E2E 数据清理）
     const announcementId = await row.getAttribute('data-row-key');
     expect(announcementId).toBeTruthy();
-    const removed = await page.request.delete('/api/v1/announcements/batch', { data: { ids: [Number(announcementId)] } });
+    // 直连 API 须携带 CSRF 双提交头（CsrfGuard 对带会话 Cookie 的状态变更请求强制校验）
+    const csrf = await page.evaluate(() => document.cookie.match(/(?:^|; )wbme_csrf=([^;]*)/)?.[1] ?? '');
+    expect(csrf).toBeTruthy();
+    const csrfHeaders = { 'x-wbme-csrf-token': csrf };
+    const removed = await page.request.delete('/api/v1/announcements/batch', { data: { ids: [Number(announcementId)] }, headers: csrfHeaders });
     expect(removed.status()).toBe(200);
-    const republish = await page.request.post(`/api/v1/announcements/${announcementId}/publish`, {});
+    const republish = await page.request.post(`/api/v1/announcements/${announcementId}/publish`, { headers: csrfHeaders });
     expect(republish.status()).toBe(404);
-    await expect(row).toHaveCount(0, { timeout: 15_000 });
+    // 删除走 API 直连，UI 无自动刷新：reload 后断言行已消失（数据清理生效）
+    await page.reload();
+    await expect(page.locator('tr', { hasText: title })).toHaveCount(0, { timeout: 15_000 });
   });
 
   test('未登录访问受保护页面跳转登录', async ({ page }) => {

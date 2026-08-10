@@ -100,6 +100,28 @@ describe('parseImportBuffer（导入解析）', () => {
     expect(result.rows[0]?.kind).toBe('project');
   });
 
+  it('文本单元格超长（超过页面 DTO 长度上限）→ 行级错误（L22）', async () => {
+    const buffer = await buildTestWorkbook([{ A: 1, B: 'x'.repeat(201), D: 2020 }]);
+    const result = await parseOk(buffer);
+    const errors = result.errors.filter((error) => error.reason.includes('字符上限'));
+    expect(errors.length).toBe(1);
+    expect(errors[0]?.field).toBe('项目名称');
+    expect(result.rows[0]?.kind).toBe('project');
+  });
+
+  it('分组行手工列公式 → 行级错误（L23：与数据行同一白名单）', async () => {
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(3, 1).value = null; // A 空 → 分组行
+    sheet.getCell(3, 2).value = '自施工程'; // B 分类名
+    sheet.getCell(3, COL.CONTRACT_AMOUNT).value = { formula: 'SUM(1,2)', result: 3 };
+    const buffer = workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+    const result = await parseOk(await buffer);
+    const errors = result.errors.filter((error) => error.reason.includes('公式'));
+    expect(errors.length).toBe(1);
+    expect(result.rows[0]?.kind).toBe('group');
+  });
+
   it('金额/日期/年度格式非法 → 行级错误（整文件仍解析成功）', async () => {
     const buffer = await buildTestWorkbook([
       { A: 1, B: '项目A', D: 20, M: '一百万元', K: '2026/01/01' },

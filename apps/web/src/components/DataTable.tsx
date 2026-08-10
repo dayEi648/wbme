@@ -45,7 +45,7 @@ export interface FilterField {
   options?: Array<{ label: string; value: string }>;
 }
 
-interface FilterCondition {
+export interface FilterCondition {
   field: string;
   operator: string;
   value: string;
@@ -127,7 +127,7 @@ const DEFAULT_OPERATOR_BY_TYPE: Readonly<Record<NonNullable<FilterField['type']>
   date: 'EQUALS',
 };
 
-const OPERATOR_OPTIONS: Readonly<Record<NonNullable<FilterField['type']>, Array<{ label: string; value: string }>>> = {
+export const OPERATOR_OPTIONS: Readonly<Record<NonNullable<FilterField['type']>, Array<{ label: string; value: string }>>> = {
   text: [
     { label: '包含', value: 'CONTAINS' },
     { label: '等于', value: 'EQUALS' },
@@ -236,6 +236,34 @@ function asText(value: unknown): string {
  * 显式声明 type:'number'，或列值本身为数值类型即视为数字列——
  * 多数调用方列定义未声明 type（数据源即数值），值探测避免依赖各页面逐一接线。
  */
+/**
+ * 构造列表查询的 filters 负载（L31 回归：纯函数便于单测）。
+ *
+ * 复杂组合协议（组内 AND、组间 OR，主 PRD §2.7）：存在条件组时顶层恒为 OR；
+ * “全部（AND）”主条件合并为一个 AND 组，与其它组共同保持 OR 语义；
+ * “任意（OR）”主条件拆成多个单条件 AND 组。无条件组时保持全局 AND/OR 原样。
+ */
+export function buildGroupedFilterPayload(
+  filterLogic: FilterLogic,
+  populatedFilters: FilterCondition[],
+  populatedGroups: FilterGroup[],
+): { logic: FilterLogic; conditions?: FilterCondition[]; groups?: Array<{ logic: 'AND'; conditions: FilterCondition[] }> } {
+  if (populatedGroups.length === 0) {
+    return { logic: filterLogic, conditions: populatedFilters };
+  }
+  return {
+    logic: 'OR',
+    groups: [
+      // 复杂组合协议限定每个条件组必须为 AND：原本的“任意”主条件拆成多个单条件 AND 组，
+      // 与其它组共同保持 OR 语义；“全部”主条件则保留为一个 AND 组。
+      ...(filterLogic === 'AND'
+        ? (populatedFilters.length > 0 ? [{ logic: 'AND' as const, conditions: populatedFilters }] : [])
+        : populatedFilters.map((filter) => ({ logic: 'AND' as const, conditions: [filter] }))),
+      ...populatedGroups.map((group) => ({ logic: 'AND' as const, conditions: group.conditions })),
+    ],
+  };
+}
+
 export function isNumericCell(column: DataColumn, value: unknown): boolean {
   return column.type === 'number' || typeof value === 'number';
 }
@@ -308,19 +336,7 @@ export function DataTable({
       .filter((group) => group.conditions.length > 0);
     const allFilterConditions = [...populatedFilters, ...populatedGroups.flatMap((group) => group.conditions)];
     if (allFilterConditions.length > 0) {
-      const filterPayload = populatedGroups.length === 0
-        ? { logic: filterLogic, conditions: populatedFilters }
-        : {
-            logic: 'OR' as const,
-            groups: [
-              // 复杂组合协议限定每个条件组必须为 AND：原本的“任意”主条件拆成多个单条件 AND 组，
-              // 与其它组共同保持 OR 语义；“全部”主条件则保留为一个 AND 组。
-              ...(filterLogic === 'AND'
-                ? (populatedFilters.length > 0 ? [{ logic: 'AND' as const, conditions: populatedFilters }] : [])
-                : populatedFilters.map((filter) => ({ logic: 'AND' as const, conditions: [filter] }))),
-              ...populatedGroups.map((group) => ({ logic: 'AND' as const, conditions: group.conditions })),
-            ],
-          };
+      const filterPayload = buildGroupedFilterPayload(filterLogic, populatedFilters, populatedGroups);
       params.set('filters', JSON.stringify(filterPayload));
       // 同时映射到当前资源已有的白名单具名查询参数，保证既有列表接口与通用契约可联调。
       for (const filter of allFilterConditions) {

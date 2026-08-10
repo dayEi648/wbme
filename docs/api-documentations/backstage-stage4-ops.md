@@ -39,7 +39,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 | --- | --- | --- | --- |
 | GET | `/health-status` | `health_status` | 服务探针 + 任务概览 + 磁盘 stub |
 
-环境变量：`PLATFORM_CORE_HEALTH_URL`、`WORKER_HEALTH_URL`、`HEALTH_DISK_USAGE_RATIO`。
+环境变量（注入 platform-core，健康状态页在该服务内运行）：`PLATFORM_CORE_HEALTH_URL`（本服务）、`WORKER_HEALTH_URL`（worker 探针，`http://worker:3105`）、`RECOVERY_EXECUTOR_HEALTH_URL`（恢复执行器，含 `/recovery` 前缀）、`HEALTH_DISK_USAGE_RATIO`。
 
 ## 操作日志导出
 
@@ -73,11 +73,13 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 ## 恢复执行器
 
-独立端口（默认 3010），**非** `/api/v1`：
+独立端口（默认 3090，与执行器 `RECOVERY_EXECUTOR_PORT` 默认一致），**非** `/api/v1`：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/recovery/health` | 存活 |
+| GET | `/recovery/health` | 存活摘要 |
+| GET | `/recovery/healthz` | 存活探针（免登录恒 200，Docker/Nginx 使用） |
+| GET | `/recovery/readyz` | 就绪探针（免登录；状态目录读写 + 控制配置完整，否则 503） |
 | GET | `/recovery/status` | 恢复状态（恢复 Cookie） |
 | POST | `/recovery/retry` | 重试 |
 | POST | `/recovery/delivery` | Worker 投递 RESTORE_DELIVERY（内部令牌 + `X-WBME-Caller: worker`） |

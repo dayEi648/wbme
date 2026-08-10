@@ -195,4 +195,26 @@ describe.skipIf(!REDIS_URL)('激活流程集成（base PRD §2 双通道一次�
       await cleanupUser(pending.id);
     }
   });
+
+  it('非超管操作人不能为超管目标签发激活凭证（L2，FORBIDDEN）', async () => {
+    // 待激活账号理论不可能是超管，此处构造数据验证防御分支（与重置邀请同口径，backstage PRD §3）
+    const target = await createPendingUser('超管待激活目标');
+    await prisma.client.user.update({ where: { id: target.id }, data: { isSuperAdmin: true } });
+    const regular = await prisma.client.user.create({
+      data: { name: '普通管理员', gender: 'MALE', phone: '+8613900000012', status: 'ACTIVE', passwordHash: 'test-hash' },
+    });
+    try {
+      await expect(invitations.issueActivationInvitation(regular.id, target.id)).rejects.toMatchObject({
+        entry: { code: 'FORBIDDEN' },
+      });
+      // 超管操作人不受限（与正常用例一致）
+      const { activationUrl } = await invitations.issueActivationInvitation(adminId, target.id);
+      expect(activationUrl).toMatch(/#.+$/);
+    } finally {
+      await cleanupUser(target.id);
+      await prisma.client.operationLog.deleteMany({ where: { operatorId: regular.id } });
+      await prisma.client.securityLog.deleteMany({ where: { OR: [{ actorId: regular.id }, { targetUserId: regular.id }] } });
+      await prisma.client.user.deleteMany({ where: { id: regular.id } });
+    }
+  });
 });

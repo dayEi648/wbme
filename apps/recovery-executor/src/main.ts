@@ -19,8 +19,10 @@ try {
  * 不依赖 Redis 启动；承载 /recovery 内部控制路由。
  *
  * 优雅停机（主 PRD §9.13）：SIGTERM/SIGINT → 就绪探针立即失败（beginShutdown）→
- * 有界宽限内等待当前恢复阶段到达安全边界 → app.close（HTTP 停止 + 客户端关闭）→ 退出。
- * 恢复管道在阶段边界停止推进，未完成的恢复保持维护状态（清单保留，超管可重试）。
+ * app.close（HTTP 停止 + 客户端关闭）→ 退出。
+ * 恢复管道为后台 fire-and-forget：停机只置位阶段边界检查（阶段间不再推进、停写轮询中止），
+ * 不等待在途 stage 结束；安全性由"恢复清单先落盘后执行、重启按清单 stage 续跑"保证
+ * （服务恢复后未完成的恢复保持维护状态，清单保留供超管重试）。
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(RecoveryExecutorModule);

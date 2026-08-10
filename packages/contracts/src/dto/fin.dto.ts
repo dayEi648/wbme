@@ -413,7 +413,7 @@ export class ImportChoiceDto {
 
 /** 导入确认请求（选择映射 + 幂等键；服务端重新解析同一文件并校验） */
 export class ImportConfirmDto extends IdempotentDto {
-  @ApiProperty({ description: '选择映射（Excel 行号 → 覆盖/跳过）；数量与预览待选择行一致' })
+  @ApiProperty({ description: '选择映射（Excel 行号 → 覆盖/跳过）；数量与预览待选择行一致', type: [ImportChoiceDto] })
   @IsArray()
   @ArrayMaxSize(10_000)
   @ValidateNested({ each: true })

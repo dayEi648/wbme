@@ -43,11 +43,12 @@ const NAVIGATION: NavigationItem[] = [
 const PROJECT_COLUMNS = [
   { key: 'id', title: 'ID', fixed: 'left' as const },
   { key: 'name', title: '项目名称' },
-  { key: 'year', title: '年度' },
+  { key: 'year', title: '年度', type: 'number' as const },
   { key: 'partyA', title: '甲方' },
-  { key: 'contractAmount', title: '合同金额' },
-  { key: 'tentativeAuditedAmount', title: '暂定/审定金额' },
-  { key: 'receivedAmount', title: '累计收款' },
+  // 金额为精确十进制字符串，显式声明 number 使等宽数字字体生效（L29）
+  { key: 'contractAmount', title: '合同金额', type: 'number' as const },
+  { key: 'tentativeAuditedAmount', title: '暂定/审定金额', type: 'number' as const },
+  { key: 'receivedAmount', title: '累计收款', type: 'number' as const },
   { key: 'updatedAt', title: '更新时间' },
 ];
 
@@ -351,12 +352,17 @@ export function ProfitAnalysis() {
                 </div>
                 {[
                   { key: 'partyA', label: '甲方' },
+                  { key: 'generalContractor', label: '总包方' },
+                  { key: 'managementFee', label: '管理费' },
                   { key: 'contractAmount', label: '合同金额' },
                   { key: 'tentativeAuditedAmount', label: '暂定/审定金额' },
                   { key: 'invoicedAmount', label: '累计开票' },
                   { key: 'receivedAmount', label: '累计收款' },
                   { key: 'remainingInvoiceAmount', label: '剩余未开票', negative: true },
                   { key: 'remainingReceiptAmount', label: '剩余未收款', negative: true },
+                  { key: 'settlement', label: '分包结算' },
+                  { key: 'miscExpense', label: '零星费用' },
+                  { key: 'remark', label: '备注' },
                 ].map(({ key, label, negative: isNegative }) => (
                   <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
                     <Typography.Text type="secondary">{label}</Typography.Text>

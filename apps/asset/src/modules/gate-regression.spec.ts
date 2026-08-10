@@ -17,6 +17,7 @@ import { AgentClaimService } from './claim/agent-claim.service';
 import { ClaimService } from './claim/claim.service';
 import { DictService } from './catalog/dict.service';
 import { DisposalService } from './disposal/disposal.service';
+import { DisposalQueryDto } from '@wbme/contracts';
 import { ConsumableController } from './consumable/consumable.controller';
 import { ConsumableService } from './consumable/consumable.service';
 import { InventoryController } from './inventory/inventory.controller';
@@ -372,7 +373,7 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
         (${arrayOutId}, 'PERSONAL', ${deactivatedUserId}, '关口测试已注销员工', NULL, ${agentReqId}, ${reusableItemId}, 'L6数组闭包外', '标准', '关口测试库位', '关口测试库位', 1, 0, 0, NOW(), NOW() + INTERVAL '30 days', NOW(), ${JSON.stringify([{ id: deptB, name: '关口测试B部门' }])}::jsonb)
     `;
     try {
-      const { items } = await disposal.listPending(deptApproverId, {});
+      const { items } = await disposal.listPending(deptApproverId, new DisposalQueryDto());
       const recordIds = (items as Array<{ record_id: number }>).map((row) => row.record_id);
       expect(recordIds).toContain(singleSnapshotId);
       expect(recordIds).toContain(arrayInId);
@@ -473,6 +474,26 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     // 持申领权限可解析（applicant 有 consumable_apply）
     const parsed = await qr.parse(applicantId, 'gate-qr-item-test-public-id');
     expect(parsed.targetType).toBe('INVENTORY_ITEM');
+  });
+
+  it('L9 二维码解析：无任何资产功能解析申领目录 → QR_INVALID（与无效码同码不泄露）', async () => {
+    const catalogQrId = BASE + 72;
+    const catalogPublicId = 'gate-qr-catalog-test-public-id';
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.qr_codes (id, public_id, target_type, target_id, status, created_by, created_at, updated_at)
+      VALUES (${catalogQrId}, ${catalogPublicId}, 'SCAN_CATALOG', NULL, 'ACTIVE', ${adminId}, NOW(), NOW())
+    `;
+    try {
+      // deptApprover 仅有 consumable_approval（不在任一资产功能内）→ QR_INVALID
+      await expect(qr.parse(deptApproverId, catalogPublicId)).rejects.toMatchObject({
+        entry: { code: 'QR_INVALID' },
+      });
+      // 持任一资产功能（applicant 有 consumable_apply）→ 正常解析
+      const parsed = await qr.parse(applicantId, catalogPublicId);
+      expect(parsed.targetType).toBe('SCAN_CATALOG');
+    } finally {
+      await prisma.client.$executeRaw`DELETE FROM asset.qr_codes WHERE id = ${catalogQrId}`;
+    }
   });
 
   it('M6 固定资产归入消耗品分类 → VALIDATION_FAILED', async () => {

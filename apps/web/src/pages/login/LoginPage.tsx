@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Form, Input, Modal, Space, Typography } from 'antd';
+import { Button, Card, Checkbox, Form, Input, Modal, Space, Typography, theme } from 'antd';
 import { QrcodeOutlined, UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -90,8 +90,10 @@ export default function LoginPage() {
     }
   }
 
+  // 背景用 antd token（L27：与主题 colorBgLayout 派生值一致，不再硬编码 CSS 变量）
+  const { token } = theme.useToken();
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--wbme-bg)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
       <Card style={{ width: 380 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>

@@ -91,13 +91,15 @@ describe('BackupService', () => {
       });
     });
 
-    it('创建 IMMEDIATE 备份行 + 稳定 taskUuid 任务，幂等键按分钟窗口生成', async () => {
+    it('创建 IMMEDIATE 备份行 + 稳定 taskUuid 任务，自动幂等键为随机 UUID（L3，非分钟窗口）', async () => {
       const prisma = prismaMock();
       vi.mocked(prisma.client.backup.findFirst).mockResolvedValue(null);
       vi.mocked(prisma.client.backup.create).mockResolvedValue({ id: 7, taskType: 'IMMEDIATE', status: 'RUNNING' });
       vi.mocked(prisma.client.backup.update).mockResolvedValue({ id: 7 });
       const result = (await makeService(prisma).triggerImmediateBackup(1, {})) as { result: { backupId: number; taskUuid: string } };
       expect(result.result.backupId).toBe(7);
+      // L3：未传幂等键时自动键为随机 UUID，同分钟重试不被重放阻塞（"触发成功后异步任务失败"可重新触发）
+      expect(mockedExec.mock.calls[0]![1].idempotencyKey).toMatch(/^immediate:1:[0-9a-f-]{36}$/);
       expect(mockedStableUuid).toHaveBeenCalledWith('IMMEDIATE_BACKUP:7');
       expect(mockedCreateTask).toHaveBeenCalledWith(
         expect.anything(),

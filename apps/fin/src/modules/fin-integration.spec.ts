@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import type ExcelJS from 'exceljs';
+import ExcelJS from 'exceljs';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -344,6 +344,72 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     expect(after.invoices.length).toBe(2);
   });
 
+  it('L19 小计行：四个金额列写 SUM 公式并保留数值缓存，毛利率列保留数值', async () => {
+    const base: ExportProjectRow = {
+      projectId: BASE + 60,
+      bizCategoryId: categoryId,
+      bizCategoryName: '自施工程',
+      name: '小计公式项目',
+      year: 2024,
+      completenessDocs: '总包合同',
+      regionName: '前洲',
+      progressName: '已开工未竣工',
+      partyA: '惠山区住建局',
+      generalContractor: '总包集团',
+      managementFee: '5%',
+      subcontractors: '分包甲',
+      contractStartDate: '2026-01-01',
+      contractEndDate: '2026-12-31',
+      contractAmount: '100000.00',
+      paymentNode: '按进度',
+      tentativeAuditedAmount: '80000.00',
+      semantic: 'TENTATIVE',
+      invoices: '100.00',
+      receipts: '300.00',
+      subcontractPayments: '50.00',
+      totalInvoiced: '100.00',
+      totalReceived: '300.00',
+      remark: '备注',
+      remainingUninvoiced: '79900.00',
+      remainingUnreceived: '79700.00',
+      settlement: '40000.00',
+      miscExpense: '100.00',
+      totalSubcontractPaid: '50.00',
+      equity: '50.00',
+      grossMargin: '0.50',
+    };
+    const buffer = await buildExportBuffer([
+      {
+        bizCategoryName: '自施工程',
+        rows: [
+          { ...base, name: '小计公式项目甲', projectId: BASE + 61, totalInvoiced: '100.00', totalReceived: '100.00' },
+          { ...base, name: '小计公式项目乙', projectId: BASE + 62, totalInvoiced: '200.00', totalReceived: '200.00', totalSubcontractPaid: '100.00', equity: '100.00' },
+        ],
+        subtotal: { bizCategoryName: '自施工程', totalInvoiced: '300.00', totalReceived: '300.00', totalSubcontractPaid: '150.00', equity: '150.00', grossMargin: '0.50' },
+      },
+    ]);
+    const workbook = new ExcelJS.Workbook();
+    // exceljs 的 d.ts 自声明全局 Buffer 与 @types/node 冲突，按项目惯例断言 load 签名
+    await (workbook.xlsx.load as unknown as (data: Buffer) => Promise<ExcelJS.Workbook>)(buffer);
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    // 布局：标题 1 + 表头 2 + 分组行 3 + 数据行 4/5 + 小计行 6
+    const subtotalRow = 6;
+    expect(sheet.getCell(subtotalRow, COL.SEQ).value).toBe('小计');
+    const sumAssertions: Array<[number, string, string]> = [
+      [COL.TOTAL_INVOICED, '300.00', 'R'],
+      [COL.TOTAL_RECEIVED, '300.00', 'S'],
+      [COL.TOTAL_SUBCONTRACT_PAID, '150.00', 'Z'],
+      [COL.EQUITY, '150.00', 'AA'],
+    ];
+    for (const [column, expectedResult, letter] of sumAssertions) {
+      const cell = sheet.getCell(subtotalRow, column).value as { formula: string; result: number };
+      expect(cell.formula).toBe(`SUM(${letter}4:${letter}5)`);
+      expect(cell.result).toBe(Number(expectedResult));
+    }
+    // 毛利率列：组内汇总计算（equity/received），不可 SUM → 纯数值
+    expect(sheet.getCell(subtotalRow, COL.GROSS_MARGIN).value).toBe(0.5);
+  });
+
   it('Excel 导入预览：软删除命中 → 冲突；新增需年度；模板签名不符拒绝', async () => {
     // 准备软删除目标：新建项目并软删除（导入命中软删除 → 冲突，不自动恢复）
     const deletedCreated = await projects.create(OPERATOR, { name: '导入软删项目', year: 2022 });
@@ -366,6 +432,8 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     const noYearBuffer = await workbook2.xlsx.writeBuffer();
     const preview2 = await imports.preview(OPERATOR, Buffer.from(await noYearBuffer));
     expect(preview2.summary.conflict).toBe(1);
+    // L17：空年度新增行映射为独立冲突状态 YEAR_REQUIRED（不再落入 DUPLICATE）
+    expect(preview2.conflicts[0]?.status).toBe('YEAR_REQUIRED');
     expect(preview2.conflicts[0]?.reason).toContain('年度');
   });
 
@@ -393,6 +461,57 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
       undefined,
     );
     expect(confirmed.summary.overwritten).toBe(1);
+  });
+
+  it('L26 覆盖警告目标未确认 → IMPORT_CONFIRM_MISMATCH；确认后成功并记录审计', async () => {
+    // 目标项目含日期/备注明细 → 覆盖存在元数据丢失警告
+    const meta = await projects.create(OPERATOR, { name: '带元数据警告项目', year: 2021 });
+    await prisma.client.$executeRaw`UPDATE fin.projects SET id = ${BASE + 51} WHERE id = ${meta.id}`;
+    await details.create(OPERATOR, BASE + 51, 'invoice', { item: { amount: '100.00', occurredDate: '2026-08-01', remark: '单笔备注' } });
+
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(3, COL.NAME).value = '带元数据警告项目';
+    sheet.getCell(3, COL.YEAR).value = 2021;
+    sheet.getCell(3, COL.INVOICES).value = '200.00';
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const preview = await imports.preview(OPERATOR, buffer);
+    expect(preview.summary.pendingChoice).toBe(1);
+    const target = preview.pendingChoice[0] as { rowNumber: number; projectId: number; dataRevision: number; dataLossWarning: boolean };
+    expect(target.dataLossWarning).toBe(true);
+
+    // 未确认警告 → 整批拒绝（fin PRD §4：覆盖须显式确认数据丢失）
+    await expect(
+      imports.confirm(OPERATOR, buffer, [{ rowNumber: target.rowNumber, decision: 'OVERWRITE', projectId: target.projectId, dataRevision: target.dataRevision }], undefined),
+    ).rejects.toMatchObject({ entry: { code: 'IMPORT_CONFIRM_MISMATCH' } });
+
+    // 确认后成功；审计记录 dataLossWarningConfirmed（可追溯）
+    const confirmed = await imports.confirm(
+      OPERATOR,
+      buffer,
+      [{ rowNumber: target.rowNumber, decision: 'OVERWRITE', projectId: target.projectId, dataRevision: target.dataRevision, confirmDataLossWarning: true }],
+      undefined,
+    );
+    expect(confirmed.summary.overwritten).toBe(1);
+    const audit = await prisma.client.projectOperation.findFirst({
+      where: { projectId: target.projectId, action: 'IMPORT_OVERWRITE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(audit?.after).toMatchObject({ dataLossWarningConfirmed: true });
+  });
+
+  it('L18 确认时选择行号不存在于重解析结果 → IMPORT_CONFIRM_MISMATCH（不再静默忽略）', async () => {
+    const workbook = await loadTemplateWorkbook();
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    sheet.getCell(3, COL.NAME).value = '行号校验项目';
+    sheet.getCell(3, COL.YEAR).value = 2022;
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const preview = await imports.preview(OPERATOR, buffer);
+    expect(preview.summary.created).toBe(1);
+    // 提交不存在于解析结果中的行号（9999）→ 确认前校验拒绝（不静默忽略）
+    await expect(
+      imports.confirm(OPERATOR, buffer, [{ rowNumber: 9999, decision: 'SKIP' }], undefined),
+    ).rejects.toMatchObject({ entry: { code: 'IMPORT_CONFIRM_MISMATCH' } });
   });
 
   it('导入确认显式选择 SKIP → 逐项目记录 IMPORT_SKIP 审计', async () => {

@@ -416,12 +416,48 @@
         "properties": {},
         "type": "object"
       },
+      "ImportChoiceDto": {
+        "properties": {
+          "confirmDataLossWarning": {
+            "description": "覆盖数据丢失警告确认（预览返回 dataLossWarning=true 的覆盖行必须为 true，L26）",
+            "type": "boolean"
+          },
+          "dataRevision": {
+            "description": "覆盖目标的 dataRevision 前置条件（预览待选择列表返回）",
+            "minimum": 0,
+            "type": "number"
+          },
+          "decision": {
+            "description": "覆盖或跳过",
+            "enum": [
+              "OVERWRITE",
+              "SKIP"
+            ],
+            "type": "string"
+          },
+          "projectId": {
+            "description": "覆盖目标的项目 id（预览待选择列表返回）",
+            "minimum": 1,
+            "type": "number"
+          },
+          "rowNumber": {
+            "description": "Excel 项目数据行号（1 起；与预览返回一致）",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "rowNumber",
+          "decision"
+        ],
+        "type": "object"
+      },
       "ImportConfirmDto": {
         "properties": {
           "choices": {
             "description": "选择映射（Excel 行号 → 覆盖/跳过）；数量与预览待选择行一致",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/ImportChoiceDto"
             },
             "type": "array"
           },
