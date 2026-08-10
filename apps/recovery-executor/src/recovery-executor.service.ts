@@ -50,10 +50,20 @@ const DEFAULT_STATE_DIR = '.agents/restore-state';
 const RECOVERY_COOKIE_NAME = 'wbme_recovery_session';
 /** 恢复控制凭证有效窗口（毫秒，1 小时；与 Cookie maxAge 一致，服务端侧强制） */
 const RECOVERY_SESSION_TTL_MS = 60 * 60 * 1000;
-/** 停写等待上限（毫秒）：确认除恢复执行器外不存在仍可写目标数据库的连接（backstage PRD §10） */
-const WRITE_DRAIN_MAX_WAIT_MS = 30_000;
-/** 停写轮询间隔（毫秒） */
-const WRITE_DRAIN_POLL_MS = 500;
+/** 停写等待上限默认值（30s；RESTORE_WRITE_DRAIN_MAX_WAIT_MS 环境变量可覆盖，测试注入短窗口） */
+const WRITE_DRAIN_MAX_WAIT_MS_DEFAULT = 30_000;
+/** 停写轮询间隔默认值（500ms；RESTORE_WRITE_DRAIN_POLL_MS 环境变量可覆盖） */
+const WRITE_DRAIN_POLL_MS_DEFAULT = 500;
+
+/** 停写等待上限（环境变量可配置，默认 30s） */
+function writeDrainMaxWaitMs(): number {
+  return Number(process.env.RESTORE_WRITE_DRAIN_MAX_WAIT_MS ?? WRITE_DRAIN_MAX_WAIT_MS_DEFAULT);
+}
+
+/** 停写轮询间隔（环境变量可配置，默认 500ms） */
+function writeDrainPollMs(): number {
+  return Number(process.env.RESTORE_WRITE_DRAIN_POLL_MS ?? WRITE_DRAIN_POLL_MS_DEFAULT);
+}
 
 /**
  * 恢复执行状态机（backstage PRD §10）。
@@ -388,7 +398,7 @@ export class RecoveryExecutorService {
     const client = new Client({ connectionString: databaseUrl, connectionTimeoutMillis: 3_000 });
     await client.connect();
     try {
-      const deadline = Date.now() + WRITE_DRAIN_MAX_WAIT_MS;
+      const deadline = Date.now() + writeDrainMaxWaitMs();
       for (;;) {
         const { rows } = await client.query<{
           pid: number;
@@ -420,7 +430,7 @@ export class RecoveryExecutorService {
             .join('；');
           throw new Error(`停写等待超时：仍存在 ${rows.length} 个活跃写连接（${detail}），中止恢复并保持维护状态`);
         }
-        await this.sleep(WRITE_DRAIN_POLL_MS);
+        await this.sleep(writeDrainPollMs());
       }
     } finally {
       await client.end().catch(() => undefined);

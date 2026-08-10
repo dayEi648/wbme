@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { BATCH_LIMIT, IdempotentDto, PaginationQueryDto } from '@wbme/contracts';
 
 /** 发布流程追加更新日志（内部接口；releaseId 幂等，重复发布不重复记录） */
@@ -43,6 +43,7 @@ export class UpsertAnnouncementDto extends IdempotentDto {
 export class BatchDeleteAnnouncementsDto extends IdempotentDto {
   @IsArray()
   @ArrayMaxSize(BATCH_LIMIT)
+  @ArrayUnique({ message: '删除目标 id 不能重复' })
   @IsInt({ each: true })
   ids!: number[];
 }

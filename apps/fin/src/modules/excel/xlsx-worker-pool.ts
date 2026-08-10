@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { resolve } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { buildExportBuffer } from './export-builder';
@@ -103,7 +104,8 @@ export class XlsxWorkerPool implements OnModuleDestroy {
       throw new Error('Excel 工作池已关闭');
     }
     if (signal?.aborted) {
-      throw new Error('任务已取消');
+      // 取消与请求超时同语义（与 makeImportTimeoutCheck 的 signal 分支一致）：REQUEST_TIMEOUT 503
+      throw new BusinessException(frameworkErrors.REQUEST_TIMEOUT);
     }
     if (XlsxWorkerPool.inline) {
       // 内联模式：与工作线程相同的纯函数执行（等价语义，仅无线程隔离）
@@ -121,7 +123,7 @@ export class XlsxWorkerPool implements OnModuleDestroy {
           const index = this.queue.indexOf(task);
           if (index >= 0) {
             this.queue.splice(index, 1);
-            task.reject(new Error('任务已取消'));
+            task.reject(new BusinessException(frameworkErrors.REQUEST_TIMEOUT));
             return;
           }
           // 正在执行：reject 任务（调用方立即收到取消，避免挂到路由超时）并 terminate 对应 worker 重建（尽快释放内存）
@@ -132,7 +134,7 @@ export class XlsxWorkerPool implements OnModuleDestroy {
               // 标记终止中：terminate 完成前 dispatch 不把新任务派给该 worker
               // （垂死 worker 的 postMessage 消息会被丢弃，任务 Promise 挂起——S7 复核修复）
               this.terminating.add(worker);
-              task.reject(new Error('任务已取消'));
+              task.reject(new BusinessException(frameworkErrors.REQUEST_TIMEOUT));
               void worker.terminate().then(() => {
                 this.terminating.delete(worker);
                 if (!this.stopped) {

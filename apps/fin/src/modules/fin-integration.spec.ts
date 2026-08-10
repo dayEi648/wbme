@@ -269,6 +269,8 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     const restored = await prisma.client.project.findUnique({ where: { id: projectDel } });
     expect(restored?.deletedAt).toBeNull();
     expect(restored?.id).toBe(projectDel);
+    // M15：恢复属成功变更，必须递增 dataRevision（预览快照据此失效，防静默覆盖）
+    expect(restored?.dataRevision).toBe(1);
   });
 
   it('Excel 导出 → 导入往返：导出文件可无歧义重新导入（覆盖保留原项目）', async () => {
@@ -408,6 +410,73 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     }
     // 毛利率列：组内汇总计算（equity/received），不可 SUM → 纯数值
     expect(sheet.getCell(subtotalRow, COL.GROSS_MARGIN).value).toBe(0.5);
+  });
+
+  it('M16 序号列：数据行按最终排序顺序跨组全局递增编号', async () => {
+    const base: ExportProjectRow = {
+      projectId: BASE + 70,
+      bizCategoryId: categoryId,
+      bizCategoryName: null,
+      name: '序号列项目',
+      year: 2024,
+      completenessDocs: '',
+      regionName: '',
+      progressName: '',
+      partyA: '',
+      generalContractor: '',
+      managementFee: '',
+      subcontractors: '',
+      contractStartDate: '',
+      contractEndDate: '',
+      contractAmount: '',
+      paymentNode: '',
+      tentativeAuditedAmount: '',
+      semantic: 'TENTATIVE',
+      invoices: '',
+      receipts: '',
+      subcontractPayments: '',
+      totalInvoiced: '',
+      totalReceived: '',
+      remark: '',
+      remainingUninvoiced: '',
+      remainingUnreceived: '',
+      settlement: '',
+      miscExpense: '',
+      totalSubcontractPaid: '',
+      equity: '',
+      grossMargin: null,
+    };
+    const buffer = await buildExportBuffer([
+      {
+        bizCategoryName: '自施工程',
+        rows: [
+          { ...base, name: '序号项目甲', projectId: BASE + 71 },
+          { ...base, name: '序号项目乙', projectId: BASE + 72 },
+        ],
+        subtotal: { bizCategoryName: '自施工程', totalInvoiced: '0', totalReceived: '0', totalSubcontractPaid: '0', equity: '0', grossMargin: null },
+      },
+      {
+        bizCategoryName: '分包工程',
+        rows: [
+          { ...base, name: '序号项目丙', projectId: BASE + 73 },
+          { ...base, name: '序号项目丁', projectId: BASE + 74 },
+        ],
+        subtotal: { bizCategoryName: '分包工程', totalInvoiced: '0', totalReceived: '0', totalSubcontractPaid: '0', equity: '0', grossMargin: null },
+      },
+    ]);
+    const workbook = new ExcelJS.Workbook();
+    await (workbook.xlsx.load as unknown as (data: Buffer) => Promise<ExcelJS.Workbook>)(buffer);
+    const sheet = workbook.getWorksheet(WORKBOOK_SHEET_NAME) as ExcelJS.Worksheet;
+    // 布局：标题 1 + 表头 2 + 分组行 3 + 数据行 4/5 + 小计行 6 + 分组行 7 + 数据行 8/9 + 小计行 10
+    // 分组名写名称列（跨行合并）；序号列仅数据行编号、小计行写“小计”
+    expect(sheet.getCell(3, COL.NAME).value).toBe('自施工程');
+    expect(sheet.getCell(4, COL.SEQ).value).toBe(1);
+    expect(sheet.getCell(5, COL.SEQ).value).toBe(2);
+    expect(sheet.getCell(6, COL.SEQ).value).toBe('小计');
+    expect(sheet.getCell(7, COL.NAME).value).toBe('分包工程');
+    expect(sheet.getCell(8, COL.SEQ).value).toBe(3);
+    expect(sheet.getCell(9, COL.SEQ).value).toBe(4);
+    expect(sheet.getCell(10, COL.SEQ).value).toBe('小计');
   });
 
   it('Excel 导入预览：软删除命中 → 冲突；新增需年度；模板签名不符拒绝', async () => {

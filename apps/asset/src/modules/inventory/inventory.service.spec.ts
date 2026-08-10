@@ -198,7 +198,6 @@ describeDb('InventoryService.correctBatch（T7-4）', () => {
       const rejected = [r1, r2].filter((r): r is PromiseRejectedResult => r.status === 'rejected');
       for (const r of rejected) {
         const reason = r.reason as { entry?: { code?: string }; message?: string };
-        console.log('S5并发拒绝:', JSON.stringify(reason, (k, v) => (typeof v === 'bigint' ? v.toString() : v), 2).slice(0, 600));
         expect(reason.entry?.code).toBe('VALIDATION_FAILED');
       }
       const succeeded = [r1, r2].filter((r) => r.status === 'fulfilled');

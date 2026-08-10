@@ -15,7 +15,7 @@ import { ConsumableService, type ConsumableInput } from './consumable.service';
 
 /**
  * 消耗品品种（asset PRD §5；A-8）。
- * 权限：asset 功能"资产配置"（asset_config，公司档）——服务内断言。
+ * 权限：asset 功能"库存管理"（inventory_manage，公司档）——服务内断言。
  */
 @Controller('consumables')
 export class ConsumableController {

@@ -147,7 +147,11 @@ for cid in $(docker compose "${COMPOSE_OPTS[@]}" ps -q); do
 done
 
 log "核验公网端口（仅 web 80）..."
-ss -ltn 2>/dev/null | grep -q ':80 ' || fail "80 端口未监听（§9.14：仅 Nginx 入口暴露公网）"
+if command -v ss >/dev/null 2>&1; then
+  ss -ltn 2>/dev/null | grep -q ':80 ' || fail "80 端口未监听（§9.14：仅 Nginx 入口暴露公网）"
+else
+  log "警告：未找到 ss（iproute2 未安装），跳过公网端口核验（§9.14 建议安装 iproute2 以启用该检查）"
+fi
 
 log "核验时钟同步（§9.14）..."
 if command -v timedatectl >/dev/null 2>&1; then

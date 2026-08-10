@@ -241,5 +241,11 @@ describeDb('asset 审批头（T5-3）', () => {
     const header = await prisma.client.approvalRequest.findUnique({ where: { id: requestId } });
     expect(header?.status).toBe('APPROVED');
     expect(header?.processedAt).not.toBeNull();
+
+    // 审批动作记录中 APPROVE 只追加一条（提交时另有 SUBMIT 动作；重放不重复写处理副作用）
+    const approveActionCount = await prisma.client.approvalActionRecord.count({
+      where: { requestId, action: 'APPROVE' },
+    });
+    expect(approveActionCount).toBe(1);
   });
 });

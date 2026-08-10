@@ -3,7 +3,7 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../prisma.service';
-import { cleanupEmptyItem } from './inventory-core';
+import { cleanupEmptyItem, lockOrCreateItem } from './inventory-core';
 
 // 加载仓库根 .env（集成测试使用真实本地 PostgreSQL）
 try {
@@ -92,5 +92,88 @@ describeDb('cleanupEmptyItem（H1 修复：未结清借还条目保留）', () =
     await cleanupEmptyItem(prisma.client, bareItemId);
     const row = await prisma.client.inventoryItem.findUnique({ where: { id: bareItemId } });
     expect(row).toBeNull();
+  });
+});
+
+/**
+ * 锁读/创建库存条目（M8）：
+ * - 已存在条目锁读返回当前账面，不重复创建；
+ * - 不存在时创建并返回 bookQty 0；
+ * - 并发同键创建由唯一索引 P2002 兜底：败方锁读等待胜方提交后返回同一行（book_before 一致性）。
+ */
+describeDb('lockOrCreateItem（M8 锁读/创建）', () => {
+  let prisma: PrismaService;
+
+  const BASE = 8_901_200;
+  const consumableId = BASE + 1;
+  const warehouseId = BASE + 2;
+  const existingItemId = BASE + 3;
+  const createdSpec = 'M8并发兜底';
+
+  beforeAll(async () => {
+    prisma = new PrismaService();
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.consumables (id, name, unit_name, type, return_days, max_holding, safety_stock, status, created_at, updated_at)
+      VALUES (${consumableId}, 'M8回归品种', '个', 'REUSABLE', 30, 10, 0, 'ACTIVE', NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
+    `;
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.warehouses (id, name, status, created_at, updated_at)
+      VALUES (${warehouseId}, 'M8回归库位', 'ACTIVE', NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
+    `;
+    // 预置一条已存在条目（账面 7）
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.inventory_items (id, consumable_id, spec, warehouse_id, warehouse_name, warehouse_path, book_qty, created_at, updated_at)
+      VALUES (${existingItemId}, ${consumableId}, '已存在', ${warehouseId}, 'M8回归库位', 'M8回归库位', 7, NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
+    `;
+  });
+
+  afterAll(async () => {
+    await prisma.client.$executeRaw`DELETE FROM asset.inventory_items WHERE consumable_id = ${consumableId} AND spec = ${createdSpec}`;
+    await prisma.client.$executeRaw`DELETE FROM asset.inventory_items WHERE id = ${existingItemId}`;
+    await prisma.client.$executeRaw`DELETE FROM asset.warehouses WHERE id = ${warehouseId}`;
+    await prisma.client.$executeRaw`DELETE FROM asset.consumables WHERE id = ${consumableId}`;
+    await prisma.client.$disconnect();
+  });
+
+  const input = {
+    consumableId,
+    spec: '已存在',
+    warehouseId,
+    warehouseName: 'M8回归库位',
+    warehousePath: 'M8回归库位',
+  };
+
+  it('已存在条目 → 锁读返回当前账面（不重复创建）', async () => {
+    const row = await prisma.client.$transaction((tx) => lockOrCreateItem(tx, input));
+    expect(row.id).toBe(existingItemId);
+    expect(row.bookQty).toBe(7);
+    const count = await prisma.client.inventoryItem.count({ where: { consumableId, spec: '已存在' } });
+    expect(count).toBe(1);
+  });
+
+  it('不存在条目 → 创建并返回 bookQty 0；再次调用返回同一行', async () => {
+    const createInput = { ...input, spec: createdSpec };
+    const first = await prisma.client.$transaction((tx) => lockOrCreateItem(tx, createInput));
+    expect(first.bookQty).toBe(0);
+    const second = await prisma.client.$transaction((tx) => lockOrCreateItem(tx, createInput));
+    expect(second.id).toBe(first.id);
+  });
+
+  it('P2002 并发兜底：双连接并发创建同键 → 两路都返回同一条目', async () => {
+    const other = new PrismaService();
+    try {
+      const results = await Promise.all([
+        prisma.client.$transaction((tx) => lockOrCreateItem(tx, { ...input, spec: createdSpec })),
+        other.client.$transaction((tx) => lockOrCreateItem(tx, { ...input, spec: createdSpec })),
+      ]);
+      expect(results[0].id).toBe(results[1].id);
+      expect(results[0].bookQty).toBe(0);
+      expect(results[1].bookQty).toBe(0);
+    } finally {
+      await other.client.$disconnect();
+    }
   });
 });

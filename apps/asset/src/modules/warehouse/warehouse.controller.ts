@@ -14,7 +14,7 @@ import { WarehouseService } from './warehouse.service';
 
 /**
  * 库位树（asset PRD §5；A-9）。
- * 权限：asset 功能"资产配置"（asset_config，公司档）——服务内断言。
+ * 权限：asset 功能"库存管理"（inventory_manage，公司档）——服务内断言。
  */
 @Controller('warehouses')
 export class WarehouseController {
