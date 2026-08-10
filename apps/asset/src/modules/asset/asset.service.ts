@@ -343,12 +343,12 @@ export class AssetService {
    * @param dto 编辑输入
    * @returns ok
    */
-  async update(operator: AssetOperationLogOperator, userId: number, id: number, dto: AssetUpdateDto): Promise<{ ok: true }> {
+  async update(operator: AssetOperationLogOperator, userId: number, id: number, dto: AssetUpdateDto, idempotencyKey?: string): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.fixed.update',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload(dto),
       run: async (tx) => {
         const existing = await tx.asset.findUnique({ where: { id } });
@@ -426,12 +426,12 @@ export class AssetService {
    * @param dto 调度输入
    * @returns ok
    */
-  async schedule(operator: AssetOperationLogOperator, userId: number, id: number, dto: AssetScheduleDto): Promise<{ ok: true }> {
+  async schedule(operator: AssetOperationLogOperator, userId: number, id: number, dto: AssetScheduleDto, idempotencyKey?: string): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.fixed.schedule',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload(dto),
       run: async (tx) => {
         const existing = await tx.asset.findUnique({ where: { id } });
@@ -455,7 +455,7 @@ export class AssetService {
           throw new BusinessException(assetErrors.ASSIGNEE_DEPARTMENT_MISMATCH);
         }
         const targetDepartment = await tx.$queryRaw<Array<{ name: string }>>`
-          SELECT name FROM hr.departments WHERE id = ${dto.toDepartmentId} LIMIT 1
+          SELECT name FROM hr.departments_view WHERE id = ${dto.toDepartmentId} LIMIT 1
         `;
         const targetUser = await tx.$queryRaw<Array<{ name: string }>>`
           SELECT name FROM backstage.user_accounts WHERE user_id = ${dto.toUserId} LIMIT 1
@@ -504,7 +504,7 @@ export class AssetService {
    * @param confirm 二次确认标志
    * @returns ok
    */
-  async scrap(operator: AssetOperationLogOperator, userId: number, id: number, confirm: boolean): Promise<{ ok: true }> {
+  async scrap(operator: AssetOperationLogOperator, userId: number, id: number, confirm: boolean, idempotencyKey?: string): Promise<{ ok: true }> {
     if (!confirm) {
       throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '需要二次确认' });
     }
@@ -512,7 +512,7 @@ export class AssetService {
       operator,
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.fixed.scrap',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ id }),
       run: async (tx) => {
         const existing = await tx.asset.findUnique({ where: { id } });
@@ -556,12 +556,12 @@ export class AssetService {
    * @param dto 删除输入
    * @returns 删除结果
    */
-  async batchDelete(operator: AssetOperationLogOperator, userId: number, dto: AssetBatchDeleteDto): Promise<{ deleted: number }> {
+  async batchDelete(operator: AssetOperationLogOperator, userId: number, dto: AssetBatchDeleteDto, idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.fixed.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload(dto),
       run: async (tx) => {
         const rows = await tx.asset.findMany({ where: { id: { in: dto.ids }, deletedAt: null } });
@@ -710,7 +710,7 @@ export class AssetService {
     // AssetUpdateDto 不允许部门变化（走调度）；仅建档携带 departmentId
     if ('departmentId' in dto && dto.departmentId !== undefined) {
       const rows = await tx.$queryRaw<Array<{ name: string }>>`
-        SELECT name FROM hr.departments WHERE id = ${dto.departmentId} LIMIT 1
+        SELECT name FROM hr.departments_view WHERE id = ${dto.departmentId} LIMIT 1
       `;
       departmentName = rows[0]?.name ?? '';
     }

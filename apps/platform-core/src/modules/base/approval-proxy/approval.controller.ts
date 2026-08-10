@@ -7,7 +7,7 @@ import {
   ProcessApprovalDto,
   USER_MANAGE_FUNCTION_CODE,
 } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from '../../backstage/permission/function-permission.guard';
 import { ApprovalCenterService } from './approval-center.service';
 import { ProfileChangeService } from './profile-change.service';
@@ -42,6 +42,8 @@ export class ApprovalController {
   /** 审批列表导出（导出所有/导出已筛选；xlsx 附件） */
   @Post('export')
   @RequireFunction(USER_MANAGE_FUNCTION_CODE)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'approval-export', keyType: 'user', limit: 20, windowSeconds: 3600 })
   async export(
     @Query() query: ApprovalListQueryDto,
     @CurrentUser() userId: number,
@@ -65,7 +67,7 @@ export class ApprovalController {
     @CurrentUser() processorId: number,
     @Body() dto: ProcessApprovalDto,
   ): Promise<{ ok: true }> {
-    await this.profileChange.processProfileChange(requestId, dto.action, processorId, dto.opinion);
+    await this.profileChange.processProfileChange(requestId, dto.action, processorId, dto.opinion, dto.idempotencyKey);
     return { ok: true };
   }
 
@@ -74,9 +76,9 @@ export class ApprovalController {
   async cancel(
     @Param('id', ParseIntPipe) requestId: number,
     @CurrentUser() actorId: number,
-    @Body() _dto: CancelApprovalDto,
+    @Body() dto: CancelApprovalDto,
   ): Promise<{ ok: true }> {
-    await this.profileChange.cancelProfileChange(requestId, actorId);
+    await this.profileChange.cancelProfileChange(requestId, actorId, dto.idempotencyKey);
     return { ok: true };
   }
 }

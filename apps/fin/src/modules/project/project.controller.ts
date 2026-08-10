@@ -58,7 +58,7 @@ export class ProjectController {
   async batchRestore(@CurrentUser() userId: number, @Body() dto: ProjectBatchRestoreDto): Promise<{ restored: number }> {
     await assertFinanceMaintainAccess(this.prisma.client, userId);
     const operator = await loadFinOperationLogOperator(this.prisma.client, userId);
-    return this.projects.batchRestore(operator, dto.ids);
+    return this.projects.batchRestore(operator, dto.ids, dto.idempotencyKey);
   }
 
   /** 项目编辑（名称/年度允许随时修改） */
@@ -78,7 +78,7 @@ export class ProjectController {
   async batchDelete(@CurrentUser() userId: number, @Body() dto: ProjectBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFinanceMaintainAccess(this.prisma.client, userId);
     const operator = await loadFinOperationLogOperator(this.prisma.client, userId);
-    return this.projects.batchDelete(operator, dto.ids);
+    return this.projects.batchDelete(operator, dto.ids, dto.idempotencyKey);
   }
 
   /** 金额明细新增（invoice/receipt/subcontract-payment；每次一条） */

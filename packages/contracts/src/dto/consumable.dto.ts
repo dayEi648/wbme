@@ -13,7 +13,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
-import { BATCH_LIMIT, IsValidatedBy, PaginationQueryDto } from './base.dto';
+import { BATCH_LIMIT, IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 品种类型（与 asset 模块 Prisma enum 对齐；创建后不可变） */
 export type ConsumableType = 'DISPOSABLE' | 'REUSABLE';
@@ -27,7 +27,7 @@ function assertBatchIds(value: unknown): boolean {
 }
 
 /** 品种创建（asset PRD §5：类型创建时确定不可变；一次性用品必填周期与上限，借还用品必填归还期限与同时持有上限） */
-export class ConsumableCreateDto {
+export class ConsumableCreateDto extends IdempotentDto {
   @ApiProperty({ description: '品种名称（删除后同名可再建）', maxLength: 50 })
   @IsString()
   @MaxLength(50)
@@ -107,7 +107,7 @@ export class ConsumableCreateDto {
  * 品种编辑（asset PRD §5：类型与单位不可变；品类参数随编辑一并维护，参数变化留下前后值；
  * 申领上限/归还期限/同时持有上限只影响之后新提交/新借出）。
  */
-export class ConsumableUpdateDto {
+export class ConsumableUpdateDto extends IdempotentDto {
   @ApiProperty({ description: '品种名称', maxLength: 50 })
   @IsString()
   @MaxLength(50)
@@ -181,7 +181,7 @@ export class ConsumableUpdateDto {
 }
 
 /** 品种批量硬删除（存在当前库存/未结清借还/待审批引用时整批拒绝；仅有历史终态引用时可确认删除） */
-export class ConsumableBatchDeleteDto {
+export class ConsumableBatchDeleteDto extends IdempotentDto {
   @ApiProperty({ description: '品种 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个品种 id' })

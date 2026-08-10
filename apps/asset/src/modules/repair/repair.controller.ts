@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import {
   FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
+  RepairCancelDto,
   RepairOrderCreateDto,
   RepairOrderQueryDto,
   RepairStartDto,
@@ -33,10 +34,14 @@ export class RepairController {
 
   /** 取消登记（待维修 → 已取消终态；资产恢复登记前状态） */
   @Post(':id/cancel')
-  async cancel(@CurrentUser() userId: number, @Param('id', ParseIntPipe) id: number): Promise<{ ok: true }> {
+  async cancel(
+    @CurrentUser() userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RepairCancelDto,
+  ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.repairs.cancel(operator, userId, id);
+    return this.repairs.cancel(operator, userId, id, dto.idempotencyKey);
   }
 
   /** 开始维修（待维修 → 维修中；资产转维修中） */
@@ -44,7 +49,7 @@ export class RepairController {
   async start(@CurrentUser() userId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: RepairStartDto): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.repairs.start(operator, userId, id, dto.startedAt);
+    return this.repairs.start(operator, userId, id, dto.startedAt, dto.idempotencyKey);
   }
 
   /** 维修完成（维修中 → 已完成；填写结果/费用并选择恢复状态） */
@@ -56,7 +61,7 @@ export class RepairController {
   ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.repairs.complete(operator, userId, id, dto);
+    return this.repairs.complete(operator, userId, id, dto, dto.idempotencyKey);
   }
 
   /** 维修单列表（按资产/状态筛选） */

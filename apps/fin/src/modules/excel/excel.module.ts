@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ExcelController } from './excel.controller';
+import { ExcelImportLockGuard } from './excel-import-lock.guard';
 import { ExportService } from './export.service';
 import { ImportService } from './import.service';
 import { XlsxWorkerPool } from './xlsx-worker-pool';
@@ -10,6 +11,6 @@ import { XlsxWorkerPool } from './xlsx-worker-pool';
  */
 @Module({
   controllers: [ExcelController],
-  providers: [XlsxWorkerPool, ImportService, ExportService],
+  providers: [XlsxWorkerPool, ImportService, ExportService, ExcelImportLockGuard],
 })
 export class ExcelModule {}

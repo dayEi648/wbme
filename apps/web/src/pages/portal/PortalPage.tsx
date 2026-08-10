@@ -19,7 +19,7 @@ interface PortalData {
   user: { id: number; name: string; phoneMasked: string } | null;
   systems: SystemEntry[];
   announcement: { title: string; content: string | null; publishedAt: string | null } | null;
-  badgeCount: number;
+  badgeBySystem: Record<string, number>;
 }
 
 /**
@@ -93,8 +93,8 @@ export default function PortalPage() {
                 </Typography.Title>
                 <Space size="small">
                   {system.productStatus === 'COMING_SOON' && <Tag color="orange">即将上线</Tag>}
-                  {/* 待办角标：按对应审批功能数据范围统计（T5/6/7 联调后后端按系统返回） */}
-                  <Badge count={portal.badgeCount} showZero={false} size="small" />
+                  {/* 待办角标：按系统拆分（base PRD §5：系统入口展示各自待处理数量） */}
+                  <Badge count={portal.badgeBySystem[system.code] ?? 0} showZero={false} size="small" />
                 </Space>
               </Space>
             </Card>

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { AssetDepartmentClient } from './asset-department.client';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -46,7 +47,7 @@ describeDb('岗位申请（T6-6）', () => {
 
   beforeAll(async () => {
     prisma = new PrismaService();
-    departments = new DepartmentService(prisma);
+    departments = new DepartmentService(prisma, new AssetDepartmentClient());
     positions = new PositionService(prisma);
     // 延迟注入：PositionApplicationService 依赖审批头服务，审批头服务依赖其副作用
     applications = new PositionApplicationService(prisma);

@@ -105,8 +105,8 @@ export class DepartmentMoveDto extends IdempotentDto {
   parentId?: number;
 }
 
-/** 批量硬删除部门（hr PRD §6：有未删除下级时禁止） */
-export class DepartmentDeleteDto {
+/** 批量硬删除部门（hr PRD §6：有未删除下级时禁止；主 PRD §9.5 批量操作幂等） */
+export class DepartmentDeleteDto extends IdempotentDto {
   @ApiProperty({
     description: `部门 id 列表（1-${BATCH_LIMIT} 个，互不重复）`,
     type: 'array',
@@ -120,8 +120,8 @@ export class DepartmentDeleteDto {
   ids!: number[];
 }
 
-/** 批量硬删除岗位 */
-export class PositionDeleteDto {
+/** 批量硬删除岗位（主 PRD §9.5 批量操作幂等） */
+export class PositionDeleteDto extends IdempotentDto {
   @ApiProperty({
     description: `岗位 id 列表（1-${BATCH_LIMIT} 个，互不重复）`,
     type: 'array',
@@ -469,8 +469,8 @@ export class TitleRuleUpdateDto extends IdempotentDto {
   sort?: number;
 }
 
-/** 批量软删除职称规则（hr PRD §8：不提供硬删除） */
-export class TitleRuleDeleteDto {
+/** 批量软删除职称规则（hr PRD §8：不提供硬删除；主 PRD §9.5 批量操作幂等） */
+export class TitleRuleDeleteDto extends IdempotentDto {
   @ApiProperty({
     description: `职称规则 id 列表（1-${BATCH_LIMIT} 个，互不重复）`,
     type: 'array',

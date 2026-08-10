@@ -195,9 +195,21 @@ export class AnnouncementService {
       idempotencyKey: dto.idempotencyKey,
       fingerprint,
       run: async (tx) => {
+        // 整批校验（主 PRD §2.6：整批不变更 + 逐项目标原因）：不存在/已软删目标 → 整批回滚
+        const existing = await tx.announcement.findMany({
+          where: { id: { in: ids }, deletedAt: null },
+          select: { id: true },
+        });
+        if (existing.length !== ids.length) {
+          const found = new Set(existing.map((row) => row.id));
+          const missing = ids.filter((id) => !found.has(id));
+          throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+            fields: missing.map((id) => ({ id, reason: '公告不存在或已删除' })),
+          });
+        }
         const now = new Date();
         await tx.announcement.updateMany({
-          where: { id: { in: ids }, deletedAt: null },
+          where: { id: { in: ids } },
           data: { deletedAt: now, deletedBy: operatorId, status: 'REVOKED' },
         });
         return {

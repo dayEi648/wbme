@@ -64,6 +64,6 @@ export class DictController {
   async deleteBatch(@CurrentUser() userId: number, @Body() dto: HrDictDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, HR_CONFIG_FUNCTION_CODE);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
-    return this.dicts.deleteBatch(operator, dto.ids);
+    return this.dicts.deleteBatch(operator, dto.ids, dto.idempotencyKey);
   }
 }

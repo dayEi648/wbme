@@ -1,4 +1,11 @@
 import 'reflect-metadata';
+import { AssetDepartmentClient } from './asset-department.client';
+
+/** asset 跨服务 stub：集成测试不依赖 asset 服务运行时（M12 后部门删除会调用内部接口） */
+const assetClientStub = {
+  countAssets: async () => 0,
+  clearAssignments: async () => undefined,
+} as unknown as AssetDepartmentClient;
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -42,7 +49,7 @@ describeDb('组织模块（T6-1/T6-2/T6-3）', () => {
 
   beforeAll(async () => {
     prisma = new PrismaService();
-    departments = new DepartmentService(prisma);
+    departments = new DepartmentService(prisma, assetClientStub);
     positions = new PositionService(prisma);
     org = new OrgStructureService(prisma);
     await ensurePermissionCatalog(prisma);

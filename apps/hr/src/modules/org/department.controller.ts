@@ -79,7 +79,7 @@ export class DepartmentController {
   async deleteBatch(@CurrentUser() userId: number, @Body() dto: DepartmentDeleteDto): Promise<{ deleted: number }> {
     await this.assertDepartmentManage(userId);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
-    return this.departments.deleteBatch(operator, dto.ids);
+    return this.departments.deleteBatch(operator, dto.ids, dto.idempotencyKey);
   }
 
   /** 断言持有部门管理功能 */

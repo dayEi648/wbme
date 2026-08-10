@@ -27,7 +27,11 @@ import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess, loadSessionUser, loadUserName } from '../../shared/cross-schema-auth';
-import { loadAssetOperationLogOperator } from '../../shared/asset-operation-log.util';
+import {
+  executeIdempotentOperation,
+  fingerprintPayload,
+  loadAssetOperationLogOperator,
+} from '../../shared/asset-operation-log.util';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import { AssetApprovalSideEffect } from './asset-approval-side-effect';
 
@@ -194,12 +198,38 @@ export class AssetApprovalService {
     action: 'APPROVE' | 'REJECT',
     processorId: number,
     opinion?: string,
+    idempotencyKey?: string,
   ): Promise<void> {
-    const transition = resolveProcessTransition(action);
-    assertOpinionIfRequired(transition.requiresOpinion, opinion);
+    const operator = await loadAssetOperationLogOperator(this.prisma.client, processorId);
+    await executeIdempotentOperation<void>(this.prisma.client, {
+      operator,
+      feature: CONSUMABLE_APPROVAL_FUNCTION_CODE,
+      scope: `asset.approval.process/${id}`,
+      idempotencyKey,
+      fingerprint: fingerprintPayload({ action, opinion: opinion ?? null }),
+      run: async (tx) => {
+        const transition = resolveProcessTransition(action);
+        assertOpinionIfRequired(transition.requiresOpinion, opinion);
+        await this.processInner(tx, id, action, transition, processorId, opinion);
+        return {
+          result: undefined as unknown as void,
+          actionType: 'UPDATE' as const,
+          summary: `处理了资产审批（${action}）`,
+        };
+      },
+    });
+  }
 
-    await this.prisma.client.$transaction(async (tx) => {
-      const head = await tx.approvalRequest.findUnique({ where: { id } });
+  /** process 业务主体（幂等 run 内执行；依赖数据库状态的校验全部在此） */
+  private async processInner(
+    tx: Prisma.TransactionClient,
+    id: number,
+    action: 'APPROVE' | 'REJECT',
+    transition: ReturnType<typeof resolveProcessTransition>,
+    processorId: number,
+    opinion?: string,
+  ): Promise<void> {
+    const head = await tx.approvalRequest.findUnique({ where: { id } });
       if (!head) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
       }
@@ -253,7 +283,6 @@ export class AssetApprovalService {
           opinion: opinion ?? null,
         },
       });
-    });
   }
 
   /**
@@ -262,10 +291,34 @@ export class AssetApprovalService {
    * @param id 审批头 id
    * @param actorId 操作人
    */
-  async cancel(id: number, actorId: number): Promise<void> {
-    const transition = resolveProcessTransition('CANCEL', 'USER');
-    await this.prisma.client.$transaction(async (tx) => {
-      const head = await tx.approvalRequest.findUnique({ where: { id } });
+  async cancel(id: number, actorId: number, idempotencyKey?: string): Promise<void> {
+    const operator = await loadAssetOperationLogOperator(this.prisma.client, actorId);
+    await executeIdempotentOperation<void>(this.prisma.client, {
+      operator,
+      feature: CONSUMABLE_APPROVAL_FUNCTION_CODE,
+      scope: `asset.approval.cancel/${id}`,
+      idempotencyKey,
+      fingerprint: fingerprintPayload({ cancel: true }),
+      run: async (tx) => {
+        const transition = resolveProcessTransition('CANCEL', 'USER');
+        await this.cancelInner(tx, id, actorId, transition);
+        return {
+          result: undefined as unknown as void,
+          actionType: 'UPDATE' as const,
+          summary: '取消了资产审批',
+        };
+      },
+    });
+  }
+
+  /** cancel 业务主体（幂等 run 内执行；依赖数据库状态的校验全部在此） */
+  private async cancelInner(
+    tx: Prisma.TransactionClient,
+    id: number,
+    actorId: number,
+    transition: ReturnType<typeof resolveProcessTransition>,
+  ): Promise<void> {
+    const head = await tx.approvalRequest.findUnique({ where: { id } });
       if (!head) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
       }
@@ -309,7 +362,6 @@ export class AssetApprovalService {
           cancelSource: 'USER',
         },
       });
-    });
   }
 
   /**

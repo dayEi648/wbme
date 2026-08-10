@@ -32,8 +32,11 @@ export class RepairOrderCreateDto extends IdempotentDto {
   reportedAt?: string;
 }
 
+/** 取消登记（幂等键通道；无业务字段） */
+export class RepairCancelDto extends IdempotentDto {}
+
 /** 开始维修（待维修 → 维修中；记录开始时间） */
-export class RepairStartDto {
+export class RepairStartDto extends IdempotentDto {
   @ApiProperty({ description: '开始维修时间（RFC 3339；缺省为当前时间）', required: false })
   @IsOptional()
   @IsString()
@@ -42,7 +45,7 @@ export class RepairStartDto {
 }
 
 /** 维修完成（维修中 → 已完成；填写结果、实际费用并选择恢复状态） */
-export class RepairCompleteDto {
+export class RepairCompleteDto extends IdempotentDto {
   @ApiProperty({ description: '维修结果', maxLength: 1000 })
   @IsString()
   @MaxLength(1000)

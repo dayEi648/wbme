@@ -69,6 +69,6 @@ export class TitleController {
   async deleteBatch(@CurrentUser() userId: number, @Body() dto: TitleRuleDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, TITLE_MANAGE_FUNCTION_CODE);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
-    return this.rules.deleteBatch(operator, dto.ids);
+    return this.rules.deleteBatch(operator, dto.ids, dto.idempotencyKey);
   }
 }

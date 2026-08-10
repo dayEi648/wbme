@@ -142,12 +142,13 @@ export class DictService {
     operator: AssetOperationLogOperator,
     id: number,
     input: { name: string; sort: number; status: 'ACTIVE' | 'DISABLED' },
+    idempotencyKey?: string,
   ): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.dict.update',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload(input),
       run: async (tx) => {
         const existing = await tx.assetDictItem.findUnique({ where: { id } });
@@ -182,12 +183,12 @@ export class DictService {
    * @returns 删除结果
    * @throws DICT_REFERENCED 任一字典项被引用
    */
-  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[]): Promise<{ deleted: number }> {
+  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.dict.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
       run: async (tx) => {
         const rows = await tx.assetDictItem.findMany({ where: { id: { in: [...ids] } } });

@@ -129,12 +129,12 @@ export class RepairService {
    * @param id 维修单 id
    * @returns ok
    */
-  async cancel(operator: AssetOperationLogOperator, userId: number, id: number): Promise<{ ok: true }> {
+  async cancel(operator: AssetOperationLogOperator, userId: number, id: number, idempotencyKey?: string): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.repair.cancel',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ id }),
       run: async (tx) => {
         const order = await tx.repairOrder.findUnique({ where: { id } });
@@ -185,12 +185,12 @@ export class RepairService {
    * @param startedAt 开始时间（缺省当前）
    * @returns ok
    */
-  async start(operator: AssetOperationLogOperator, userId: number, id: number, startedAt?: string): Promise<{ ok: true }> {
+  async start(operator: AssetOperationLogOperator, userId: number, id: number, startedAt?: string, idempotencyKey?: string): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.repair.start',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ id, startedAt }),
       run: async (tx) => {
         const order = await tx.repairOrder.findUnique({ where: { id } });
@@ -244,12 +244,12 @@ export class RepairService {
    * @param dto 完成输入
    * @returns ok
    */
-  async complete(operator: AssetOperationLogOperator, userId: number, id: number, dto: RepairCompleteDto): Promise<{ ok: true }> {
+  async complete(operator: AssetOperationLogOperator, userId: number, id: number, dto: RepairCompleteDto, idempotencyKey?: string): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
       scope: 'asset.repair.complete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload(dto),
       run: async (tx) => {
         const order = await tx.repairOrder.findUnique({ where: { id } });

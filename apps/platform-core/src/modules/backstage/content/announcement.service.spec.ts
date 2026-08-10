@@ -176,18 +176,36 @@ describe('AnnouncementService', () => {
   describe('batchDelete', () => {
     it('批量软删：deletedAt/deletedBy 落库并置 REVOKED', async () => {
       const prisma = prismaMock();
+      vi.mocked(prisma.client.announcement.findMany).mockResolvedValue([{ id: 1 }, { id: 2 }]);
       vi.mocked(prisma.client.announcement.updateMany).mockResolvedValue({ count: 2 });
       const result = (await new AnnouncementService(prisma as never).batchDelete(1, {
         ids: [1, 2],
         idempotencyKey: 'k-6',
       })) as { result: { deleted: number } };
       expect(result.result.deleted).toBe(2);
+      expect(prisma.client.announcement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: { in: [1, 2] }, deletedAt: null }) }),
+      );
       expect(prisma.client.announcement.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ id: { in: [1, 2] }, deletedAt: null }),
+          where: expect.objectContaining({ id: { in: [1, 2] } }),
           data: expect.objectContaining({ status: 'REVOKED', deletedBy: 1 }),
         }),
       );
+    });
+
+    it('批量软删：目标不存在或已删除 → 整批回滚并返回缺失明细', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.announcement.findMany).mockResolvedValue([{ id: 1 }]);
+      const promise = new AnnouncementService(prisma as never).batchDelete(1, {
+        ids: [1, 2],
+        idempotencyKey: 'k-7',
+      });
+      await expect(promise).rejects.toMatchObject({
+        entry: { code: frameworkErrors.VALIDATION_FAILED.code },
+        details: { fields: [{ id: 2, reason: '公告不存在或已删除' }] },
+      });
+      expect(prisma.client.announcement.updateMany).not.toHaveBeenCalled();
     });
   });
 });

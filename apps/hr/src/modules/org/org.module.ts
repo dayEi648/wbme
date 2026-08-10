@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { InternalRestModule } from '@wbme/server';
 import { ApprovalModule } from '../approval/approval.module';
+import { AssetDepartmentClient } from './asset-department.client';
 import { DepartmentController } from './department.controller';
 import { DepartmentService } from './department.service';
 import { InternalPositionApplicationController } from './internal-position-application.controller';
@@ -28,6 +29,7 @@ import { SelfServiceController } from './self-service.controller';
     DepartmentService,
     PositionService,
     PositionApplicationService,
+    AssetDepartmentClient,
   ],
   exports: [OrgStructureService, DepartmentService, PositionService, PositionApplicationService],
 })

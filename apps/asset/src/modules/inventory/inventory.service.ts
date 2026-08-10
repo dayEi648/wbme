@@ -16,7 +16,7 @@ import {
   fingerprintPayload,
   type AssetOperationLogOperator,
 } from '../../shared/asset-operation-log.util';
-import { cleanupEmptyItem, findOrCreateItem, loadWarehouseWithPath } from '../../shared/inventory-core';
+import { cleanupEmptyItem, loadWarehouseWithPath, lockOrCreateItem } from '../../shared/inventory-core';
 
 /** 库存条目列表项 */
 export interface InventoryItemListItem {
@@ -250,7 +250,7 @@ export class InventoryService {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.batch.correct',
-      idempotencyKey: undefined,
+      idempotencyKey: input.idempotencyKey,
       fingerprint: fingerprintPayload(input),
       run: async (tx) => {
         // 锁定批次及其所属条目（批次行 FOR UPDATE）。
@@ -348,8 +348,8 @@ export class InventoryService {
           }
           finalWarehouseName = targetWarehouse.name;
           finalWarehousePath = targetWarehouse.path;
-          // 目标条目：同品种「规格 + 库位」唯一索引兜底（upsert 语义）
-          targetItem = await findOrCreateItem(tx, {
+          // 目标条目：同品种「规格 + 库位」唯一索引兜底（upsert 语义）；锁读保证流水前后数量一致（M8）
+          targetItem = await lockOrCreateItem(tx, {
             consumableId: batchRow.consumable_id,
             spec: finalSpec,
             warehouseId: targetWarehouse.id,
@@ -464,10 +464,18 @@ export class InventoryService {
     tx: Prisma.TransactionClient,
     itemId: number,
   ): Promise<{ id: number; bookQty: number; reservedQty: number; warehouseId: number | null } | null> {
-    return tx.inventoryItem.findUnique({
-      where: { id: itemId },
-      select: { id: true, bookQty: true, reservedQty: true, warehouseId: true },
-    });
+    // 锁读（M8）：批次纠错写账面，bookBefore 须取锁后行值（与 lockOrCreateItem 语义一致）
+    const rows = await tx.$queryRaw<Array<{ id: number; book_qty: number; reserved_qty: number; warehouse_id: number | null }>>`
+      SELECT id, book_qty, reserved_qty, warehouse_id
+      FROM asset.inventory_items
+      WHERE id = ${itemId}
+      FOR UPDATE
+    `;
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return { id: row.id, bookQty: Number(row.book_qty), reservedQty: Number(row.reserved_qty), warehouseId: row.warehouse_id };
   }
 
   /** 加载字典项名称（未填返回 null） */

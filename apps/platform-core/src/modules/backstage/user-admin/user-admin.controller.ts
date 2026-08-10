@@ -1,7 +1,7 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { IdempotentDto, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
 import { SuperAdminService } from './super-admin.service';
 import { UserAdminService } from './user-admin.service';
@@ -56,6 +56,8 @@ export class UserAdminController {
 
   /** 批量注销（整批全有或全无；同事务：账号注销 + 待审批资料修改取消 + 生命周期任务） */
   @Post('deactivations/batch')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'user-deactivate-batch', keyType: 'user', limit: 10, windowSeconds: 60 })
   batchDeactivate(@CurrentUser() operatorId: number, @Body() dto: BatchDeactivateDto): Promise<unknown> {
     return this.lifecycle.batchDeactivate(operatorId, dto);
   }
@@ -68,6 +70,8 @@ export class UserAdminController {
 
   /** 恢复确认（稳定恢复请求 ID + 生命周期版本；hr 整批应用成功后本地事务完成恢复） */
   @Post('restorations/confirm')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'user-restore-confirm', keyType: 'user', limit: 10, windowSeconds: 60 })
   confirmRestore(@CurrentUser() operatorId: number, @Body() dto: RestoreConfirmDto): Promise<unknown> {
     return this.lifecycle.confirmRestore(operatorId, dto);
   }

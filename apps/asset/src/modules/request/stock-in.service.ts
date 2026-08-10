@@ -9,7 +9,7 @@ import {
 } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
-import { findOrCreateItem, loadWarehouseWithPath, writeStockFlow } from '../../shared/inventory-core';
+import { loadWarehouseWithPath, lockOrCreateItem, writeStockFlow } from '../../shared/inventory-core';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
 import {
   executeIdempotentOperation,
@@ -98,7 +98,7 @@ export class StockInService {
     for (const line of lines) {
       // 注意：批准时不再校验品种启用状态——停用前已提交的申请仍可批准（asset PRD §5）；
       // 品种状态只约束新提交（submit 已校验 ACTIVE）
-      const item = await findOrCreateItem(tx, {
+      const item = await lockOrCreateItem(tx, {
         consumableId: line.consumableId,
         spec: line.spec,
         warehouseId: line.warehouseId,

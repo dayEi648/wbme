@@ -1,7 +1,7 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { PERMISSION_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from './function-permission.guard';
 import { GrantService } from './grant.service';
 import { BatchGrantDto, BatchRevokeDto, SaveEmployeeGrantsDto, SearchEmployeesDto } from './permission.dto';
@@ -43,12 +43,16 @@ export class PermissionController {
 
   /** 批量授权（增量）：整批校验，任一目标失败整批回滚并逐人返回原因；幂等键重放不重复 */
   @Post('grants/batch')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'permission-grant-batch', keyType: 'user', limit: 10, windowSeconds: 60 })
   batchGrant(@CurrentUser() operatorId: number, @Body() dto: BatchGrantDto): Promise<unknown> {
     return this.grants.batchGrant(operatorId, dto);
   }
 
   /** 批量撤销：撤销所选员工在操作人可管理范围内的全部功能授权；同样的整批语义 */
   @Post('revocations/batch')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'permission-revoke-batch', keyType: 'user', limit: 10, windowSeconds: 60 })
   batchRevoke(@CurrentUser() operatorId: number, @Body() dto: BatchRevokeDto): Promise<unknown> {
     return this.grants.batchRevoke(operatorId, dto);
   }

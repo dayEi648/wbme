@@ -1,13 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
-import { PaginationQueryDto } from './base.dto';
+import { IdempotentDto, PaginationQueryDto } from './base.dto';
 
 /** 二维码目标类型（与 asset 模块 Prisma enum 对齐） */
 export type QrTargetType = 'ASSET' | 'INVENTORY_ITEM' | 'SCAN_CATALOG';
 
 /** 二维码创建（asset PRD §11：固定资产归「固定资产维护」；库存条目与申领目录归「消耗品库存管理」） */
-export class QrCodeCreateDto {
+export class QrCodeCreateDto extends IdempotentDto {
   @ApiProperty({ description: '目标类型', enum: ['ASSET', 'INVENTORY_ITEM', 'SCAN_CATALOG'] })
   @IsIn(['ASSET', 'INVENTORY_ITEM', 'SCAN_CATALOG'])
   targetType!: QrTargetType;
@@ -21,7 +21,7 @@ export class QrCodeCreateDto {
 }
 
 /** 二维码管理动作（停用 / 恢复 / 作废并重新生成；REVOKED 终态不可恢复） */
-export class QrActionDto {
+export class QrActionDto extends IdempotentDto {
   @ApiProperty({ description: '动作', enum: ['DISABLE', 'ENABLE', 'REGENERATE'] })
   @IsIn(['DISABLE', 'ENABLE', 'REGENERATE'])
   action!: 'DISABLE' | 'ENABLE' | 'REGENERATE';

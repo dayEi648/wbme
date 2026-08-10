@@ -120,11 +120,11 @@ export async function loadTemplateWorkbook(): Promise<ExcelJS.Workbook> {
   return workbook;
 }
 
-/** 行数据 → 28 列单元格值 */
-function rowCells(row: ExportProjectRow): CellValue[] {
+/** 行数据 → 28 列单元格值（seq 为按导出结果重排的序号，写入首列） */
+function rowCells(row: ExportProjectRow, seq: number): CellValue[] {
   const money = (value: string): number => Number(value);
   const cells: CellValue[] = [
-    null,
+    seq,
     row.name,
     row.completenessDocs || null,
     row.year,
@@ -249,12 +249,14 @@ export async function buildExportBuffer(
   }
 
   let rowNumber = 3;
+  let seq = 0;
   for (const group of groups) {
     const groupName = group.bizCategoryName ?? UNCLASSIFIED_GROUP;
     writeGroupRow(sheet, rowNumber, groupName);
     rowNumber += 1;
     for (const row of group.rows) {
-      const cells = rowCells(row);
+      seq += 1;
+      const cells = rowCells(row, seq);
       for (let c = 1; c <= COLUMN_COUNT; c++) {
         sheet.getCell(rowNumber, c).value = cells[c - 1] ?? null;
       }

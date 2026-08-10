@@ -100,12 +100,13 @@ export class WarehouseService {
     operator: AssetOperationLogOperator,
     id: number,
     input: { parentId?: number; name: string; sort: number; status: 'ACTIVE' | 'DISABLED' },
+    idempotencyKey?: string,
   ): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.warehouse.update',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload(input),
       run: async (tx) => {
         const existing = await tx.warehouse.findUnique({ where: { id } });
@@ -140,12 +141,12 @@ export class WarehouseService {
    * @returns 删除结果
    * @throws LOCATION_HAS_CHILDREN / LOCATION_REFERENCED 任一库位不满足
    */
-  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[]): Promise<{ deleted: number }> {
+  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.warehouse.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
       run: async (tx) => {
         const rows = await tx.warehouse.findMany({ where: { id: { in: [...ids] } } });

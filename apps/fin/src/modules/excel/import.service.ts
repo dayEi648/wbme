@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, exportErrors, financeErrors, FINANCE_MAINTAIN_FUNCTION_CODE, frameworkErrors, type ImportChoiceDto } from '@wbme/contracts';
 import type { Redis } from '@wbme/server';
-import { randomUUID } from 'node:crypto';
-import { REDIS_CLIENT, REDIS_NAMESPACE, redisKey } from '@wbme/server';
+import { createHash, randomUUID } from 'node:crypto';
+import { getRequestImportLockRelease, REDIS_CLIENT, REDIS_NAMESPACE, redisKey } from '@wbme/server';
 import { Prisma, type Project } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
@@ -13,6 +13,9 @@ import { COL, UNCLASSIFIED_GROUP } from './xlsx-template';
 
 /** 导入总时限（毫秒）：120 秒（fin PRD §4 固定值） */
 export const IMPORT_TIMEOUT_MS = 120_000;
+
+/** 确认写入分批大小（每批一条 createManyAndReturn；批间检查点供取消/超时传播） */
+const CREATE_BATCH_SIZE = 500;
 
 /**
  * 导入取消/超时检查器（fin PRD §4：120s；客户端断连/响应关闭也触发取消）。
@@ -178,8 +181,18 @@ export class ImportService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
-  /** 取得单用户导入并发占用（认证授权后、读取上传体前；占用需在响应结束/失败/超时后释放） */
-  private async acquireImportLock(userId: number): Promise<() => Promise<void>> {
+  /**
+   * 取得单用户导入并发占用（fin PRD §4：认证授权后、读取上传体前取得）。
+   *
+   * HTTP 路径由 ExcelImportLockGuard 在 Multer 之前获取并写入请求上下文，
+   * 此处直接复用同一句柄（不重复获取）；直接调用（测试/内部任务）则自行获取。
+   * 占用需在响应结束/失败/超时后释放（守卫兜底 + 调用方 finally）。
+   */
+  async acquireImportLock(userId: number): Promise<() => Promise<void>> {
+    const held = getRequestImportLockRelease();
+    if (held) {
+      return held;
+    }
     const lockKey = redisKey(REDIS_NAMESPACE.LOCK, 'fin-import', userId);
     const token = randomUUID();
     const acquired = await this.redis.set(lockKey, token, 'EX', IMPORT_LOCK_TTL_SECONDS, 'NX');
@@ -251,7 +264,9 @@ export class ImportService {
         feature: FINANCE_MAINTAIN_FUNCTION_CODE,
         scope: 'fin.import.confirm',
         idempotencyKey,
-        fingerprint: fingerprintPayload({ choices }),
+        // 指纹纳入文件内容：同键 + 同 choices + 不同文件 → 409（M17，主 PRD §3.3）。
+        // 只传 sha256 十六进制串，避免 canonicalize 展开 Buffer 索引属性造成超大序列化。
+        fingerprint: fingerprintPayload({ choices, fileSha256: createHash('sha256').update(buffer).digest('hex') }),
         run: async (tx) => {
           const result = await this.applyImport(tx, operator, inputs, preview, choices, checkTimeout);
           return {
@@ -618,54 +633,112 @@ export class ImportService {
       }
     }
 
-    // 1. 新增：业务键必须仍不存在（含软删除占键；预览后创建/恢复 → 整批回滚）
+    // 1. 新增：业务键必须仍不存在（含软删除占键；预览后创建/恢复 → 整批回滚）。
+    // 集合化（fin PRD §4 禁止逐行查询+写入）：一次批量业务键校验 + createMany；
+    // 校验兜底 P2002 无法定位行号，整体转 IMPORT_PREVIEW_STALE（预览后并发创建/恢复属极端窗口）。
     const createdIds: number[] = [];
-    for (const item of toCreate) {
+    if (toCreate.length > 0) {
       checkTimeout();
-      const clash = await tx.project.findFirst({ where: { businessKey: item.businessKey, year: item.input.year as number } });
-      if (clash) {
+      // 批量业务键冲突预检（含软删除占键）：一次往返替代逐行 findFirst
+      const keyClashes = await tx.project.findMany({
+        where: {
+          OR: toCreate.map((item) => ({ businessKey: item.businessKey, year: item.input.year as number })),
+        },
+        select: { id: true, businessKey: true, year: true },
+      });
+      if (keyClashes.length > 0) {
+        const clashKeys = new Set(keyClashes.map((row) => `${row.businessKey}:${row.year}`));
         throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
-          fields: [{ rowNumber: item.input.rowNumber, reason: '该业务键已在预览后被创建或恢复' }],
+          fields: toCreate
+            .filter((item) => clashKeys.has(`${item.businessKey}:${item.input.year}`))
+            .map((item) => ({ rowNumber: item.input.rowNumber, reason: '该业务键已在预览后被创建或恢复' })),
         });
       }
       checkTimeout();
-      const row = await createProjectFromInput(tx, item.input, operator, dicts);
-      createdIds.push(row.id);
+      const createData: Prisma.ProjectUncheckedCreateInput[] = [];
+      for (const item of toCreate) {
+        if (item.input.year === null) {
+          throw new BusinessException(financeErrors.IMPORT_YEAR_REQUIRED_FOR_NEW);
+        }
+        createData.push({
+          ...(await buildProjectDataFromInput(tx, item.input, dicts)),
+          year: item.input.year as number,
+          createdBy: operator.id,
+          updatedBy: operator.id,
+        });
+      }
+      // 分批 createManyAndReturn（每批一条 SQL，保持集合化；批间 checkTimeout 供取消/超时检查点）
+      try {
+        for (let offset = 0; offset < createData.length; offset += CREATE_BATCH_SIZE) {
+          const created = await tx.project.createManyAndReturn({
+            data: createData.slice(offset, offset + CREATE_BATCH_SIZE),
+            select: { id: true },
+          });
+          createdIds.push(...created.map((row) => row.id));
+          checkTimeout();
+        }
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
+            fields: [{ rowNumber: 0, reason: '业务键在写入瞬间被并发创建（预览已过期，请重新预览）' }],
+          });
+        }
+        throw error;
+      }
     }
 
-    // 2. 覆盖：dataRevision 条件更新（预览后变化 → 整批回滚；缺数核对）
+    // 2. 覆盖：dataRevision 条件更新（预览后变化 → 整批回滚；缺数核对）。
+    // 集合化：一次批量存在性/dataRevision 校验 + 明细快照批量读取/删除/重建；
+    // updateMany 每行携带各自 dataRevision 条件（Prisma 单次仅一个 where），保留逐行条件更新。
     const overwriteDetail: Array<{ projectId: number; beforeDetails: ProjectDetailSnapshot; afterDetails: ProjectDetailSnapshot }> = [];
-    for (const item of toOverwrite) {
+    if (toOverwrite.length > 0) {
       checkTimeout();
-      const existing = await tx.project.findFirst({ where: { id: item.targetId } });
-      if (!existing || existing.deletedAt !== null) {
-        throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
-          fields: [{ rowNumber: item.input.rowNumber, reason: '目标项目不存在或已被删除' }],
-        });
+      const targetIds = toOverwrite.map((item) => item.targetId);
+      const existingRows = await tx.project.findMany({ where: { id: { in: targetIds } } });
+      const existingById = new Map(existingRows.map((row) => [row.id, row]));
+      for (const item of toOverwrite) {
+        const existing = existingById.get(item.targetId);
+        if (!existing || existing.deletedAt !== null) {
+          throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
+            fields: [{ rowNumber: item.input.rowNumber, reason: '目标项目不存在或已被删除' }],
+          });
+        }
+        if (existing.dataRevision !== item.dataRevision) {
+          throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
+            fields: [{ rowNumber: item.input.rowNumber, reason: '目标项目数据已在预览后变化' }],
+          });
+        }
       }
-      if (existing.dataRevision !== item.dataRevision) {
-        throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
-          fields: [{ rowNumber: item.input.rowNumber, reason: '目标项目数据已在预览后变化' }],
+      // 批量读取覆盖前明细快照（一次往返替代逐行 3 次查询）
+      const beforeById = await batchSnapshotDetails(tx, targetIds);
+      // 逐行条件更新（dataRevision 每行不同，无法合并为单次 updateMany）
+      for (const item of toOverwrite) {
+        const existing = existingById.get(item.targetId) as Project;
+        const data = await buildProjectDataFromInput(tx, item.input, dicts, existing);
+        checkTimeout();
+        const updated = await tx.project.updateMany({
+          where: { id: item.targetId, dataRevision: item.dataRevision },
+          data: { ...data, dataRevision: { increment: 1 }, updatedBy: operator.id },
         });
+        if (updated.count !== 1) {
+          throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE);
+        }
       }
-      const beforeDetails = await snapshotDetails(tx, item.targetId);
-      const data = await buildProjectDataFromInput(tx, item.input, dicts, existing);
       checkTimeout();
-      // 条件更新只允许写 dataRevision 匹配的行；受影响数核对（缺数 = 预览过期整批回滚）
-      const updated = await tx.project.updateMany({
-        where: { id: item.targetId, dataRevision: item.dataRevision },
-        data: { ...data, dataRevision: { increment: 1 }, updatedBy: operator.id },
-      });
-      if (updated.count !== 1) {
-        throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE);
-      }
       // 物理删除原明细并按上传顺序重建（Excel 只保存金额；日期/单笔备注清空，审计保留前后完整快照）
-      await tx.invoice.deleteMany({ where: { projectId: item.targetId } });
-      await tx.receipt.deleteMany({ where: { projectId: item.targetId } });
-      await tx.subcontractPayment.deleteMany({ where: { projectId: item.targetId } });
-      await rebuildDetails(tx, item.targetId, item.input);
-      const afterDetails = await snapshotDetails(tx, item.targetId);
-      overwriteDetail.push({ projectId: item.targetId, beforeDetails, afterDetails });
+      await tx.invoice.deleteMany({ where: { projectId: { in: targetIds } } });
+      await tx.receipt.deleteMany({ where: { projectId: { in: targetIds } } });
+      await tx.subcontractPayment.deleteMany({ where: { projectId: { in: targetIds } } });
+      await batchRebuildDetails(tx, toOverwrite.map((item) => ({ projectId: item.targetId, input: item.input })));
+      // 批量读取覆盖后明细快照
+      const afterById = await batchSnapshotDetails(tx, targetIds);
+      for (const item of toOverwrite) {
+        overwriteDetail.push({
+          projectId: item.targetId,
+          beforeDetails: beforeById.get(item.targetId) as ProjectDetailSnapshot,
+          afterDetails: afterById.get(item.targetId) as ProjectDetailSnapshot,
+        });
+      }
     }
 
     checkTimeout();
@@ -727,8 +800,11 @@ interface ProjectDetailSnapshot {
   subcontractPayments: Array<{ amount: string; occurredDate: string | null; remark: string | null }>;
 }
 
-/** 读取项目全部明细快照（按 id 升序） */
-async function snapshotDetails(tx: Prisma.TransactionClient, projectId: number): Promise<ProjectDetailSnapshot> {
+/** 批量读取多个项目全部明细快照（一次往返；按 projectId 分组，明细按 id 升序） */
+async function batchSnapshotDetails(
+  tx: Prisma.TransactionClient,
+  projectIds: readonly number[],
+): Promise<Map<number, ProjectDetailSnapshot>> {
   const fmt = (rows: Array<{ amount: Prisma.Decimal; occurredDate: Date | null; remark: string | null }>) =>
     rows.map((row) => ({
       amount: row.amount.toFixed(2),
@@ -736,11 +812,19 @@ async function snapshotDetails(tx: Prisma.TransactionClient, projectId: number):
       remark: row.remark,
     }));
   const [invoices, receipts, payments] = await Promise.all([
-    tx.invoice.findMany({ where: { projectId }, orderBy: { id: 'asc' } }),
-    tx.receipt.findMany({ where: { projectId }, orderBy: { id: 'asc' } }),
-    tx.subcontractPayment.findMany({ where: { projectId }, orderBy: { id: 'asc' } }),
+    tx.invoice.findMany({ where: { projectId: { in: [...projectIds] } }, orderBy: { id: 'asc' } }),
+    tx.receipt.findMany({ where: { projectId: { in: [...projectIds] } }, orderBy: { id: 'asc' } }),
+    tx.subcontractPayment.findMany({ where: { projectId: { in: [...projectIds] } }, orderBy: { id: 'asc' } }),
   ]);
-  return { invoices: fmt(invoices), receipts: fmt(receipts), subcontractPayments: fmt(payments) };
+  const result = new Map<number, ProjectDetailSnapshot>();
+  for (const projectId of projectIds) {
+    result.set(projectId, {
+      invoices: fmt(invoices.filter((row) => row.projectId === projectId)),
+      receipts: fmt(receipts.filter((row) => row.projectId === projectId)),
+      subcontractPayments: fmt(payments.filter((row) => row.projectId === projectId)),
+    });
+  }
+  return result;
 }
 
 function formatCalendar(date: Date): string {
@@ -748,13 +832,23 @@ function formatCalendar(date: Date): string {
 }
 
 /** 批量重建明细（物理删除后按上传顺序重建；日期/备注为空；分批控制 SQL 参数量，同一事务） */
-async function rebuildDetails(tx: Prisma.TransactionClient, projectId: number, input: ProjectRowInput): Promise<void> {
+async function batchRebuildDetails(
+  tx: Prisma.TransactionClient,
+  items: Array<{ projectId: number; input: ProjectRowInput }>,
+): Promise<void> {
   const toDecimal = (value: string): Prisma.Decimal => new Prisma.Decimal(value);
-  const mkRows = (amounts: string[]) =>
-    amounts.map((amount) => ({ projectId, amount: toDecimal(amount), occurredDate: null, remark: null }));
-  await batchCreateMany(tx.invoice, mkRows(input.invoices));
-  await batchCreateMany(tx.receipt, mkRows(input.receipts));
-  await batchCreateMany(tx.subcontractPayment, mkRows(input.subcontractPayments));
+  const invoiceRows = items.flatMap(({ projectId, input }) =>
+    input.invoices.map((amount) => ({ projectId, amount: toDecimal(amount), occurredDate: null, remark: null })),
+  );
+  const receiptRows = items.flatMap(({ projectId, input }) =>
+    input.receipts.map((amount) => ({ projectId, amount: toDecimal(amount), occurredDate: null, remark: null })),
+  );
+  const paymentRows = items.flatMap(({ projectId, input }) =>
+    input.subcontractPayments.map((amount) => ({ projectId, amount: toDecimal(amount), occurredDate: null, remark: null })),
+  );
+  await batchCreateMany(tx.invoice, invoiceRows);
+  await batchCreateMany(tx.receipt, receiptRows);
+  await batchCreateMany(tx.subcontractPayment, paymentRows);
 }
 
 /** 分批 createMany（每批 500 行；同一事务内不提前提交） */
@@ -871,34 +965,4 @@ async function buildProjectDataFromInput(
     miscExpense: input.miscExpense ? new Prisma.Decimal(input.miscExpense) : null,
     remark: input.remark,
   };
-}
-
-/** 新增项目（业务键唯一约束兜底） */
-async function createProjectFromInput(
-  tx: Prisma.TransactionClient,
-  input: ProjectRowInput,
-  operator: FinOperationLogOperator,
-  dicts: DictContext,
-): Promise<Project> {
-  if (input.year === null) {
-    throw new BusinessException(financeErrors.IMPORT_YEAR_REQUIRED_FOR_NEW);
-  }
-  const data = await buildProjectDataFromInput(tx, input, dicts);
-  try {
-    return await tx.project.create({
-      data: {
-        ...data,
-        year: input.year,
-        createdBy: operator.id,
-        updatedBy: operator.id,
-      },
-    });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      throw new BusinessException(financeErrors.IMPORT_PREVIEW_STALE, {
-        fields: [{ rowNumber: input.rowNumber, reason: '业务键已被创建或恢复' }],
-      });
-    }
-    throw error;
-  }
 }

@@ -36,11 +36,11 @@
 | --- | --- | --- |
 | 仅 Nginx 公网入口 | 配置就绪 | compose 仅 web 发布 `80:80`；其余容器无 ports |
 | `/internal/v1` 不暴露公网 | 配置就绪 | nginx.conf 不配置 internal 路由（`location /api/ { return 404; }`）；内部端口仅私网 |
-| 无 Docker Socket / privileged / host 网络 | 配置就绪 | compose 全部容器 `cap_drop: ALL` + `no-new-privileges`；无 socket 挂载、无 host 网络 |
-| 非 root + 只读根文件系统 + 有界 tmpfs | 配置就绪 | runtime 镜像 `USER wbme`；`read_only: true` + `tmpfs: /tmp` |
+| 无 Docker Socket / privileged / host 网络 | 配置就绪 | compose 全部容器 `cap_drop: ALL`（+ 最小必要 `cap_add`：web 为 CHOWN/SETUID/SETGID/NET_BIND_SERVICE，postgres 为 CHOWN）+ `no-new-privileges`；无 socket 挂载、无 host 网络 |
+| 非 root + 只读根文件系统 + 有界 tmpfs | 配置就绪 | runtime 镜像 `USER wbme`、nginx 镜像 nginx 用户、postgres/redis 镜像内置非 root 用户；全部容器 `read_only: true` + 有界 tmpfs（backend `/tmp`、web `/var/cache/nginx /var/run /tmp`、postgres `/tmp /run/postgresql`、redis `/tmp`） |
 | 命名持久化卷（不写容器可写层） | 配置就绪 | `postgres_data` / `redis_data` 命名卷；恢复状态与发布基线用 `/opt/wbme/persist` 宿主目录 |
 | 机密文件权限最小化 | 配置就绪 | `.env.production` 不入库/不入镜像（dockerignore）；部署文档注明 600 权限 |
-| 时钟同步 | 配置就绪 | `release.sh` 发布核验含时钟检查（timedatectl） |
+| 时钟同步 | 配置就绪 | `release.sh` 发布核验：未同步即失败阻断（`ALLOW_CLOCK_DRIFT=1` 显式放行）；timedatectl 缺失时打警告跳过 |
 | 健康探针免登录最小状态 | 已落实 | `/healthz /readyz` 仅返回最小状态（platform-core/业务服务/恢复执行器） |
 
 ## backstage PRD §8 安全日志

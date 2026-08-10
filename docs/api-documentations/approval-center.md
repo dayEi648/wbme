@@ -62,7 +62,7 @@
 - 注销：账号资料型，批量注销时 `cancelSource=ACCOUNT_DEACTIVATED` 自动取消
 - 提交：写 `SUBMIT` 动作流水
 
-门户 `GET /portal` 的 `badgeCount` = 本地可见资料修改待办 + 内部拉取 hr/asset `pending-count` 之和（依赖不可用贡献 0）。
+门户 `GET /portal` 的 `badgeBySystem` = 按系统拆分角标（M24）：`BACKSTAGE`（本地可见资料修改待办）、`HR`/`ASSET`（内部拉取 `pending-count`，依赖不可用贡献 0）、`FIN`（无审批待办恒 0）。
 
 ---
 

@@ -13,7 +13,7 @@ import { PrismaService } from '../../prisma.service';
 import {
   allocateFifoBatches,
   cleanupEmptyItem,
-  findOrCreateItem,
+  lockOrCreateItem,
   loadWarehouseWithPath,
   lockInventoryItems,
   writeStockFlow,
@@ -79,8 +79,8 @@ export class TransferService {
         }
         // ④ FIFO 分配来源批次
         const allocations = await allocateFifoBatches(tx, sourceItem.id, dto.qty);
-        // ⑤ 目标条目（同品种 + 同规格 + 目标库位）；不存在则创建
-        const targetItem = await findOrCreateItem(tx, {
+        // ⑤ 目标条目（同品种 + 同规格 + 目标库位）；不存在则创建；锁读保证流水 book_before/after 一致（M8）
+        const targetItem = await lockOrCreateItem(tx, {
           consumableId: sourceItem.consumableId,
           spec: sourceItem.spec,
           warehouseId: targetWarehouse.id,

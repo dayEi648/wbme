@@ -265,3 +265,66 @@ export async function findOrCreateItem(
     throw error;
   }
 }
+
+/**
+ * 锁读或创建库存条目（M8，主 PRD §11 / asset PRD §6：每条流水保存各自变动前后数量）。
+ *
+ * 与 findOrCreateItem 的差异：命中行一律 `SELECT ... FOR UPDATE` 行锁后再返回，
+ * 保证同条目并发的流水 book_before/after 基于同一串行化后的账面值；不存在时创建
+ * 后（P2002 归并）再锁读返回。调用点：调拨目标、入库批准、批次纠错（写路径）。
+ *
+ * @param tx 事务客户端
+ * @param input 条目归属与库位快照
+ * @returns 条目行（含锁内读取的当前账面）
+ */
+export async function lockOrCreateItem(
+  tx: Prisma.TransactionClient,
+  input: {
+    consumableId: number;
+    spec: string;
+    warehouseId: number | null;
+    warehouseName: string;
+    warehousePath: string;
+  },
+): Promise<{ id: number; bookQty: number }> {
+  const existing = await tx.$queryRaw<Array<{ id: number; book_qty: number }>>`
+    SELECT id, book_qty
+    FROM asset.inventory_items
+    WHERE consumable_id = ${input.consumableId}
+      AND spec = ${input.spec}
+      AND warehouse_id IS NOT DISTINCT FROM ${input.warehouseId}
+    FOR UPDATE
+  `;
+  if (existing[0]) {
+    return { id: existing[0].id, bookQty: Number(existing[0].book_qty) };
+  }
+  try {
+    const created = await tx.inventoryItem.create({
+      data: {
+        consumableId: input.consumableId,
+        spec: input.spec,
+        warehouseId: input.warehouseId,
+        warehouseName: input.warehouseName,
+        warehousePath: input.warehousePath,
+      },
+    });
+    // 创建后锁读（行已归本事务所有，FOR UPDATE 立即返回）
+    return { id: created.id, bookQty: 0 };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      // 并发创建撞唯一索引：锁读已提交行（等待持有锁事务提交后读取最新账面）
+      const row = await tx.$queryRaw<Array<{ id: number; book_qty: number }>>`
+        SELECT id, book_qty
+        FROM asset.inventory_items
+        WHERE consumable_id = ${input.consumableId}
+          AND spec = ${input.spec}
+          AND warehouse_id IS NOT DISTINCT FROM ${input.warehouseId}
+        FOR UPDATE
+      `;
+      if (row[0]) {
+        return { id: row[0].id, bookQty: Number(row[0].book_qty) };
+      }
+    }
+    throw error;
+  }
+}

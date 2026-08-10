@@ -20,7 +20,6 @@ const NAVIGATION: NavigationItem[] = [
   { key: 'overtime-apply', label: '加班申请', path: '/hr/overtime-apply', permission: ['overtime_apply', 'proxy_overtime'] },
   { key: 'overtime-mine', label: '我的加班', path: '/hr/overtime-mine', permission: 'overtime_apply' },
   { key: 'overtime-records', label: '加班历史', path: '/hr/overtime-records', permission: 'overtime_history' },
-  { key: 'position-applications', label: '岗位申请', path: '/hr/position-applications' },
   { key: 'approval', label: '审批中心', path: '/hr/approval', permission: ['overtime_approval', 'org_structure'] },
   { key: 'settings', label: '人事配置', path: '/hr/settings', permission: 'hr_config' },
 ];
@@ -61,8 +60,6 @@ export default function HrPage() {
         return <OvertimeMine />;
       case 'overtime-records':
         return <OvertimeRecords />;
-      case 'position-applications':
-        return <DataTable title="岗位申请" description="岗位申请的批准会再次验证申请提交后的组织条件。" service="platform" endpoint="/me/position-applications" pageKey="hr-position-applications" columns={[...COMMON_COLUMNS, { key: 'targetDepartmentName', title: '目标部门' }, { key: 'targetPositionName', title: '目标岗位' }, { key: 'submittedAt', title: '提交时间' }]} />;
       case 'approval':
         return <ApprovalCenter title="人事审批中心" service="hr" pageKey="hr-approval" />;
       case 'settings':

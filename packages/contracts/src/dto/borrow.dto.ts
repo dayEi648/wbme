@@ -92,7 +92,7 @@ export class MyBorrowQueryDto extends PaginationQueryDto {
   overdueOnly?: boolean;
 }
 
-/** 借还历史查询（「借还历史记录」部门/公司档：按记录类型/借用人/代交人/受领人/部门/结清状态/逾期查询） */
+/** 借还历史查询（「借还历史记录」部门/公司档：按记录类型/借用人/代交人/受领人/部门/结清状态/逾期/关键字查询） */
 export class BorrowHistoryQueryDto extends PaginationQueryDto {
   @ApiProperty({ description: '记录类型', required: false, enum: ['PERSONAL', 'AGENT'] })
   @IsOptional()
@@ -129,4 +129,10 @@ export class BorrowHistoryQueryDto extends PaginationQueryDto {
   @IsOptional()
   @Type(() => Boolean)
   overdueOnly?: boolean;
+
+  @ApiProperty({ description: '物品 / 借用人关键字（模糊匹配物品名或借用人姓名）', required: false, maxLength: 50 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  keyword?: string;
 }

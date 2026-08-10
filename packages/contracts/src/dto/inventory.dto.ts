@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { isNonNegativeAmount } from '../money';
-import { IsValidatedBy, PaginationQueryDto } from './base.dto';
+import { IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 库存条目查询（消耗品库存管理） */
 export class InventoryItemQueryDto extends PaginationQueryDto {
@@ -67,7 +67,7 @@ export class BatchQueryDto extends PaginationQueryDto {
  * 批次纠正（asset PRD §5：供应商/品牌/单价/备注直接纠正并记录前后值；
  * 规格/库位会改变条目归属，仅当批次无后续流水且来源条目无待审批占用时可纠正）。
  */
-export class BatchCorrectionDto {
+export class BatchCorrectionDto extends IdempotentDto {
   @ApiProperty({ description: '纠正原因（必填）', maxLength: 500 })
   @IsString()
   @MaxLength(500)

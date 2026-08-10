@@ -137,8 +137,17 @@ log "核验公网端口（仅 web 80）..."
 ss -ltn 2>/dev/null | grep -q ':80 ' || fail "80 端口未监听（§9.14：仅 Nginx 入口暴露公网）"
 
 log "核验时钟同步（§9.14）..."
-if command -v timedatectl >/dev/null 2>&1 && ! timedatectl 2>/dev/null | grep -qi 'synchronized: yes'; then
-  log "警告：系统时钟未同步（涉及 OAuth 状态/会话到期/预签名 URL 的服务可能不就绪）"
+if command -v timedatectl >/dev/null 2>&1; then
+  if ! timedatectl 2>/dev/null | grep -qi 'synchronized: yes'; then
+    if [ "${ALLOW_CLOCK_DRIFT:-}" = "1" ]; then
+      log "警告：系统时钟未同步，已由 ALLOW_CLOCK_DRIFT=1 显式放行（涉及 OAuth 状态/会话到期/预签名 URL 的服务可能不就绪）"
+    else
+      fail "系统时钟未同步（§9.14：发布失败即停）。确认环境后可用 ALLOW_CLOCK_DRIFT=1 显式放行重试"
+    fi
+  fi
+else
+  # timedatectl 缺失（精简容器/无 systemd 环境）：无法核验，打明确警告不阻断（§9.14 措辞见 security-checklist）
+  log "警告：timedatectl 不存在，跳过时钟核验（无法确认系统时间同步状态）"
 fi
 
 # ---- 7. 更新日志自动生成（backstage PRD §9 / §9.9）----

@@ -32,16 +32,27 @@ docker compose --env-file .env.production exec -T worker node -e \
 
 ```bash
 INTERNAL_TOKEN="$(grep '^INTERNAL_SERVICE_TOKEN=' .env.production | cut -d= -f2-)"
+# 备份异步执行：先触发，返回 backupId；再轮询状态直至 SUCCEEDED（caller 白名单仅 migration-runner）
 docker compose --env-file .env.production exec -T platform-core node -e '
-  fetch("http://127.0.0.1:3001/internal/v1/backups/trigger", {
+  fetch("http://127.0.0.1:3001/internal/v1/backups/immediate", {
     method: "POST",
-    headers: { "authorization": "Bearer " + process.argv[1], "x-wbme-caller": "release-script", "content-type": "application/json" },
+    headers: { "authorization": "Bearer " + process.argv[1], "x-wbme-caller": "migration-runner", "content-type": "application/json" },
     body: "{}",
   }).then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.error ? 1 : 0); })
 ' "$INTERNAL_TOKEN"
 ```
 
-> 注：备份触发内部端点如未注册，使用管理后台页面触发（同一效果）。确认备份状态为成功后进入下一步。
+```bash
+# 轮询备份状态（替换 <backupId> 为上一步返回的 backupId）；SUCCEEDED 后才可进入下一步
+docker compose --env-file .env.production exec -T platform-core node -e '
+  const id = Number(process.argv[1]);
+  fetch("http://127.0.0.1:3001/internal/v1/backups/immediate/status/" + id, {
+    headers: { "authorization": "Bearer " + process.argv[2], "x-wbme-caller": "migration-runner" },
+  }).then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.status === "SUCCEEDED" ? 0 : 1); })
+' "<backupId>" "$INTERNAL_TOKEN"
+```
+
+> 注：备份触发也可使用管理后台「数据备份」页（同一效果）。确认备份状态为成功后，**记录 backupId 供步骤 3 使用**。
 
 ### 步骤 2：制造数据库损坏（演练限定在独立测试库或演练窗口）
 
@@ -62,18 +73,37 @@ docker compose --env-file .env.production stop platform-core asset hr fin worker
 恢复执行器保持运行（不依赖被损坏的数据库）：
 
 ```bash
+INTERNAL_TOKEN="$(grep '^INTERNAL_SERVICE_TOKEN=' .env.production | cut -d= -f2-)"
+# 投递恢复清单（worker 内部令牌 + 调用方白名单；body 必填 restoreUuid/backupId）
 docker compose --env-file .env.production exec -T recovery-executor node -e '
-  fetch("http://127.0.0.1:3090/internal/v1/recovery/delivery", {   # 或经 worker 后台任务投递
+  fetch("http://127.0.0.1:3090/recovery/delivery", {
     method: "POST",
     headers: { "authorization": "Bearer " + process.argv[1], "x-wbme-caller": "worker", "content-type": "application/json" },
-    body: JSON.stringify({ restoreUuid: "drill-$(date +%s)", ... }),
+    body: JSON.stringify({ restoreUuid: "drill-" + Date.now(), backupId: Number(process.argv[2]) }),
   }).then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.error ? 1 : 0); })
-' "$INTERNAL_TOKEN"
+' "$INTERNAL_TOKEN" "<backupId>"
+```
 
-# 确认进入维护状态（控制路由在数据库不可用时仍可访问）
+> 注：`$(date +%s)` 在单引号内不会展开，改用 node 的 `Date.now()` 生成恢复 UUID；`backupId` 取步骤 1 记录值。
+
+确认进入维护状态（控制路由在数据库不可用时仍可访问）——控制查询/触发需恢复控制会话 Cookie（backstage PRD §10 人工介入通道），两种途径：
+
+```bash
+# 途径 A（推荐）：经管理后台「数据备份」页操作——超管登录后签发控制 Cookie（path=/recovery）随浏览器会话透传
+# 途径 B：命令行携带 Cookie——先经平台签发恢复控制 Cookie（`POST /api/v1/restores/session`，
+# 需超管平台登录会话 + data_backup 权限；演练机从浏览器 DevTools 复制登录 Cookie 后调用）：
+docker compose --env-file .env.production exec -T platform-core node -e '
+  fetch("http://127.0.0.1:3001/api/v1/restores/session", {
+    method: "POST",
+    headers: { cookie: process.argv[1] },
+  }).then(r => { console.log(r.status, r.headers.get("set-cookie")); process.exit(r.ok ? 0 : 1); })
+' "<平台登录 Cookie>"
+# 输出中 wbme_recovery_session=... 即为步骤 4 所需的控制 Cookie
+# 拿到 wbme_recovery_session=... 后，带 Cookie 调用恢复执行器控制路由：
 docker compose --env-file .env.production exec -T recovery-executor node -e '
-  fetch("http://127.0.0.1:3090/recovery/status").then(r => r.json()).then(d => console.log(JSON.stringify(d)))
-'
+  fetch("http://127.0.0.1:3090/recovery/status", { headers: { cookie: process.argv[1] } })
+    .then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.error ? 1 : 0); })
+' "wbme_recovery_session=<token>"
 ```
 
 ### 步骤 4：执行恢复
@@ -81,15 +111,16 @@ docker compose --env-file .env.production exec -T recovery-executor node -e '
 恢复执行器按「预检 → 维护 → 还原（OSS 清单）→ 正向迁移（Migration Runner）→ 取消任务 → 重装备份 → 清空 Redis → 就绪校验」推进；任一阶段失败保持维护状态并保存脱敏原因：
 
 ```bash
-# 触发恢复（控制会话 Cookie 由 platform-core 超管签发；演练可经 recovery/session 签发）
+# 触发恢复（需步骤 3 签发的恢复控制 Cookie；无 Cookie → 401）
 docker compose --env-file .env.production exec -T recovery-executor node -e '
-  fetch("http://127.0.0.1:3090/recovery/retry", { method: "POST" })
+  fetch("http://127.0.0.1:3090/recovery/retry", { method: "POST", headers: { cookie: process.argv[1] } })
     .then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.error ? 1 : 0); })
-'
+' "wbme_recovery_session=<token>"
 
-# 轮询状态直至 DONE 或 MAINTENANCE（失败保持维护）
+# 轮询状态直至 DONE 或 MAINTENANCE（失败保持维护；同样需 Cookie）
 watch -n 5 'docker compose --env-file .env.production exec -T recovery-executor node -e \
-  "fetch(\"http://127.0.0.1:3090/recovery/status\").then(r=>r.json()).then(d=>console.log(JSON.stringify(d)))"'
+  "fetch(\"http://127.0.0.1:3090/recovery/status\", { headers: { cookie: process.argv[1] } }).then(r=>r.json()).then(d=>console.log(JSON.stringify(d)))" \
+  "wbme_recovery_session=<token>"'
 ```
 
 ### 步骤 5：恢复后校验

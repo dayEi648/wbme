@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { AssetDepartmentClient } from '../org/asset-department.client';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -48,7 +49,7 @@ describeDb('账号生命周期（T6-8）', () => {
   beforeAll(async () => {
     prisma = new PrismaService();
     lifecycle = new LifecycleService(prisma);
-    departments = new DepartmentService(prisma);
+    departments = new DepartmentService(prisma, new AssetDepartmentClient());
     positions = new PositionService(prisma);
     applications = new PositionApplicationService(prisma);
     approval = new HrApprovalService(prisma, new DepartmentClosureService(prisma), applications, { redis: {} } as unknown as RedisService);

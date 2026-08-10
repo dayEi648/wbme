@@ -155,7 +155,11 @@ export class ProjectService {
         try {
           await tx.project.update({
             where: { id },
-            data: buildProjectData(dto, businessKey, snapshots, operator.id, existing),
+            data: {
+              ...buildProjectData(dto, businessKey, snapshots, operator.id, existing),
+              // 每次成功变更递增 dataRevision（fin PRD §4）；预览快照以此校验导入覆盖过期
+              dataRevision: { increment: 1 },
+            },
           });
         } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -187,12 +191,12 @@ export class ProjectService {
    * @returns 删除数量
    * @throws VALIDATION_FAILED 部分目标不可删除（fields.failedIds 明细）
    */
-  async batchDelete(operator: FinOperationLogOperator, ids: readonly number[]): Promise<{ deleted: number }> {
+  async batchDelete(operator: FinOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FINANCE_MAINTAIN_FUNCTION_CODE,
       scope: 'fin.project.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
       run: async (tx) => {
         const rows = await tx.project.findMany({ where: { id: { in: [...ids] } } });
@@ -233,12 +237,12 @@ export class ProjectService {
    * @param ids 目标 id 列表
    * @returns 恢复数量
    */
-  async batchRestore(operator: FinOperationLogOperator, ids: readonly number[]): Promise<{ restored: number }> {
+  async batchRestore(operator: FinOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ restored: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: FINANCE_MAINTAIN_FUNCTION_CODE,
       scope: 'fin.project.restore',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
       run: async (tx) => {
         const rows = await tx.project.findMany({ where: { id: { in: [...ids] } } });
@@ -251,7 +255,8 @@ export class ProjectService {
         }
         await tx.project.updateMany({
           where: { id: { in: deleted.map((row) => row.id) } },
-          data: { deletedBy: null, deletedAt: null },
+          // 恢复属成功变更：递增 dataRevision（fin PRD §4），预览快照据此失效
+          data: { deletedBy: null, deletedAt: null, dataRevision: { increment: 1 } },
         });
         for (const row of deleted) {
           await writeProjectChange(tx, {

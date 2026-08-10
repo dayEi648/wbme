@@ -50,8 +50,10 @@ const DEFAULT_STATE_DIR = '.agents/restore-state';
 const RECOVERY_COOKIE_NAME = 'wbme_recovery_session';
 /** 恢复控制凭证有效窗口（毫秒，1 小时；与 Cookie maxAge 一致，服务端侧强制） */
 const RECOVERY_SESSION_TTL_MS = 60 * 60 * 1000;
-/** 停写等待窗口（毫秒）：等待已进入的写事务自然结束（生产由 Nginx/容器编排保证无新连接） */
-const WRITE_DRAIN_WAIT_MS = 5_000;
+/** 停写等待上限（毫秒）：确认除恢复执行器外不存在仍可写目标数据库的连接（backstage PRD §10） */
+const WRITE_DRAIN_MAX_WAIT_MS = 30_000;
+/** 停写轮询间隔（毫秒） */
+const WRITE_DRAIN_POLL_MS = 500;
 
 /**
  * 恢复执行状态机（backstage PRD §10）。
@@ -352,13 +354,53 @@ export class RecoveryExecutorService {
     }
   }
 
-  /** 维护：确保标记在位、镜像恢复记录、等待存量写事务自然结束 */
+  /** 维护：确保标记在位、镜像恢复记录、确认存量写连接排空后进入恢复 */
   private async stageMaintenance(): Promise<void> {
     await this.setMaintenanceMarker(true);
     await this.syncRestoreRow({ status: 'MAINTENANCE', stage: 'MAINTENANCE' }).catch(() => undefined);
-    // 有界停写窗口：生产环境 Nginx 已返回 503 且各应用连接池被编排关闭；
-    // 此处等待存量事务自然结束（PRD §10「等待已进入的写事务结束」的 MVP 近似）
-    await this.sleep(WRITE_DRAIN_WAIT_MS);
+    // 确认除恢复执行器外不存在仍可写目标数据库的连接（backstage PRD §10）：
+    // 轮询 pg_stat_activity 等待活跃写事务为 0；超时则记录明细并中止恢复（保持维护状态）。
+    const databaseUrl = process.env.DATABASE_URL?.trim();
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL 未配置，无法确认写连接排空');
+    }
+    const { Client } = await import('pg');
+    const client = new Client({ connectionString: databaseUrl, connectionTimeoutMillis: 3_000 });
+    await client.connect();
+    try {
+      const deadline = Date.now() + WRITE_DRAIN_MAX_WAIT_MS;
+      for (;;) {
+        const { rows } = await client.query<{
+          pid: number;
+          application_name: string;
+          client_addr: string | null;
+          state: string;
+          xact_start: Date | null;
+          query: string;
+        }>(
+          `SELECT pid, application_name, client_addr, state, xact_start, left(query, 200) AS query
+           FROM pg_stat_activity
+           WHERE datname = current_database()
+             AND pid <> pg_backend_pid()
+             AND backend_type = 'client backend'
+             AND state = 'active'
+             AND xact_start IS NOT NULL
+             AND query NOT ILIKE '%pg_stat_activity%'`,
+        );
+        if (rows.length === 0) {
+          return;
+        }
+        if (Date.now() >= deadline) {
+          const detail = rows
+            .map((row) => `pid=${row.pid} app=${row.application_name} addr=${row.client_addr ?? '-'} since=${row.xact_start?.toISOString()}`)
+            .join('；');
+          throw new Error(`停写等待超时：仍存在 ${rows.length} 个活跃写连接（${detail}），中止恢复并保持维护状态`);
+        }
+        await this.sleep(WRITE_DRAIN_POLL_MS);
+      }
+    } finally {
+      await client.end().catch(() => undefined);
+    }
   }
 
   /** 恢复：下载备份 → 校验 → pg_restore 覆盖目标库 */

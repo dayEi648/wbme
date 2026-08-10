@@ -230,8 +230,8 @@ export class ProjectQueryDto extends PaginationQueryDto {
   view?: 'normal' | 'deleted';
 }
 
-/** 项目批量软删除（全有或全无；任一不可删除整批回滚并返回失败明细；主 PRD §2.6） */
-export class ProjectBatchDeleteDto {
+/** 项目批量软删除（全有或全无；任一不可删除整批回滚并返回失败明细；主 PRD §2.6/§9.5 批量操作幂等） */
+export class ProjectBatchDeleteDto extends IdempotentDto {
   @ApiProperty({ description: '项目 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @ArrayMaxSize(BATCH_LIMIT)
@@ -242,8 +242,8 @@ export class ProjectBatchDeleteDto {
   ids!: number[];
 }
 
-/** 项目批量恢复（已删除视图勾选后批量恢复；保留原 ID/业务键/数据与操作历史；fin PRD §3） */
-export class ProjectBatchRestoreDto {
+/** 项目批量恢复（已删除视图勾选后批量恢复；保留原 ID/业务键/数据与操作历史；fin PRD §3；主 PRD §9.5 批量操作幂等） */
+export class ProjectBatchRestoreDto extends IdempotentDto {
   @ApiProperty({ description: '项目 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @ArrayMaxSize(BATCH_LIMIT)

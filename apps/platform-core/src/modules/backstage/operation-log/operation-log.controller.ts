@@ -1,7 +1,7 @@
 import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Controller, Get, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { OPERATION_LOG_VIEW_FUNCTION_CODE, PaginationQueryDto } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import type { Response } from 'express';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
@@ -73,6 +73,8 @@ export class OperationLogController {
 
   /** 导出操作日志（xlsx 流） */
   @Post('export')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'operation-log-export', keyType: 'user', limit: 20, windowSeconds: 3600 })
   async export(
     @CurrentUser() userId: number,
     @Query() query: OperationLogQueryDto,

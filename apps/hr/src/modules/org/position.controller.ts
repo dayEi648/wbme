@@ -87,6 +87,6 @@ export class PositionController {
   async deleteBatch(@CurrentUser() userId: number, @Body() dto: PositionDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, POSITION_MANAGE_FUNCTION_CODE);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
-    return this.positions.deleteBatch(operator, dto.ids);
+    return this.positions.deleteBatch(operator, dto.ids, dto.idempotencyKey);
   }
 }

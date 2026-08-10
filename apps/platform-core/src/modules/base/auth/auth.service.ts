@@ -147,9 +147,18 @@ export class AuthService {
         ? this.prisma.client.function
             .findMany({ select: { code: true }, orderBy: { code: 'asc' } })
             .then((functions) => functions.map((functionItem) => functionItem.code))
-        : this.prisma.client.employeeGrant
+        : // 仅返回仍在功能目录中的授权码（移除的功能不再参与入口/菜单/守卫判断，主 PRD §3.1；
+          // 与 portal.service 及 FunctionPermissionGuard 的语义对齐）
+          this.prisma.client.employeeGrant
             .findMany({ where: { userId }, select: { functionCode: true }, orderBy: { functionCode: 'asc' } })
-            .then((grants) => grants.map((grant) => grant.functionCode)),
+            .then(async (grants) => {
+              const active = await this.prisma.client.function.findMany({
+                where: { code: { in: grants.map((grant) => grant.functionCode) } },
+                select: { code: true },
+              });
+              const activeCodes = new Set(active.map((functionItem) => functionItem.code));
+              return grants.map((grant) => grant.functionCode).filter((code) => activeCodes.has(code));
+            }),
     ]);
     return {
       user: {

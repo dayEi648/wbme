@@ -57,8 +57,8 @@
 | `POST` | `/departments` | 创建部门（幂等；停用部门不能作为新建下级目标；`org_tree_version++`） |
 | `PUT` | `/departments/{id}` | 更新部门（名称/排序/启停） |
 | `PUT` | `/departments/{id}/move` | 移动部门节点（环校验 `ORGANIZATION_CYCLE`；页面展示受影响子树并二次确认） |
-| `GET` | `/departments/delete-preview?ids=` | 删除前引用确认（在职员工数/待审批申请数/职称规则引用数；固定资产归属数当前不统计） |
-| `DELETE` | `/departments/delete` | 批量硬删除（有未删除下级整批不变更；同一事务清理员工/负责人/岗位适用引用；`org_tree_version++`） |
+| `GET` | `/departments/delete-preview?ids=` | 删除前引用确认（在职员工数/待审批申请数/职称规则引用数/固定资产归属数；资产数经 asset 内部接口统计，asset 不可用时降级为 0 并返回 `assetUnavailable: true`） |
+| `DELETE` | `/departments/delete` | 批量硬删除（幂等；有未删除下级整批不变更；同一事务清理员工/负责人/岗位适用引用并置空固定资产部门归属——经 asset 内部接口，asset 不可用则整批回滚；`org_tree_version++`） |
 
 ## 岗位管理（hr PRD §7）
 
@@ -71,7 +71,7 @@
 | `PUT` | `/positions/{id}` | 更新岗位（名称/说明/启停/排序/是否允许自助申请） |
 | `PUT` | `/positions/{id}/departments` | 更新适用部门（修改前校验全部在岗员工兼容性，不兼容整次拒绝并返回 affectedUserIds） |
 | `GET` | `/positions/delete-preview?ids=` | 删除前引用确认（在岗员工数/待审批岗位申请数/职称规则引用数） |
-| `DELETE` | `/positions/delete` | 批量硬删除（在岗员工岗位置空；待审批申请保留但批准时失败） |
+| `DELETE` | `/positions/delete` | 批量硬删除（幂等；在岗员工岗位置空；待审批申请保留但批准时失败） |
 
 ## 职称管理（hr PRD §8）
 
@@ -82,7 +82,7 @@
 | `GET` | `/title-rules` | 规则列表（分页；keyword/status 筛选；软删排除） |
 | `POST` | `/title-rules` | 创建规则（幂等；条件目标须存在；条件可部分填写，全空=通用规则） |
 | `PUT` | `/title-rules/{id}` | 更新规则 |
-| `DELETE` | `/title-rules/delete` | 批量软删除（不提供硬删除；软删不参与匹配） |
+| `DELETE` | `/title-rules/delete` | 批量软删除（幂等；不提供硬删除；软删不参与匹配） |
 
 ## 节假日（hr PRD §3）
 
@@ -127,7 +127,7 @@ DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批
 | `GET` | `/dicts` | 字典列表（dictType/status 筛选 + 分页） |
 | `POST` | `/dicts` | 新增字典项（幂等；同类型同名唯一） |
 | `PUT` | `/dicts/{id}` | 更新字典项（名称/排序/启停） |
-| `DELETE` | `/dicts/delete` | 批量硬删除（任一被业务引用整批拒绝——MVP 无引用表，机制保留） |
+| `DELETE` | `/dicts/delete` | 批量硬删除（幂等；任一被业务引用整批拒绝——MVP 无引用表，机制保留） |
 
 设置键：`overtime.advance.days`（提前申请窗口，默认 30）、`overtime.backfill.days`（补交窗口，默认 7）。
 

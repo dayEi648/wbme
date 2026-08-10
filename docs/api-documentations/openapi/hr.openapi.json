@@ -55,6 +55,11 @@
       },
       "DepartmentDeleteDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "ids": {
             "description": "部门 id 列表（1-100 个，互不重复）",
             "items": {
@@ -412,6 +417,11 @@
       },
       "HrDictDeleteDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "ids": {
             "description": "字典项 id 列表（1-100 个，互不重复）",
             "items": {
@@ -502,7 +512,7 @@
             "type": "string"
           },
           "value": {
-            "description": "设置值（字符串表达；按 value_type 校验，本期全部为数值）",
+            "description": "设置值（字符串表达；按 value_type 校验，全部为数值）",
             "maxLength": 100,
             "type": "string"
           }
@@ -639,6 +649,11 @@
       },
       "PositionDeleteDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "ids": {
             "description": "岗位 id 列表（1-100 个，互不重复）",
             "items": {
@@ -801,6 +816,11 @@
       },
       "TitleRuleDeleteDto": {
         "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
           "ids": {
             "description": "职称规则 id 列表（1-100 个，互不重复）",
             "items": {
@@ -1108,7 +1128,7 @@
       }
     },
     "/api/v1/approval-requests/export": {
-      "get": {
+      "post": {
         "operationId": "ApprovalController_exportList",
         "parameters": [
           {
@@ -1213,7 +1233,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": ""
           }
         },

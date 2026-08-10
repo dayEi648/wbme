@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { BusinessException, integrationErrors } from '@wbme/contracts';
 import { InternalHttpClient, InternalRequestError } from '@wbme/server';
 
-/** 恢复执行器内部地址（开发默认本地回环；生产 compose 私网 http://recovery-executor:3010） */
+/**
+ * 恢复执行器内部地址（开发默认本地回环 3010；生产 compose 私网 http://recovery-executor:3090）。
+ * 恢复执行器内部控制路由挂在 `/recovery/*` 下（无 `/internal/v1` 前缀），
+ * 因此 base URL 不得带 internal 后缀，否则 InternalHttpClient 直拼 `${baseUrl}${path}`
+ * 会请求到不存在的 `/internal/v1/recovery/session` → 404（M29）。
+ */
 const RECOVERY_EXECUTOR_INTERNAL_BASE_URL =
   process.env.RECOVERY_EXECUTOR_INTERNAL_BASE_URL ?? 'http://localhost:3010';
 
@@ -23,6 +28,12 @@ export class RecoverySessionClient {
    */
   constructor() {
     const token = process.env.INTERNAL_SERVICE_TOKEN ?? '';
+    // 防回归断言（M29）：base URL 误带 /internal/v1 时所有签发请求必然 404，装配期即暴露
+    if (RECOVERY_EXECUTOR_INTERNAL_BASE_URL.includes('/internal')) {
+      throw new Error(
+        `RECOVERY_EXECUTOR_INTERNAL_BASE_URL 不得包含 /internal 前缀（恢复执行器路由为 /recovery/*）：${RECOVERY_EXECUTOR_INTERNAL_BASE_URL}`,
+      );
+    }
     this.client = token
       ? new InternalHttpClient({ baseUrl: RECOVERY_EXECUTOR_INTERNAL_BASE_URL, token, caller: 'platform-core' })
       : null;

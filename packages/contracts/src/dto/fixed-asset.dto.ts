@@ -110,7 +110,7 @@ export class AssetCreateDto extends IdempotentDto {
  * 责任人与所属部门不在普通编辑内（必须走调度接口产生调度记录）；普通编辑只允许
  * 在 IDLE/IN_USE 互切，或把已报废恢复为 IDLE/IN_USE（记录状态变更前后值与操作人）。
  */
-export class AssetUpdateDto {
+export class AssetUpdateDto extends IdempotentDto {
   @ApiProperty({ description: '资产名称', maxLength: 100 })
   @IsString()
   @MaxLength(100)
@@ -178,7 +178,7 @@ export class AssetUpdateDto {
 }
 
 /** 调度（asset PRD §4：责任人和所属部门变化必须产生调度记录；目标责任人必须属于目标部门） */
-export class AssetScheduleDto {
+export class AssetScheduleDto extends IdempotentDto {
   @ApiProperty({ description: '目标所属部门 id', minimum: 1 })
   @Type(() => Number)
   @IsInt()
@@ -199,14 +199,14 @@ export class AssetScheduleDto {
 }
 
 /** 报废（asset PRD §4：业务状态而非删除；二次确认） */
-export class AssetScrapDto {
+export class AssetScrapDto extends IdempotentDto {
   @ApiProperty({ description: '二次确认标志（必须为 true）' })
   @IsBoolean()
   confirm!: boolean;
 }
 
 /** 批量软删除（asset PRD §4：仍在使用或有业务关联的资产整批拒绝） */
-export class AssetBatchDeleteDto {
+export class AssetBatchDeleteDto extends IdempotentDto {
   @ApiProperty({ description: '资产 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个资产 id' })

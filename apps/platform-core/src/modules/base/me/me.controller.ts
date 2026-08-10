@@ -94,7 +94,7 @@ export class MeController {
       where: { id: userId },
       select: { isSuperAdmin: true },
     });
-    const result = await this.profileChange.submitProfileChange(userId, user?.isSuperAdmin ?? false, dto);
+    const result = await this.profileChange.submitProfileChange(userId, user?.isSuperAdmin ?? false, dto, dto.idempotencyKey);
     return { applied: result.applied, requestId: result.requestId };
   }
 

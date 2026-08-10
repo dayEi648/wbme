@@ -104,9 +104,9 @@
 ## 门户与个人中心
 
 ### P1 门户 `GET /portal`
-登录态。`{ brand, user: { id, name, phoneMasked }, systems: [{ code, name, productStatus, hasPermission, entryUrl }], announcement: { title, content, publishedAt } | null, badgeCount: 0 }`。
+登录态。`{ brand, user: { id, name, phoneMasked }, systems: [{ code, name, productStatus, hasPermission, entryUrl }], announcement: { title, content, publishedAt } | null, badgeBySystem: { BACKSTAGE, HR, ASSET, FIN } }`（M24 起按系统拆分角标）。
 - 入口可见：拥有该系统至少一项功能授权（超管全可见）；"即将上线"展示状态但不可进入
-- 公告：仅当前唯一"正在展示"（PUBLISHING）的公告，无则 null；待办角标 = 本地资料修改待办 + hr/asset 内部 `pending-count` 聚合（hr/asset 不可用时对应部分降级为 0）
+- 公告：仅当前唯一"正在展示"（PUBLISHING）的公告，无则 null；待办角标按系统：BACKSTAGE = 本地资料修改待办，HR/ASSET = 内部 `pending-count`（依赖不可用贡献 0），FIN = 恒 0
 
 ### P2 个人中心 `GET /me`
 登录态。`{ user, departments, positions, canApplyPositionChange, pendingProfileChange }`（部门/岗位经 hr 内部接口真实填充；hr 不可用时优雅降级为空列表）。

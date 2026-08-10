@@ -51,7 +51,7 @@ export class ApprovalController {
    * @param query 筛选
    * @param res 流式响应
    */
-  @Get('export')
+  @Post('export')
   async exportList(
     @CurrentUser() userId: number,
     @Query() query: ApprovalListQueryDto,

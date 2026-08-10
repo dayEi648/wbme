@@ -6,9 +6,17 @@ import { ImagesService } from './images.service';
 /** 服务端生成键形状的样例（images/{userId}/{uuid}{ext}） */
 const SAMPLE_KEY = 'images/42/9f4f4f18-0c2e-4c1b-9f3f-7f6a5e4d3c2b.png';
 
-function createService(storage?: Partial<FileStorageService>): { service: ImagesService; storage: Partial<FileStorageService> } {
+function createService(
+  storage?: Partial<FileStorageService>,
+  imageObjects?: { upsert: ReturnType<typeof vi.fn>; findUnique: ReturnType<typeof vi.fn> },
+): { service: ImagesService; storage: Partial<FileStorageService> } {
   const fake = storage ?? { presignImageUpload: vi.fn(), finalizeImage: vi.fn(), presignDownload: vi.fn() };
-  return { service: new ImagesService(fake as unknown as FileStorageService), storage: fake };
+  const prisma = {
+    client: {
+      imageObject: imageObjects ?? { upsert: vi.fn().mockResolvedValue({}), findUnique: vi.fn().mockResolvedValue({ objectKey: SAMPLE_KEY }) },
+    },
+  };
+  return { service: new ImagesService(fake as unknown as FileStorageService, prisma as never), storage: fake };
 }
 
 describe('ImagesService', () => {
@@ -58,10 +66,24 @@ describe('ImagesService', () => {
       );
       expect(storage.finalizeImage).not.toHaveBeenCalled();
     });
+
+    it('finalize 成功后登记正式对象注册表（对象键 + 归属用户）', async () => {
+      const upsert = vi.fn().mockResolvedValue({});
+      const { service, storage } = createService(undefined, { upsert, findUnique: vi.fn() });
+      vi.mocked(storage.finalizeImage!).mockResolvedValue({ objectKey: SAMPLE_KEY, mime: 'image/png', size: 1024 });
+
+      await service.finalizeUpload(42, SAMPLE_KEY);
+
+      expect(upsert).toHaveBeenCalledWith({
+        where: { objectKey: SAMPLE_KEY },
+        create: { objectKey: SAMPLE_KEY, ownerUserId: 42 },
+        update: { ownerUserId: 42 },
+      });
+    });
   });
 
   describe('downloadUrl', () => {
-    it('合法正式键：返回预签名下载结果', async () => {
+    it('合法正式键且已登记：返回预签名下载结果', async () => {
       const { service, storage } = createService();
       const expected = { objectKey: SAMPLE_KEY, downloadUrl: 'https://oss.example.com/get', expiresAt: '2026-01-01T00:00:00Z' };
       vi.mocked(storage.presignDownload!).mockResolvedValue(expected);
@@ -70,6 +92,13 @@ describe('ImagesService', () => {
 
       expect(storage.presignDownload).toHaveBeenCalledWith(SAMPLE_KEY);
       expect(result).toEqual(expected);
+    });
+
+    it('合法键但未登记（临时对象）：抛 RESOURCE_NOT_FOUND 且不触达存储', async () => {
+      const findUnique = vi.fn().mockResolvedValue(null);
+      const { service, storage } = createService(undefined, { upsert: vi.fn(), findUnique });
+      await expect(service.downloadUrl(SAMPLE_KEY)).rejects.toThrow(new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND));
+      expect(storage.presignDownload).not.toHaveBeenCalled();
     });
 
     it.each([

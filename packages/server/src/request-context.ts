@@ -34,6 +34,8 @@ export interface RequestContext {
   /** 当前路由的授权功能与数据范围（由函数权限守卫写入；业务层据此做行级过滤，
    * 范围外记录视为不存在以 404 呈现；未声明功能要求的路由不写入） */
   grantedFunction?: GrantedFunctionContext;
+  /** 请求级互斥锁（守卫在读取上传请求体前取得后写入；业务服务复用，响应结束统一释放） */
+  importLockRelease?: () => Promise<void>;
 }
 
 /** 全局请求上下文存储 */
@@ -100,4 +102,20 @@ export function setGrantedFunction(granted: GrantedFunctionContext): void {
  */
 export function getGrantedFunction(): GrantedFunctionContext | undefined {
   return getRequestContext()?.grantedFunction;
+}
+
+/**
+ * 写入当前请求已持有的导入互斥锁（由守卫在读取上传请求体前取得后写入；fin PRD §4）。
+ * 业务服务调用 getRequestImportLockRelease 复用同一句柄，避免重复获取；释放统一由守卫挂到响应关闭。
+ */
+export function setRequestImportLockRelease(release: () => Promise<void>): void {
+  const context = REQUEST_CONTEXT_STORAGE.getStore();
+  if (context) {
+    context.importLockRelease = release;
+  }
+}
+
+/** 读取当前请求已持有的导入互斥锁；守卫未获取时返回 undefined */
+export function getRequestImportLockRelease(): (() => Promise<void>) | undefined {
+  return getRequestContext()?.importLockRelease;
 }

@@ -1,7 +1,7 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ANNOUNCEMENT_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
 import {
   BatchDeleteAnnouncementsDto,
@@ -60,6 +60,8 @@ export class AnnouncementController {
   }
 
   @Delete('batch')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'announcement-batch-delete', keyType: 'user', limit: 10, windowSeconds: 60 })
   batchDelete(@CurrentUser() operatorId: number, @Body() dto: BatchDeleteAnnouncementsDto): Promise<unknown> {
     return this.announcements.batchDelete(operatorId, dto);
   }

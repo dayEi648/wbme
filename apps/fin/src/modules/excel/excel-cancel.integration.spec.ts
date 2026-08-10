@@ -12,6 +12,7 @@ import {
   setRequestUserId,
 } from '@wbme/server';
 import { ExcelController } from './excel.controller';
+import { ExcelImportLockGuard } from './excel-import-lock.guard';
 import { ExportService } from './export.service';
 import { ImportService } from './import.service';
 import { XlsxWorkerPool } from './xlsx-worker-pool';
@@ -142,13 +143,14 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
         XlsxWorkerPool,
         ImportService,
         ExportService,
+        ExcelImportLockGuard,
         { provide: PrismaService, useValue: prisma },
         { provide: REDIS_CLIENT, useValue: redis },
       ],
     }).compile();
     app = moduleRef.createNestApplication();
     app.use(createRequestContextMiddleware('fin'));
-    app.use((req, res, next) => {
+    app.use((req: http.IncomingMessage, res: http.ServerResponse, next: (err?: unknown) => void) => {
       void setRequestUserId(operatorId);
       next();
     });
@@ -230,8 +232,8 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
   });
 
   it('service 层：写入窗口内取消 → 事务整批回滚、无部分写入', async () => {
-    // 大文件（2000 行，解析+新增写入 4000+ 次串行往返）保证确认处理耗时远大于取消定时，
-    // 取消稳定落在解析/写入窗口内：解析后检查点或事务内检查点抛错，均不产生部分写入
+    // 大文件（2000 行）保证确认处理耗时大于取消定时（M18 后写入已集合化分批，取消落在
+    // 解析后检查点或分批/审计检查点均抛错回滚，不产生部分写入）
     const buffer = await buildCancelFile(2000);
     const operator = { id: operatorId, name: '导入取消测试员', departments: [] };
     const preview = await service.preview(operator, buffer);
@@ -239,7 +241,7 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
     const choices = await buildChoices(buffer);
     const controller = new AbortController();
     const pending = service.confirm(operator, buffer, choices as never, `cancel-mid:${Date.now()}`, controller.signal);
-    setTimeout(() => controller.abort(), 800);
+    setTimeout(() => controller.abort(), 300);
     await expect(pending).rejects.toThrow();
     await assertNoPartialWrite();
   });
@@ -272,7 +274,7 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
       req.on('response', () => resolvePromise());
     });
     req.end(body);
-    setTimeout(() => req.destroy(), 300);
+    setTimeout(() => req.destroy(), 120);
     await failure;
     // 等待服务端取消传播与回滚完成
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));

@@ -47,7 +47,7 @@ export class DictController {
   ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.dict.update(operator, id, dto);
+    return this.dict.update(operator, id, dto, dto.idempotencyKey);
   }
 
   /** 批量硬删除（任一项被业务引用则整批回滚） */
@@ -55,6 +55,6 @@ export class DictController {
   async batchDelete(@CurrentUser() userId: number, @Body() dto: AssetDictItemBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.dict.batchDelete(operator, dto.ids);
+    return this.dict.batchDelete(operator, dto.ids, dto.idempotencyKey);
   }
 }

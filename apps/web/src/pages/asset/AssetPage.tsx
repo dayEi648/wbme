@@ -1,4 +1,4 @@
-import { Button, Card, Popconfirm, Space, Table, Typography } from 'antd';
+import { Button, Card, Popconfirm, Segmented, Space, Table, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
@@ -10,19 +10,24 @@ import { SettingsEditor } from '../../components/SettingsEditor';
 import { SystemHome } from '../../components/SystemHome';
 import { useFeedback } from '../../request/feedback';
 import { http } from '../../request/http';
+import { useSession } from '../../request/session';
 
 const NAVIGATION: NavigationItem[] = [
   { key: 'my-assets', label: '我的资产', path: '/asset/my-assets', permission: 'my_assets' },
   { key: 'assets', label: '固定资产台账', path: '/asset/assets', permission: ['fixed_asset_view', 'fixed_asset_maintain'] },
   { key: 'repairs', label: '维修管理', path: '/asset/repairs', permission: 'fixed_asset_maintain' },
-  { key: 'consumables', label: '消耗品配置', path: '/asset/consumables', permission: 'asset_config' },
-  { key: 'warehouses', label: '库位管理', path: '/asset/warehouses', permission: 'asset_config' },
+  { key: 'consumables', label: '消耗品配置', path: '/asset/consumables', permission: 'inventory_manage' },
+  { key: 'warehouses', label: '库位管理', path: '/asset/warehouses', permission: 'inventory_manage' },
   { key: 'inventory', label: '库存管理', path: '/asset/inventory', permission: 'inventory_manage' },
   { key: 'stock-flows', label: '库存流水', path: '/asset/stock-flows', permission: 'inventory_manage' },
   { key: 'transfers', label: '库存调拨', path: '/asset/transfers', permission: 'inventory_manage' },
   { key: 'stock-in', label: '入库申请', path: '/asset/stock-in', permission: 'stock_in_apply' },
   { key: 'stock-change', label: '库存变更申请', path: '/asset/stock-change', permission: 'stock_change_apply' },
   { key: 'claims', label: '消耗品申领', path: '/asset/claims', permission: 'consumable_apply' },
+  { key: 'stock-in-history', label: '入库申请历史', path: '/asset/stock-in-history', permission: 'stock_in_history' },
+  { key: 'stock-change-history', label: '库存变更历史', path: '/asset/stock-change-history', permission: 'stock_change_history' },
+  { key: 'claim-history', label: '申领历史', path: '/asset/claim-history', permission: 'consumable_apply_history' },
+  { key: 'borrow-history', label: '借还历史', path: '/asset/borrow-history', permission: 'borrow_history' },
   { key: 'agent-claims', label: '代领申请', path: '/asset/agent-claims', permission: 'proxy_apply' },
   { key: 'agent-settlements', label: '代领结清', path: '/asset/agent-settlements', permission: 'proxy_apply' },
   { key: 'borrow', label: '借还与核销', path: '/asset/borrow', permission: 'my_borrow' },
@@ -48,6 +53,45 @@ const COMMON_COLUMNS = [
   { key: 'name', title: '名称' },
   { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
   { key: 'createdAt', title: '创建时间' },
+];
+
+/**
+ * 借还历史列（契约：对齐后端 borrow.service listHistory SELECT 字段经 DataTable
+ * normalizeRow 转驼峰后的键，asset-page-columns.spec 有列 key 契约断言，M20）。
+ */
+export const BORROW_HISTORY_COLUMNS = [
+  { key: 'id', title: 'ID', fixed: 'left' as const },
+  { key: 'recordType', title: '记录类型' },
+  { key: 'userName', title: '借用人/代交人' },
+  { key: 'consumableName', title: '物品' },
+  { key: 'qty', title: '数量' },
+  { key: 'borrowedAt', title: '借出时间' },
+  { key: 'dueAt', title: '到期时间' },
+  { key: 'returnedQty', title: '已归还' },
+  { key: 'writtenOffQty', title: '已核销' },
+  { key: 'createdAt', title: '创建时间' },
+];
+
+/** 待处置列（契约：对齐后端 disposal.service listPending SELECT 字段经 normalizeRow 转驼峰，M28） */
+export const DISPOSAL_PENDING_COLUMNS = [
+  { key: 'recordId', title: '记录 ID', fixed: 'left' as const },
+  { key: 'recordType', title: '记录类型' },
+  { key: 'userName', title: '目标用户' },
+  { key: 'consumableName', title: '物品' },
+  { key: 'qty', title: '数量' },
+  { key: 'dueAt', title: '到期时间' },
+];
+
+/** 处置记录列（契约：对齐后端 disposal.service listRecords SELECT 字段，M28） */
+export const DISPOSAL_RECORDS_COLUMNS = [
+  { key: 'id', title: 'ID', fixed: 'left' as const },
+  { key: 'recordType', title: '记录类型' },
+  { key: 'userName', title: '目标用户' },
+  { key: 'consumableName', title: '物品' },
+  { key: 'qty', title: '数量' },
+  { key: 'disposalType', title: '处置方式' },
+  { key: 'processorName', title: '处理人' },
+  { key: 'createdAt', title: '处理时间' },
 ];
 
 const ENABLED_STATUS_OPTIONS = [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }];
@@ -78,20 +122,28 @@ export default function AssetPage() {
         return <ResourcePage title="库存调拨" description="每次调拨处理一个库存条目，服务端按 FIFO 分配批次并保持总量不变。" service="asset" endpoint="/asset/inventory-transfers" pageKey="asset-inventory-transfers" columns={[...COMMON_COLUMNS, { key: 'sourceLocationName', title: '来源库位' }, { key: 'targetLocationName', title: '目标库位' }, { key: 'qty', title: '数量' }]} create={{ title: '发起调拨', fields: [{ key: 'fromInventoryItemId', label: '来源库存 ID', type: 'number', required: true }, { key: 'toWarehouseId', label: '目标库位 ID', type: 'number', required: true }, { key: 'qty', label: '数量', type: 'number', required: true }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }] }} />;
       case 'stock-in':
         return <ResourcePage title="入库申请" description="提交后库存按审批状态占用或入账；展示本人提交的历史。" service="asset" endpoint="/stock-in-requests/mine" pageKey="asset-stock-in" columns={[...COMMON_COLUMNS, { key: 'applicantName', title: '申请人' }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建入库申请', endpoint: '/stock-in-requests', fields: [{ key: 'items', label: '入库明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+      case 'stock-in-history':
+        return <ResourcePage title="入库申请历史" description="查看数据范围内全部入库申请记录（「入库申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-in-requests" pageKey="asset-stock-in-history" columns={[...COMMON_COLUMNS, { key: 'applicantName', title: '申请人' }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'stock-change':
         return <ResourcePage title="库存变更申请" description="意外扣减等库存变更经过审批，拒绝与取消会释放占用。" service="asset" endpoint="/stock-change-requests/mine" pageKey="asset-stock-change" columns={[...COMMON_COLUMNS, { key: 'applicantName', title: '申请人' }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建库存变更申请', endpoint: '/stock-change-requests', fields: [{ key: 'items', label: '变更明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+      case 'stock-change-history':
+        return <ResourcePage title="库存变更历史" description="查看数据范围内全部库存变更申请记录（「库存变更申请历史记录」部门/公司档）。" service="asset" endpoint="/stock-change-requests" pageKey="asset-stock-change-history" columns={[...COMMON_COLUMNS, { key: 'applicantName', title: '申请人' }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'claims':
         return <ResourcePage title="消耗品申领" description="普通申领按可用库存与个人额度进行原子占用。" service="asset" endpoint="/consumable-requests/mine" pageKey="asset-claims" columns={[...COMMON_COLUMNS, { key: 'applicantName', title: '申请人' }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交申领', endpoint: '/consumable-requests', fields: [{ key: 'items', label: '申领明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+      case 'claim-history':
+        return <ResourcePage title="申领历史" description="查看数据范围内全部消耗品申领记录（「消耗品申领历史记录」部门/公司档）。" service="asset" endpoint="/consumable-requests" pageKey="asset-claim-history" columns={[...COMMON_COLUMNS, { key: 'applicantName', title: '申请人' }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'agent-claims':
         return <ResourcePage title="代领申请" description="代领需指定受领人；受领人可查看共享借还清单。" service="asset" endpoint="/agent-requests/mine" pageKey="asset-agent-claims" columns={[...COMMON_COLUMNS, { key: 'applicantName', title: '代领人' }, { key: 'recipientCount', title: '受领人数' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领申请', endpoint: '/agent-requests', fields: [{ key: 'items', label: '物品明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }, { key: 'recipientIds', label: '受领人 ID（JSON 数组）', type: 'textarea', required: true, maxLength: 2000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items), recipientIds: parseJsonArray(values.recipientIds) }) }} />;
       case 'agent-settlements':
         return <ResourcePage title="代领整单结清" description="代领借还必须一次性覆盖整张共享清单的全部未结清数量，提交后进入消耗品审批。" service="asset" endpoint="/agent-settlements/mine" pageKey="asset-agent-settlements" columns={[...COMMON_COLUMNS, { key: 'applicationNo', title: '申请编号' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领整单结清', endpoint: '/agent-settlements', fields: [{ key: 'refRequestId', label: '代领申请 ID', type: 'number', required: true }, { key: 'items', label: '结清明细（JSON）', type: 'textarea', required: true, maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }], transform: (values) => ({ refRequestId: values.refRequestId, items: parseJsonArray(values.items) }) }} />;
       case 'borrow':
         return <BorrowPage />;
+      case 'borrow-history':
+        return <ResourcePage title="借还历史" description="查看数据范围内全部借还/归还/核销记录（「借还历史记录」部门/公司档）。" service="asset" endpoint="/borrow-records" pageKey="asset-borrow-history" columns={BORROW_HISTORY_COLUMNS} filterFields={[{ key: 'keyword', title: '物品/借用人关键字', type: 'text' }]} />;
       case 'my-requests':
         return <MyAssetApplications />;
       case 'disposals':
-        return <ResourcePage title="注销借还处置" description="对已注销员工的未结清借还直接归还或核销；这是最终处置，不创建审批申请。" service="asset" endpoint="/disposals?tab=PENDING" pageKey="asset-disposals" columns={[...COMMON_COLUMNS, { key: 'targetUserName', title: '目标用户' }, { key: 'submittedAt', title: '提交时间' }]} create={{ title: '执行直接处置', endpoint: '/disposals', fields: [{ key: 'disposalType', label: '处置类型', type: 'select', required: true, options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }, { key: 'items', label: '个人借还明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }, { key: 'agentRequestId', label: '代领申请 ID（仅整单结清）', type: 'number' }, { key: 'agentItems', label: '代领结清明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"WRITE_OFF","writeOffType":"LOST","reason":"遗失","qty":1}]' }], transform: disposalPayload }} />;
+        return <DisposalManagement />;
       case 'qr-codes':
         return <QrCodeManagement />;
       case 'approval':
@@ -107,6 +159,9 @@ export default function AssetPage() {
 
 function FixedAssets() {
   const feedback = useFeedback();
+  const { can } = useSession();
+  // 只读用户（fixed_asset_view）不展示任何编辑入口（主 PRD §10.4，M25）
+  const canMaintain = can('fixed_asset_maintain');
   const [version, setVersion] = useState(0);
   const [scheduleId, setScheduleId] = useState<number | null>(null);
   const schedule = async (values: Record<string, unknown>) => {
@@ -143,7 +198,7 @@ function FixedAssets() {
         { key: 'usageStatus', title: '状态', type: 'enum', options: ASSET_USAGE_STATUS_OPTIONS },
         { key: 'departmentId', title: '部门 ID', type: 'number' },
       ]}
-      create={{
+      create={canMaintain ? {
         title: '新建固定资产',
         fields: [
           { key: 'name', label: '资产名称', required: true, maxLength: 100 },
@@ -158,8 +213,8 @@ function FixedAssets() {
           { key: 'currentUserId', label: '使用者 ID', type: 'number' },
           { key: 'remark', label: '备注', type: 'textarea', maxLength: 500 },
         ],
-      }}
-      edit={{
+      } : undefined}
+      edit={canMaintain ? {
         title: '编辑固定资产',
         fields: [
           { key: 'name', label: '资产名称', required: true, maxLength: 100 },
@@ -173,10 +228,10 @@ function FixedAssets() {
           { key: 'usageStatus', label: '使用状态', type: 'select', required: true, options: [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }] },
           { key: 'remark', label: '备注', type: 'textarea', maxLength: 500 },
         ],
-      }}
-      batchDelete={{ endpoint: '/assets/batch', bodyKey: 'ids' }}
+      } : undefined}
+      batchDelete={canMaintain ? { endpoint: '/assets/batch', bodyKey: 'ids' } : undefined}
       exportConfig={{ allEndpoint: '/assets/export', filename: 'assets.xlsx' }}
-      rowActions={(row) => (
+      rowActions={canMaintain ? (row) => (
         <Space size="small">
           <Button size="small" onClick={() => setScheduleId(Number(row.id))}>调度</Button>
           {row.usageStatus !== 'SCRAPPED' ? (
@@ -185,7 +240,7 @@ function FixedAssets() {
             </Popconfirm>
           ) : null}
         </Space>
-      )}
+      ) : undefined}
     />
     <ResourceFormModal title="资产调度" open={scheduleId !== null} onCancel={() => setScheduleId(null)} onSubmit={schedule} fields={[{ key: 'toDepartmentId', label: '目标部门 ID', type: 'number', required: true }, { key: 'toUserId', label: '目标责任人 ID', type: 'number', required: true }, { key: 'remark', label: '调度备注', type: 'textarea', maxLength: 200 }]} />
   </>;
@@ -276,6 +331,23 @@ function RepairManagement() {
 }
 
 /** 我的资产申请统一历史：不依赖审批权限，申请人/代交人可以取消待审批单。 */
+/** 注销借还处置（asset PRD §9：待处置 / 处置记录两个视图，M28） */
+function DisposalManagement() {
+  const [tab, setTab] = useState<'PENDING' | 'RECORDS'>('PENDING');
+  return <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Segmented
+      value={tab}
+      onChange={(value) => setTab(value as 'PENDING' | 'RECORDS')}
+      options={[{ label: '待处置', value: 'PENDING' }, { label: '处置记录', value: 'RECORDS' }]}
+    />
+    {tab === 'PENDING' ? (
+      <ResourcePage title="待处置" description="对已注销员工的未结清借还直接归还或核销；这是最终处置，不创建审批申请。" service="asset" endpoint="/disposals?tab=PENDING" pageKey="asset-disposals" columns={DISPOSAL_PENDING_COLUMNS} create={{ title: '执行直接处置', endpoint: '/disposals', fields: [{ key: 'disposalType', label: '处置类型', type: 'select', required: true, options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }, { key: 'items', label: '个人借还明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }, { key: 'agentRequestId', label: '代领申请 ID（仅整单结清）', type: 'number' }, { key: 'agentItems', label: '代领结清明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"WRITE_OFF","writeOffType":"LOST","reason":"遗失","qty":1}]' }], transform: disposalPayload }} />
+    ) : (
+      <ResourcePage title="处置记录" description="按处理时间倒序显示数据范围内的管理员直接处置结果及关联库存流水摘要。" service="asset" endpoint="/disposals?tab=RECORDS" pageKey="asset-disposal-records" columns={DISPOSAL_RECORDS_COLUMNS} filterFields={[{ key: 'disposalType', title: '处置方式', type: 'enum', options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }]} />
+    )}
+  </Space>;
+}
+
 function MyAssetApplications() {
   const feedback = useFeedback();
   const [version, setVersion] = useState(0);

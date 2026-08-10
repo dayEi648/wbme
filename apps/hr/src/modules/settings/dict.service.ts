@@ -155,13 +155,13 @@ export class DictService {
    * @returns 逐项结果（全部成功）
    * @throws RESOURCE_NOT_FOUND 任一目标不存在（整批不变更）
    */
-  async deleteBatch(operator: HrOperationLogOperator, ids: number[]): Promise<{ deleted: number }> {
+  async deleteBatch(operator: HrOperationLogOperator, ids: number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: HR_CONFIG_FUNCTION_CODE,
       scope: 'hr.dict.delete',
-      idempotencyKey: undefined,
-      fingerprint: '',
+      idempotencyKey,
+      fingerprint: fingerprintPayload({ ids }),
       run: async (tx) => {
         const existing = await tx.hrDict.findMany({ where: { id: { in: ids } } });
         if (existing.length !== ids.length) {

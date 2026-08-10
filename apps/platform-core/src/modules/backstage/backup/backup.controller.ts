@@ -1,7 +1,7 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Inject, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { DATA_BACKUP_FUNCTION_CODE } from '@wbme/contracts';
-import { CurrentUser } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
 import type { Response } from 'express';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
 import {
@@ -33,6 +33,8 @@ export class BackupController {
   }
 
   @Post('backups/immediate')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'backup-immediate', keyType: 'user', limit: 5, windowSeconds: 300 })
   immediateBackup(@CurrentUser() operatorId: number, @Body() dto: ImmediateBackupDto): Promise<unknown> {
     return this.backup.triggerImmediateBackup(operatorId, dto);
   }
@@ -48,6 +50,8 @@ export class BackupController {
   }
 
   @Post('restores/confirm')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'restore-confirm', keyType: 'user', limit: 5, windowSeconds: 300 })
   confirmRestore(@CurrentUser() operatorId: number, @Body() dto: RestoreConfirmDto): Promise<unknown> {
     return this.backup.confirmRestore(operatorId, dto);
   }

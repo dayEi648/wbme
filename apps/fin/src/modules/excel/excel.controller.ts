@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { BusinessException, financeErrors, frameworkErrors, ImportConfirmDto, ProjectQueryDto } from '@wbme/contracts';
@@ -6,6 +6,7 @@ import { CurrentUser, RequestTimeout } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFinanceMaintainAccess, assertFinanceReadAccess } from '../../shared/cross-schema-auth';
 import { loadFinOperationLogOperator } from '../../shared/fin-operation-log.util';
+import { ExcelImportLockGuard } from './excel-import-lock.guard';
 import { ExportService } from './export.service';
 import { ImportService } from './import.service';
 
@@ -30,6 +31,7 @@ export class ExcelController {
   /** 导入预览（multipart 单文件；服务端当前请求内解析校验，不写入正式表、不保留文件） */
   @Post('import/preview')
   @RequestTimeout(EXCEL_ROUTE_TIMEOUT_MS)
+  @UseGuards(ExcelImportLockGuard)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: IMPORT_MAX_BYTES } }))
   async importPreview(
     @CurrentUser() userId: number,
@@ -48,6 +50,7 @@ export class ExcelController {
   /** 导入确认（携带选择映射与幂等键；服务端重新解析同一文件后集合化批量写入，全有或全无） */
   @Post('import/confirm')
   @RequestTimeout(EXCEL_ROUTE_TIMEOUT_MS)
+  @UseGuards(ExcelImportLockGuard)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: IMPORT_MAX_BYTES } }))
   async importConfirm(
     @CurrentUser() userId: number,

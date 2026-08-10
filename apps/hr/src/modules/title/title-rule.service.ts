@@ -167,12 +167,12 @@ export class TitleRuleService {
    * @returns 删除数量
    * @throws RESOURCE_NOT_FOUND 任一目标不存在或已软删（整批不变更）
    */
-  async deleteBatch(operator: HrOperationLogOperator, ids: number[]): Promise<{ deleted: number }> {
+  async deleteBatch(operator: HrOperationLogOperator, ids: number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: TITLE_MANAGE_FUNCTION_CODE,
       scope: 'hr.title-rule.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: JSON.stringify(ids),
       run: async (tx) => {
         const existing = await tx.titleRule.findMany({ where: { id: { in: ids }, deletedAt: null } });

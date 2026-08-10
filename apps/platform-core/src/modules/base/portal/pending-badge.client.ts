@@ -36,17 +36,17 @@ export class PendingBadgeClient {
   }
 
   /**
-   * 拉取某用户在 hr/asset 的可见待办之和。
+   * 拉取某用户在 hr/asset 的可见待办（按系统拆分；M24，base PRD §5 按系统展示角标）。
    *
    * @param userId 当前用户
-   * @returns hr+asset 待办数（失败按 0）
+   * @returns { HR, ASSET } 待办数（依赖不可用该系统贡献 0）
    */
-  async fetchRemotePendingTotal(userId: number): Promise<number> {
+  async fetchRemotePendingBySystem(userId: number): Promise<{ HR: number; ASSET: number }> {
     const [hrCount, assetCount] = await Promise.all([
       this.fetchOne(this.hr, 'hr', userId),
       this.fetchOne(this.asset, 'asset', userId),
     ]);
-    return hrCount + assetCount;
+    return { HR: hrCount, ASSET: assetCount };
   }
 
   private async fetchOne(client: InternalHttpClient | null, label: string, userId: number): Promise<number> {

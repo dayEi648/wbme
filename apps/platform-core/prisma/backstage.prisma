@@ -515,6 +515,18 @@ model ProfileChangeRequest {
   @@schema("backstage")
 }
 
+/// S-20 image_objects 已正式化图片对象注册表（主 PRD §9.2）
+/// finalize 成功后在注册表登记；下载仅放行已登记正式对象，
+/// 临时对象（未 finalize）不提供下载通道。对象键即主键（幂等登记）。
+model ImageObject {
+  objectKey    String   @id @map("object_key")
+  ownerUserId  Int      @map("owner_user_id")
+  finalizedAt  DateTime @default(now()) @map("finalized_at") @db.Timestamptz(3)
+
+  @@map("image_objects")
+  @@schema("backstage")
+}
+
 /// S-19 operation_logs（backstage schema，结构与 base.operation_logs 完全一致）
 /// 幂等部分唯一索引 operation_logs_idempotency_unique 由迁移 SQL 手写建立（同 B-4 说明）
 model BackstageOperationLog {

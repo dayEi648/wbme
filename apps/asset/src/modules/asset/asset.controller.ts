@@ -69,7 +69,7 @@ export class AssetController {
   ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.assets.update(operator, userId, id, dto);
+    return this.assets.update(operator, userId, id, dto, dto.idempotencyKey);
   }
 
   /** 调度（责任人 + 所属部门变化强制调度记录；目标责任人须属于目标部门） */
@@ -81,7 +81,7 @@ export class AssetController {
   ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.assets.schedule(operator, userId, id, dto);
+    return this.assets.schedule(operator, userId, id, dto, dto.idempotencyKey);
   }
 
   /** 报废（二次确认；业务状态非删除） */
@@ -93,7 +93,7 @@ export class AssetController {
   ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.assets.scrap(operator, userId, id, dto.confirm);
+    return this.assets.scrap(operator, userId, id, dto.confirm, dto.idempotencyKey);
   }
 
   /** 批量软删除（仍在使用或有业务关联整批拒绝） */
@@ -101,6 +101,6 @@ export class AssetController {
   async batchDelete(@CurrentUser() userId: number, @Body() dto: AssetBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.assets.batchDelete(operator, userId, dto);
+    return this.assets.batchDelete(operator, userId, dto, dto.idempotencyKey);
   }
 }

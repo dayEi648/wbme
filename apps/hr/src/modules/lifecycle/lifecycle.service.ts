@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { isPrismaUniqueViolation } from '@wbme/approval';
 import { BusinessException, hrErrors, type HrRestoreApplyDto, type HrRestorePreviewDto } from '@wbme/contracts';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
@@ -70,22 +71,24 @@ export class LifecycleService {
    * @throws RESTORE_TARGET_STALE 同键不同目标集（409）；任一目标不可处理整批拒绝
    */
   async restoreApply(dto: HrRestoreApplyDto): Promise<{ applied: true }> {
-    // 幂等判定：同 restoreRequestId 的 org_compat_records 目标集全匹配 → 重放成功
-    const previous = await this.prisma.client.orgCompatRecord.findMany({
-      where: { restoreRequestId: dto.restoreRequestId },
-      distinct: ['userId'],
-      select: { userId: true },
-    });
-    if (previous.length > 0) {
-      const previousSet = new Set(previous.map((row) => row.userId));
-      const targetSet = new Set(dto.targets.map((target) => target.userId));
-      const sameSet = previousSet.size === targetSet.size && [...targetSet].every((id) => previousSet.has(id));
-      if (sameSet) {
+    try {
+      await this.prisma.client.$transaction(async (tx) => {
+      // 事务内幂等判定（M13）：同 rid 已有记录 → 同目标集重放成功，异目标集 409。
+      // 先查后写消除顺序重放的 TOCTOU；并发窗口（双方都查不到）由唯一约束 + P2002 兜底。
+      const existing = await tx.orgCompatRecord.findMany({
+        where: { restoreRequestId: dto.restoreRequestId },
+        distinct: ['userId'],
+        select: { userId: true },
+      });
+      if (existing.length > 0) {
+        const existingSet = new Set(existing.map((row) => row.userId));
+        const targetSet = new Set(dto.targets.map((target) => target.userId));
+        const sameSet = existingSet.size === targetSet.size && [...targetSet].every((id) => existingSet.has(id));
+        if (!sameSet) {
+          throw new BusinessException(hrErrors.RESTORE_TARGET_STALE);
+        }
         return { applied: true };
       }
-      throw new BusinessException(hrErrors.RESTORE_TARGET_STALE);
-    }
-    await this.prisma.client.$transaction(async (tx) => {
       for (const target of dto.targets) {
         // 1) 兼容性检查（事务内重跑，防目标漂移）
         const check = await this.checkCompatibility(target.userId, target.lifecycleVersion);
@@ -126,7 +129,34 @@ export class LifecycleService {
         });
         await bumpUserOrgVersion(tx);
       }
-    });
+      });
+    } catch (error) {
+      // 幂等唯一约束兜底（M13）：并发同 restoreRequestId 的请求只有一笔事务成功；
+      // 失败方回读已提交记录比对目标集——同集重放成功，异集 RESTORE_TARGET_STALE（409）。
+      // 仅当冲突源于 org_compat_records 的 (restore_request_id, user_id) 约束时按幂等处理，
+      // 其余唯一冲突（业务键等）原样抛出。
+      const constraintName = (error as { meta?: { constraint?: string; target?: unknown } })?.meta?.constraint;
+      const isOrgCompatConflict =
+        isPrismaUniqueViolation(error) &&
+        (constraintName === 'org_compat_records_restore_request_id_user_id_key' ||
+          JSON.stringify((error as { meta?: { target?: unknown } })?.meta?.target ?? '')?.includes('restore_request_id'));
+      if (isOrgCompatConflict) {
+        const committed = await this.prisma.client.orgCompatRecord.findMany({
+          where: { restoreRequestId: dto.restoreRequestId },
+          distinct: ['userId'],
+          select: { userId: true },
+        });
+        const committedSet = new Set(committed.map((row) => row.userId));
+        const targetSet = new Set(dto.targets.map((target) => target.userId));
+        const sameSet =
+          committedSet.size === targetSet.size && [...targetSet].every((id) => committedSet.has(id));
+        if (sameSet) {
+          return { applied: true };
+        }
+        throw new BusinessException(hrErrors.RESTORE_TARGET_STALE);
+      }
+      throw error;
+    }
     return { applied: true };
   }
 

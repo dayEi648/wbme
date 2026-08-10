@@ -289,6 +289,7 @@ export class BorrowService {
       departmentIds,
       settlementStatus: query.settlementStatus,
       overdueOnly: query.overdueOnly,
+      keyword: query.keyword,
     });
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -440,13 +441,14 @@ export class BorrowService {
 }
 
 /** 借还记录查询条件（SQL 片段；只接受白名单参数） */
-function buildBorrowWhereSql(options: {
+export function buildBorrowWhereSql(options: {
   userId?: number;
   recordType?: 'PERSONAL' | 'AGENT';
   departmentId?: number;
   departmentIds?: ReadonlySet<number>;
   settlementStatus?: 'OPEN' | 'SETTLED';
   overdueOnly?: boolean;
+  keyword?: string;
 }): string {
   const clauses: string[] = [];
   if (options.recordType) {
@@ -490,6 +492,11 @@ function buildBorrowWhereSql(options: {
   }
   if (options.overdueOnly) {
     clauses.push("due_at < now() AND (qty - returned_qty - written_off_qty) > 0");
+  }
+  if (options.keyword) {
+    // $queryRawUnsafe 字符串拼接：关键字内单引号必须转义（'' 为 SQL 字面量转义）
+    const escaped = options.keyword.replace(/'/g, "''");
+    clauses.push(`(consumable_name ILIKE '%${escaped}%' OR user_name ILIKE '%${escaped}%')`);
   }
   return clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
 }

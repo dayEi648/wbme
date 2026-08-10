@@ -4,6 +4,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, type HrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { bumpOrgTreeVersion, bumpUserOrgVersion } from '../../shared/org-version.service';
+import { AssetDepartmentClient } from './asset-department.client';
 
 /**
  * 部门管理服务（hr PRD §6）：
@@ -15,7 +16,10 @@ import { bumpOrgTreeVersion, bumpUserOrgVersion } from '../../shared/org-version
  */
 @Injectable()
 export class DepartmentService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly assetDepartments: AssetDepartmentClient,
+  ) {}
 
   /**
    * 查询部门树（全部部门含负责人与状态；前端组装树）。
@@ -170,15 +174,18 @@ export class DepartmentService {
 
   /**
    * 删除前引用确认（hr PRD §6：展示在职员工数/固定资产归属数/待审批申请数/职称规则引用数）。
-   * 固定资产归属数当前不统计（asset 服务未提供内部接口），返回 0。
+   * 固定资产归属数经 asset 内部接口统计（M12）；asset 不可用时降级为 0 并在响应注明。
    *
    * @param ids 部门 id 列表
    * @returns 逐部门引用统计
    */
-  async deletePreview(ids: number[]): Promise<{ items: Array<{ id: number; activeEmployees: number; assetCount: number; pendingRequests: number; titleRuleRefs: number }> }> {
+  async deletePreview(
+    ids: number[],
+  ): Promise<{ items: Array<{ id: number; activeEmployees: number; assetCount: number; pendingRequests: number; titleRuleRefs: number }>; assetUnavailable: boolean }> {
     const items: Array<{ id: number; activeEmployees: number; assetCount: number; pendingRequests: number; titleRuleRefs: number }> = [];
+    let assetUnavailable = false;
     for (const id of ids) {
-      const [activeEmployees, pendingRequests, titleRuleRefs] = await Promise.all([
+      const [activeEmployees, pendingRequests, titleRuleRefs, assetCount] = await Promise.all([
         this.prisma.client.$queryRaw<Array<{ c: number }>>`
           SELECT COUNT(*)::int AS c
           FROM hr.user_org
@@ -196,16 +203,20 @@ export class DepartmentService {
             )
         `,
         this.prisma.client.titleRule.count({ where: { departmentId: id, deletedAt: null } }),
+        this.assetDepartments.countAssets(id),
       ]);
+      if (assetCount === null) {
+        assetUnavailable = true;
+      }
       items.push({
         id,
         activeEmployees: activeEmployees[0]?.c ?? 0,
-        assetCount: 0, // 固定资产归属数当前不统计（asset 服务未提供内部接口）
+        assetCount: assetCount ?? 0,
         pendingRequests: pendingRequests[0]?.c ?? 0,
         titleRuleRefs: titleRuleRefs,
       });
     }
-    return { items };
+    return { items, assetUnavailable };
   }
 
   /**
@@ -220,12 +231,12 @@ export class DepartmentService {
    * @returns 删除数量
    * @throws DEPARTMENT_HAS_CHILDREN 任一目标有未删除下级（整批不变更）
    */
-  async deleteBatch(operator: HrOperationLogOperator, ids: number[]): Promise<{ deleted: number }> {
+  async deleteBatch(operator: HrOperationLogOperator, ids: number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: DEPARTMENT_MANAGE_FUNCTION_CODE,
       scope: 'hr.department.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: JSON.stringify(ids),
       run: async (tx) => {
         const existing = await tx.department.findMany({ where: { id: { in: ids } } });
@@ -240,6 +251,13 @@ export class DepartmentService {
         // 部门删除级联清空员工部门关系（用户组织事实变更）+ 部门范围闭包变更
         await bumpOrgTreeVersion(tx);
         await bumpUserOrgVersion(tx);
+        // 置空固定资产的所属部门（hr PRD §6：确认后在删除事务中把业务引用置空）。
+        // 必须放在事务最后一个语句：它是对 asset 的 HTTP 调用，不在本事务原子性内——
+        // 若置空之前任何本地步骤失败，事务回滚且置空尚未执行，两侧保持一致；
+        // 置空成功后立即提交，不一致窗口仅剩"提交瞬间失败"（跨服务原子性物理极限，M12）
+        for (const id of ids) {
+          await this.assetDepartments.clearAssignments(id);
+        }
         return {
           result: { deleted: ids.length },
           actionType: 'DELETE' as const,

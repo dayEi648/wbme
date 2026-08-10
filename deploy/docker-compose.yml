@@ -3,8 +3,9 @@
 #   `docker compose --env-file .env.production up -d`（首次）+ `deploy/release.sh <tag>`（发布）。
 # 本期只交付配置，不执行实际部署；实际部署与验证在 ECS 上进行。
 #
-# 安全边界（§9.14）：全部容器 cap_drop ALL + no-new-privileges + 非 root 用户 + 只读根文件系统
-# + 有界 tmpfs；不挂载 Docker Socket、不使用 privileged/host 网络；/internal/v1 不发布到公网。
+# 安全边界（§9.14）：全部容器 cap_drop ALL（+ 最小必要 cap_add，见各服务）+ no-new-privileges
+# + 非 root 用户 + 只读根文件系统 + 有界 tmpfs；不挂载 Docker Socket、不使用 privileged/host 网络；
+# /internal/v1 不发布到公网。
 name: wbme
 
 # ---- 共享锚点 ----
@@ -57,6 +58,16 @@ services:
     image: postgres:18-alpine
     restart: unless-stopped
     logging: *default-logging
+    # §9.14 加固：非 root + 只读根文件系统 + 有界 tmpfs + 最小能力（CHOWN 供 initdb 调整数据目录属主）
+    user: postgres
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt:
+      - no-new-privileges:true
     # 命名持久化卷（§9.13：正式数据不得写在容器可写层或匿名卷）
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -83,6 +94,14 @@ services:
     image: redis:8-alpine
     restart: unless-stopped
     logging: *default-logging
+    # §9.14 加固：非 root + 只读根文件系统 + 有界 tmpfs + 最小能力（AOF/RDB 写 /data 命名卷）
+    user: redis
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - redis_data:/data
     # 持久化与淘汰策略（主 PRD §9.8）：AOF everysec + RDB 快照；noeviction 不静默淘汰会话/队列键
@@ -148,7 +167,8 @@ services:
       OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
       HR_INTERNAL_BASE_URL: http://hr:3003/internal/v1
       ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
-      RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}/internal/v1
+      # 注意：恢复执行器内部控制路由挂 /recovery/*（非 /internal/v1），base URL 不带 internal 前缀（M29）
+      RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
       # 维护标记/恢复状态目录（只读：标记由恢复执行器写入）
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
       HEALTH_DISK_USAGE_RATIO: ${HEALTH_DISK_USAGE_RATIO:-0.85}
@@ -194,6 +214,8 @@ services:
       <<: *backend-env
       HR_PORT: "3003"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
+      # M12：部门删除预览/置空资产归属调用 asset 内部接口
+      ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:

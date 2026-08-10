@@ -244,13 +244,13 @@ export class ConsumableService {
    * @param input 品种输入（type 字段忽略，以既有值为准）
    * @throws RESOURCE_NOT_FOUND 品种不存在；UNIT_LOCKED 单位已锁定
    */
-  async update(operator: AssetOperationLogOperator, id: number, input: ConsumableInput): Promise<{ ok: true }> {
+  async update(operator: AssetOperationLogOperator, id: number, input: ConsumableInput, idempotencyKey?: string): Promise<{ ok: true }> {
     this.assertTypeParams(input);
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.consumable.update',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ ...input, type: undefined }),
       run: async (tx) => {
         const existing = await tx.consumable.findUnique({ where: { id } });
@@ -319,12 +319,12 @@ export class ConsumableService {
    * @returns 删除结果
    * @throws CONSUMABLE_REFERENCED 任一品种存在引用
    */
-  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[]): Promise<{ deleted: number }> {
+  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.consumable.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
       run: async (tx) => {
         const rows = await tx.consumable.findMany({ where: { id: { in: [...ids] } } });

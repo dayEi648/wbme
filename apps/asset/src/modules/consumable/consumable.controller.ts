@@ -1,11 +1,11 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
-  ASSET_CONFIG_FUNCTION_CODE,
   CONSUMABLE_APPLY_FUNCTION_CODE,
   ConsumableBatchDeleteDto,
   ConsumableCreateDto,
   ConsumableQueryDto,
   ConsumableUpdateDto,
+  INVENTORY_MANAGE_FUNCTION_CODE,
 } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
@@ -30,7 +30,7 @@ export class ConsumableController {
     await assertFunctionAccess(
       this.prisma.client,
       userId,
-      query.hasAvailableStock ? CONSUMABLE_APPLY_FUNCTION_CODE : ASSET_CONFIG_FUNCTION_CODE,
+      query.hasAvailableStock ? CONSUMABLE_APPLY_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE,
     );
     return this.consumables.list(query);
   }
@@ -38,7 +38,7 @@ export class ConsumableController {
   /** 创建品种（幂等；名称唯一；类型创建后不可变） */
   @Post()
   async create(@CurrentUser() userId: number, @Body() dto: ConsumableCreateDto): Promise<{ id: number }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
     return this.consumables.create(operator, dto as unknown as ConsumableInput);
   }
@@ -50,16 +50,16 @@ export class ConsumableController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ConsumableUpdateDto,
   ): Promise<{ ok: true }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.consumables.update(operator, id, dto as unknown as ConsumableInput);
+    return this.consumables.update(operator, id, dto as unknown as ConsumableInput, dto.idempotencyKey);
   }
 
   /** 批量硬删除（存在当前库存/未结清借还/待审批引用时整批拒绝） */
   @Delete('batch')
   async batchDelete(@CurrentUser() userId: number, @Body() dto: ConsumableBatchDeleteDto): Promise<{ deleted: number }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.consumables.batchDelete(operator, dto.ids);
+    return this.consumables.batchDelete(operator, dto.ids, dto.idempotencyKey);
   }
 }

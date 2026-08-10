@@ -257,6 +257,9 @@ model OrgCompatRecord {
   positionCleared    Boolean  @default(false) @map("position_cleared")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  // 幂等唯一兜底（M13，主 PRD §3.3/§9.5）：同恢复请求同用户仅一条记录；
+  // 并发同键异目标集靠此约束 + 事务内 P2002 捕获回读比对拦截
+  @@unique([restoreRequestId, userId])
   @@map("org_compat_records")
   @@schema("hr")
 }

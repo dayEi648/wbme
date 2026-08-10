@@ -1,7 +1,7 @@
-import { Button, Card, Drawer, Input, InputNumber, Popconfirm, Select, Space, Table, Typography, Upload, theme, type UploadFile } from 'antd';
+import { Button, Card, Drawer, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Typography, Upload, theme, type UploadFile } from 'antd';
 import { DownloadOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons';
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
 import { DataTable } from '../../components/DataTable';
 import { JsonDetails } from '../../components/JsonDetails';
@@ -120,7 +120,7 @@ function Projects() {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [deletedOpen, setDeletedOpen] = useState(false);
   return <>
-<ResourcePage title="工程合同" description="项目名称和年度构成业务唯一键；金额使用精确十进制字符串。点击行可编辑完整合同资料。" service="fin" endpoint="/projects" pageKey="fin-projects" columns={PROJECT_COLUMNS} filterFields={[{ key: 'name', title: '项目名称', type: 'text' }, { key: 'partyA', title: '甲方', type: 'text' }, { key: 'year', title: '年度', type: 'number' }, { key: 'regionId', title: '地区 ID', type: 'number' }, { key: 'progressId', title: '进度 ID', type: 'number' }]} create={canMaintain ? { title: '新建工程合同', fields: PROJECT_FORM_FIELDS } : undefined} edit={canMaintain ? { title: '编辑工程合同', endpoint: (id) => `/projects/${id}`, fields: PROJECT_FORM_FIELDS } : undefined} exportConfig={{ allEndpoint: '/profit/excel/export/all', filteredEndpoint: '/profit/excel/export/filtered', filename: 'profit-projects.xlsx' }} batchDelete={canMaintain ? { endpoint: '/projects/batch', bodyKey: 'ids' } : undefined} actions={canMaintain ? <Button onClick={() => setDeletedOpen(true)}>已删除项目</Button> : undefined} rowActions={(row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>金额明细</Button>} />
+<ResourcePage title="工程合同" description="项目名称和年度构成业务唯一键；金额使用精确十进制字符串。点击行可编辑完整合同资料。" service="fin" endpoint="/projects" pageKey="fin-projects" columns={PROJECT_COLUMNS} filterFields={[{ key: 'name', title: '项目名称', type: 'text' }, { key: 'partyA', title: '甲方', type: 'text' }, { key: 'year', title: '年度', type: 'number' }, { key: 'regionId', title: '地区 ID', type: 'number' }, { key: 'progressId', title: '进度 ID', type: 'number' }]} create={canMaintain ? { title: '新建工程合同', fields: PROJECT_FORM_FIELDS } : undefined} edit={canMaintain ? { title: '编辑工程合同', endpoint: (id) => `/projects/${id}`, fields: PROJECT_FORM_FIELDS } : undefined} batchDelete={canMaintain ? { endpoint: '/projects/batch', bodyKey: 'ids' } : undefined} actions={canMaintain ? <Button onClick={() => setDeletedOpen(true)}>已删除项目</Button> : undefined} rowActions={(row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>金额明细</Button>} />
     {detailId !== null ? <ProjectDetails projectId={detailId} canMaintain={canMaintain} onClose={() => setDetailId(null)} /> : null}
     <Drawer title="已删除项目" open={deletedOpen} onClose={() => setDeletedOpen(false)} width="min(92vw, 1100px)"><DataTable title="已删除项目" description="软删除项目保留原 ID、业务键及操作历史；仅支持勾选后批量恢复。" service="fin" endpoint="/projects?view=deleted" pageKey="fin-deleted-projects" columns={PROJECT_COLUMNS} batchAction={{ label: '批量恢复', onExecute: async (ids) => { await http.put('/projects/deleted/restore', { ids: ids.map(Number) }, { service: 'fin' }); } }} /></Drawer>
   </>;
@@ -172,7 +172,8 @@ function ProjectDetails({ projectId, canMaintain, onClose }: { projectId: number
   return <Drawer title="项目详情与金额明细" open onClose={onClose} width={860}>{detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}><Card title="项目资料" size="small">{JSON.stringify(detail.project ?? {})}</Card><Card title="自动计算" size="small">{JSON.stringify(detail.auto ?? {})}</Card>{table('开票金额', 'invoice', detailRows('invoices'))}{table('已收回款', 'receipt', detailRows('receipts'))}{table('已付分包款', 'subcontract-payment', detailRows('subcontractPayments'))}</Space> : <Typography.Text>正在加载...</Typography.Text>}<ResourceFormModal title={editing?.item ? '编辑金额明细' : '新增金额明细'} open={editing !== null} onCancel={() => setEditing(null)} onSubmit={save} initialValues={editing?.item ?? {}} fields={[{ key: 'amount', label: '金额', type: 'number', required: true }, { key: 'occurredDate', label: '日期', type: 'date' }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }]} /></Drawer>;
 }
 
-function ProfitAnalysis() {
+/** 利润分析（导出供组件测试；离开保护时序见 fin-profit-guard.spec，M22） */
+export function ProfitAnalysis() {
   const feedback = useFeedback();
   const { can } = useSession();
   const { token } = theme.useToken();
@@ -180,7 +181,49 @@ function ProfitAnalysis() {
   const [totals, setTotals] = useState<RecordValue | null>(null);
   const [loading, setLoading] = useState(true);
   const [moneyDrafts, setMoneyDrafts] = useState<Record<string, string>>({});
+  // 保存状态（fin PRD §4：保存中/已保存/保存失败）；有草稿或保存失败时离开需确认（M22）
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const dirtyRef = useRef(false);
   const canEdit = can('finance_maintain');
+
+  // 站内跳转离开保护：存在未提交草稿或最近保存失败时确认（fin PRD §4「离开保护」）。
+  // 项目为声明式 <BrowserRouter>，react-router 的 useBlocker 仅在数据路由下可用
+  // （非数据路由调用必然抛错白屏，M22）；改用 location 变化检测 + 确认弹窗 + 回退。
+  const location = useLocation();
+  const navigate = useNavigate();
+  const lastPathRef = useRef(`${location.pathname}${location.search}`);
+  // 用户已确认放弃本次未保存内容；组件卸载后自动失效，重新进入本页时保护恢复
+  const leaveConfirmedRef = useRef(false);
+  // 回退导航标记：弹窗选「留在本页」后 navigate 回退，避免该次导航再次触发确认（防重入）
+  const restoreRef = useRef(false);
+  const [leavePrompt, setLeavePrompt] = useState<{ from: string } | null>(null);
+  useEffect(() => {
+    const current = `${location.pathname}${location.search}`;
+    const previous = lastPathRef.current;
+    lastPathRef.current = current;
+    if (current === previous) return;
+    if (restoreRef.current) {
+      restoreRef.current = false;
+      return;
+    }
+    if (leaveConfirmedRef.current) return;
+    if (Object.keys(moneyDrafts).length === 0 && !dirtyRef.current) return;
+    if (leavePrompt) return; // 确认框已打开时跳过（回退导航二次触发）
+    setLeavePrompt({ from: previous });
+  }, [location, leavePrompt, moneyDrafts]);
+
+  // 浏览器刷新/关闭离开保护（beforeunload 只能提示，无法阻止站内跳转）
+  useEffect(() => {
+    const hasDirty = () => Object.keys(moneyDrafts).length > 0 || dirtyRef.current;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (hasDirty()) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [moneyDrafts]);
 
   const load = async () => {
     setLoading(true);
@@ -202,12 +245,17 @@ function ProfitAnalysis() {
   const saveCell = async (row: RecordValue, field: string, value: string): Promise<boolean> => {
     const projectId = Number(row.id);
     if (!Number.isInteger(projectId)) return false;
+    setSaveState('saving');
     try {
       const result = await http.put<{ value: unknown; auto: RecordValue; dataRevision: number }>('/profit/cells', { projectId, field, value }, { service: 'fin' });
       setRows((current) => current.map((item) => Number(item.id) === projectId ? { ...item, [field]: result.value, ...result.auto, dataRevision: result.dataRevision } : item));
+      setSaveState('saved');
+      dirtyRef.current = false;
       feedback.success('已保存');
       return true;
     } catch (error) {
+      setSaveState('error');
+      dirtyRef.current = true;
       feedback.error(error, '单元格保存失败');
       return false;
     }
@@ -233,6 +281,20 @@ function ProfitAnalysis() {
     }
   };
 
+  /** 保存状态标签（fin PRD §4：保存中/已保存/保存失败） */
+  const saveStatusTag = () => {
+    if (saveState === 'saving') {
+      return <Typography.Text type="warning">保存中...</Typography.Text>;
+    }
+    if (saveState === 'error') {
+      return <Typography.Text type="danger">保存失败，请重试或检查网络</Typography.Text>;
+    }
+    if (saveState === 'saved') {
+      return <Typography.Text type="success">已保存</Typography.Text>;
+    }
+    return null;
+  };
+
   const editableFields = new Set(['name', 'year', 'partyA', 'generalContractor', 'managementFee', 'contractAmount', 'tentativeAuditedAmount', 'settlement', 'miscExpense', 'remark']);
   const renderCell = (field: string) => (value: unknown, row: RecordValue) => {
     const text = value === null || value === undefined ? '' : String(value);
@@ -246,7 +308,7 @@ function ProfitAnalysis() {
   const negative = (value: unknown) => <span style={String(value).startsWith('-') ? { color: token.colorError } : undefined}>{value === null || value === undefined ? '—' : String(value)}</span>;
 
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <div><Typography.Title level={3}>利润分析</Typography.Title><Typography.Paragraph type="secondary">桌面端可直接编辑单个业务单元格并即时保存；自动计算列不可编辑。移动端复用同一保存接口。</Typography.Paragraph></div>
+    <div><Typography.Title level={3}>利润分析</Typography.Title><Typography.Paragraph type="secondary">桌面端可直接编辑单个业务单元格并即时保存；自动计算列不可编辑。移动端复用同一保存接口。</Typography.Paragraph><Space>{saveStatusTag()}{Object.keys(moneyDrafts).length > 0 ? <Typography.Text type="warning">有 {Object.keys(moneyDrafts).length} 个未提交草稿</Typography.Text> : null}</Space></div>
     <Card loading={loading} styles={{ body: { padding: 0 } }}>
       <Table<RecordValue> rowKey={(row) => String(row.id)} dataSource={rows} pagination={false} scroll={{ x: 'max-content' }} columns={[
         { key: 'name', title: '项目名称', fixed: 'left', width: 220, render: renderCell('name') },
@@ -262,6 +324,24 @@ function ProfitAnalysis() {
       ]} />
     </Card>
     {totals ? <Card title="当前筛选范围汇总"><Space wrap>{Object.entries(totals).map(([key, value]) => <Typography.Text key={key}>{key}：{String(value ?? '—')}</Typography.Text>)}</Space></Card> : null}
+    <Modal
+      open={leavePrompt !== null}
+      title="未保存的编辑内容"
+      okText="放弃并离开"
+      cancelText="留在本页"
+      onOk={() => {
+        leaveConfirmedRef.current = true;
+        setLeavePrompt(null);
+      }}
+      onCancel={() => {
+        const from = leavePrompt?.from;
+        restoreRef.current = true;
+        setLeavePrompt(null);
+        if (from) navigate(from, { replace: true });
+      }}
+    >
+      <p>当前有未保存的编辑内容（草稿或保存失败），确定离开本页吗？</p>
+    </Modal>
   </Space>;
 }
 

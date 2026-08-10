@@ -11,7 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { BATCH_LIMIT, IsValidatedBy, PaginationQueryDto } from './base.dto';
+import { BATCH_LIMIT, IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 通用校验：1～100 个互不重复的目标标识（主 PRD §9.5） */
 function assertBatchIds(value: unknown): boolean {
@@ -19,7 +19,7 @@ function assertBatchIds(value: unknown): boolean {
 }
 
 /** 库位创建（asset PRD §5：全公司统一层级库位树；禁止形成父子循环） */
-export class WarehouseCreateDto {
+export class WarehouseCreateDto extends IdempotentDto {
   @ApiProperty({ description: '父库位 id（null=根）', required: false, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -40,7 +40,7 @@ export class WarehouseCreateDto {
 }
 
 /** 库位编辑（改名/移动节点只影响当前树，历史快照不追溯改写） */
-export class WarehouseUpdateDto {
+export class WarehouseUpdateDto extends IdempotentDto {
   @ApiProperty({ description: '父库位 id（null=移动到根）', required: false, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -65,7 +65,7 @@ export class WarehouseUpdateDto {
 }
 
 /** 库位批量硬删除（存在未删除子库位或现存库存/未结清借还/待审批引用时整批拒绝） */
-export class WarehouseBatchDeleteDto {
+export class WarehouseBatchDeleteDto extends IdempotentDto {
   @ApiProperty({ description: '库位 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个库位 id' })

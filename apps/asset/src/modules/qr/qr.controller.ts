@@ -55,7 +55,7 @@ export class QrController {
   ): Promise<{ ok: true; regenerated?: { id: number; publicId: string } }> {
     await this.assertAnyAccess(userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.qr.action(operator, id, dto.action);
+    return this.qr.action(operator, id, dto.action, dto.idempotencyKey);
   }
 
   /**

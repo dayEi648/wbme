@@ -121,12 +121,13 @@ export class CategoryService {
     operator: AssetOperationLogOperator,
     id: number,
     input: { name: string; sort: number; status: 'ACTIVE' | 'DISABLED' },
+    idempotencyKey?: string,
   ): Promise<{ ok: true }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.category.update',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload(input),
       run: async (tx) => {
         const existing = await tx.assetCategory.findUnique({ where: { id } });
@@ -164,12 +165,12 @@ export class CategoryService {
    * @returns 删除结果
    * @throws CATEGORY_REFERENCED 任一分类被引用
    */
-  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[]): Promise<{ deleted: number }> {
+  async batchDelete(operator: AssetOperationLogOperator, ids: readonly number[], idempotencyKey?: string): Promise<{ deleted: number }> {
     return executeIdempotentOperation(this.prisma.client, {
       operator,
       feature: ASSET_CONFIG_FUNCTION_CODE,
       scope: 'asset.category.delete',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ ids }),
       run: async (tx) => {
         const rows = await tx.assetCategory.findMany({ where: { id: { in: [...ids] } } });

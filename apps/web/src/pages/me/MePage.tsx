@@ -2,7 +2,7 @@ import { Button, Card, Descriptions, Divider, Drawer, Form, Input, Radio, Select
 import { ArrowLeftOutlined, KeyOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DataTable } from '../../components/DataTable';
+import { DataTable, StatusTag } from '../../components/DataTable';
 import { ApiError, http } from '../../request/http';
 import { useFeedback } from '../../request/feedback';
 
@@ -35,6 +35,7 @@ export default function MePage() {
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [positionOpen, setPositionOpen] = useState(false);
+  const [applicationOpen, setApplicationOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [positionSubmitting, setPositionSubmitting] = useState(false);
   const [positionOptions, setPositionOptions] = useState<{ departments: Array<{ id: number; name: string }>; positions: Array<{ id: number; name: string; departmentIds: number[] }> }>({ departments: [], positions: [] });
@@ -210,6 +211,8 @@ export default function MePage() {
         <Divider />
         <Space direction="vertical" size="small">
           <Button disabled={!me?.canApplyPositionChange} onClick={() => void openPositionApplication()}>岗位变更申请</Button>
+          {/* 我的岗位申请记录（base PRD §6：个人中心内可查看本人的岗位申请记录，全员能力，M27） */}
+          <Button onClick={() => setApplicationOpen(true)}>我的岗位申请记录</Button>
           <Button onClick={() => setLogOpen(true)}>我的操作日志</Button>
         </Space>
       </Space>
@@ -219,6 +222,9 @@ export default function MePage() {
           <Form.Item name="targetPositionId" label="目标岗位" rules={[{ required: true, message: '请选择目标岗位' }]}><Select showSearch optionFilterProp="label" loading={positionOptionsLoading} disabled={selectedDepartmentId === undefined} options={positionSelectOptions} /></Form.Item>
           <Button type="primary" htmlType="submit" loading={positionSubmitting}>提交申请</Button>
         </Form>
+      </Drawer>
+      <Drawer title="我的岗位申请记录" open={applicationOpen} onClose={() => setApplicationOpen(false)} width={760}>
+        <DataTable title="我的岗位申请记录" description="仅展示本人提交的岗位变更申请；岗位申请的批准会再次验证申请提交后的组织条件。" service="platform" endpoint="/me/position-applications" pageKey="me-position-applications" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'applicationNo', title: '申请编号' }, { key: 'targetDepartmentName', title: '目标部门' }, { key: 'targetPositionName', title: '目标岗位' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'submittedAt', title: '提交时间' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待审批', value: 'PENDING' }, { label: '已批准', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }, { label: '已取消', value: 'CANCELLED' }] }]} />
       </Drawer>
       <Drawer title="我的操作日志" open={logOpen} onClose={() => setLogOpen(false)} width={760}>
         <DataTable title="我的操作日志" description="仅展示当前账号的操作记录；筛选、排序和导出均限定在本人范围内。" service="platform" endpoint="/me/operation-logs" pageKey="me-operation-logs" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'createdAt', title: '时间' }, { key: 'system', title: '系统' }, { key: 'feature', title: '功能' }, { key: 'actionType', title: '操作' }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: [{ label: '基础平台', value: 'BASE' }, { label: '管理后台', value: 'BACKSTAGE' }, { label: '资产系统', value: 'ASSET' }, { label: '人事系统', value: 'HR' }, { label: '财务系统', value: 'FIN' }] }, { key: 'feature', title: '功能', type: 'text' }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }]} exportConfig={{ allEndpoint: '/me/operation-logs/export', filename: 'my-operation-logs.xlsx' }} />

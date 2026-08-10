@@ -51,7 +51,7 @@ export class CategoryController {
   ): Promise<{ ok: true }> {
     await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.categories.update(operator, id, dto);
+    return this.categories.update(operator, id, dto, dto.idempotencyKey);
   }
 
   /** 批量硬删除（任一分类被资产/品种引用则整批回滚） */
@@ -59,6 +59,6 @@ export class CategoryController {
   async batchDelete(@CurrentUser() userId: number, @Body() dto: AssetCategoryBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.categories.batchDelete(operator, dto.ids);
+    return this.categories.batchDelete(operator, dto.ids, dto.idempotencyKey);
   }
 }

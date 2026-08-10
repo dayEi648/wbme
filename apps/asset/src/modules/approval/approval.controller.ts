@@ -83,7 +83,7 @@ export class ApprovalController {
     @CurrentUser() processorId: number,
     @Body() dto: ProcessApprovalDto,
   ): Promise<{ ok: true }> {
-    await this.approval.process(requestId, dto.action, processorId, dto.opinion);
+    await this.approval.process(requestId, dto.action, processorId, dto.opinion, dto.idempotencyKey);
     return { ok: true };
   }
 
@@ -98,9 +98,9 @@ export class ApprovalController {
   async cancel(
     @Param('id', ParseIntPipe) requestId: number,
     @CurrentUser() actorId: number,
-    @Body() _dto: CancelApprovalDto,
+    @Body() dto: CancelApprovalDto,
   ): Promise<{ ok: true }> {
-    await this.approval.cancel(requestId, actorId);
+    await this.approval.cancel(requestId, actorId, dto.idempotencyKey);
     return { ok: true };
   }
 }

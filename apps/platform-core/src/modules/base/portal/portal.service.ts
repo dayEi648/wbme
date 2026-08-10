@@ -18,11 +18,11 @@ export class PortalService {
     private readonly pendingBadge: PendingBadgeClient,
   ) {}
 
-  /** 门户数据：系统入口 + 当前公告 + 待办角标 */
+  /** 门户数据：系统入口 + 当前公告 + 待办角标（按系统拆分，M24） */
   async getPortal(userId: number, isSuperAdmin: boolean): Promise<{
     systems: Array<{ code: string; name: string; productStatus: 'OPEN' | 'COMING_SOON'; hasPermission: boolean; entryUrl: string }>;
     announcement: { title: string; content: string | null; publishedAt: Date | null } | null;
-    badgeCount: number;
+    badgeBySystem: Record<string, number>;
   }> {
     const [systems, announcement, localPending, remotePending] = await Promise.all([
       this.prisma.client.system.findMany({
@@ -35,7 +35,7 @@ export class PortalService {
         select: { title: true, content: true, publishedAt: true },
       }),
       this.countLocalPending(userId, isSuperAdmin),
-      this.pendingBadge.fetchRemotePendingTotal(userId),
+      this.pendingBadge.fetchRemotePendingBySystem(userId),
     ]);
 
     let grantedSystemIds = new Set<number>();
@@ -71,7 +71,13 @@ export class PortalService {
       announcement: announcement
         ? { title: announcement.title, content: announcement.content, publishedAt: announcement.publishedAt }
         : null,
-      badgeCount: localPending + remotePending,
+      // 按系统角标（base PRD §5：系统入口展示各自待处理数量；fin 无审批待办恒 0）
+      badgeBySystem: {
+        BACKSTAGE: localPending,
+        HR: remotePending.HR,
+        ASSET: remotePending.ASSET,
+        FIN: 0,
+      },
     };
   }
 

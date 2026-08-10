@@ -11,7 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { BATCH_LIMIT, IsValidatedBy, PaginationQueryDto } from './base.dto';
+import { BATCH_LIMIT, IdempotentDto, IsValidatedBy, PaginationQueryDto } from './base.dto';
 
 /** 分类状态（与 asset 模块 Prisma enum 对齐） */
 export type DictStatus = 'ACTIVE' | 'DISABLED';
@@ -32,7 +32,7 @@ function assertBatchIds(value: unknown): boolean {
 }
 
 /** 分类创建 */
-export class AssetCategoryCreateDto {
+export class AssetCategoryCreateDto extends IdempotentDto {
   @ApiProperty({ description: '父分类 id（顶级分类为 null；业务只维护一级子分类）', required: false, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -53,7 +53,7 @@ export class AssetCategoryCreateDto {
 }
 
 /** 分类编辑 */
-export class AssetCategoryUpdateDto {
+export class AssetCategoryUpdateDto extends IdempotentDto {
   @ApiProperty({ description: '分类名称', maxLength: 50 })
   @IsString()
   @MaxLength(50)
@@ -71,7 +71,7 @@ export class AssetCategoryUpdateDto {
 }
 
 /** 分类批量硬删除（任一项被引用则整批回滚，asset PRD §3） */
-export class AssetCategoryBatchDeleteDto {
+export class AssetCategoryBatchDeleteDto extends IdempotentDto {
   @ApiProperty({ description: '分类 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个分类 id' })
@@ -92,7 +92,7 @@ export class AssetCategoryQueryDto extends PaginationQueryDto {
 }
 
 /** 字典项创建 */
-export class AssetDictItemCreateDto {
+export class AssetDictItemCreateDto extends IdempotentDto {
   @ApiProperty({
     description: '字典类型',
     enum: ['UNIT', 'CHANGE_TYPE', 'SUPPLIER', 'BRAND', 'SPEC', 'ASSET_SPEC', 'ASSET_MODEL'],
@@ -113,7 +113,7 @@ export class AssetDictItemCreateDto {
 }
 
 /** 字典项编辑 */
-export class AssetDictItemUpdateDto {
+export class AssetDictItemUpdateDto extends IdempotentDto {
   @ApiProperty({ description: '字典项名称', maxLength: 50 })
   @IsString()
   @MaxLength(50)
@@ -131,7 +131,7 @@ export class AssetDictItemUpdateDto {
 }
 
 /** 字典项批量硬删除（任一项被引用则整批回滚，asset PRD §12） */
-export class AssetDictItemBatchDeleteDto {
+export class AssetDictItemBatchDeleteDto extends IdempotentDto {
   @ApiProperty({ description: '字典项 id 列表（1～100 个，不重复）', type: [Number] })
   @IsArray()
   @IsValidatedBy(assertBatchIds, { message: '至少需要 1 个字典项 id' })

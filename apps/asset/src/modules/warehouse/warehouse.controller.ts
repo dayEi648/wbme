@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
-  ASSET_CONFIG_FUNCTION_CODE,
+  INVENTORY_MANAGE_FUNCTION_CODE,
   WarehouseBatchDeleteDto,
   WarehouseCreateDto,
   WarehouseQueryDto,
@@ -26,7 +26,7 @@ export class WarehouseController {
   /** 库位树全量列表（状态过滤） */
   @Get('tree')
   async tree(@CurrentUser() userId: number, @Query() query: WarehouseQueryDto): Promise<{ items: unknown[] }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const result = await this.warehouses.tree();
     if (query.status) {
       result.items = result.items.filter((node: { status: string }) => node.status === query.status);
@@ -37,7 +37,7 @@ export class WarehouseController {
   /** 创建库位（幂等；禁止形成父子循环） */
   @Post()
   async create(@CurrentUser() userId: number, @Body() dto: WarehouseCreateDto): Promise<{ id: number }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
     return this.warehouses.create(operator, dto);
   }
@@ -49,16 +49,16 @@ export class WarehouseController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: WarehouseUpdateDto,
   ): Promise<{ ok: true }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.warehouses.update(operator, id, dto);
+    return this.warehouses.update(operator, id, dto, dto.idempotencyKey);
   }
 
   /** 批量硬删除（存在子库位或库存/业务引用时整批拒绝） */
   @Delete('batch')
   async batchDelete(@CurrentUser() userId: number, @Body() dto: WarehouseBatchDeleteDto): Promise<{ deleted: number }> {
-    await assertFunctionAccess(this.prisma.client, userId, ASSET_CONFIG_FUNCTION_CODE);
+    await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
-    return this.warehouses.batchDelete(operator, dto.ids);
+    return this.warehouses.batchDelete(operator, dto.ids, dto.idempotencyKey);
   }
 }

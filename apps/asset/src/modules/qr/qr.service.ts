@@ -53,7 +53,7 @@ export class QrService {
       operator,
       feature: dto.targetType === 'ASSET' ? FIXED_ASSET_MAINTAIN_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE,
       scope: 'asset.qr.create',
-      idempotencyKey: undefined,
+      idempotencyKey: dto.idempotencyKey,
       fingerprint: fingerprintPayload(dto),
       run: async (tx) => {
         // 目标存在性校验（SCAN_CATALOG 无目标）
@@ -136,6 +136,7 @@ export class QrService {
     operator: AssetOperationLogOperator,
     id: number,
     action: 'DISABLE' | 'ENABLE' | 'REGENERATE',
+    idempotencyKey?: string,
   ): Promise<{ ok: true; regenerated?: { id: number; publicId: string } }> {
     // 按目标类型校验管理权限（资产二维码归固定资产维护，库存/目录二维码归
     // 消耗品库存管理，PRD §11 归属）；权限不足 → 404 不泄露存在性
@@ -152,7 +153,7 @@ export class QrService {
       operator,
       feature: requiredCode,
       scope: 'asset.qr.action',
-      idempotencyKey: undefined,
+      idempotencyKey,
       fingerprint: fingerprintPayload({ id, action }),
       run: async (tx) => {
         const qr = await tx.qrCode.findUnique({ where: { id } });
