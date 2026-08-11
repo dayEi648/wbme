@@ -50,7 +50,7 @@ export class WorkerRuntimeService implements OnModuleInit, OnModuleDestroy {
     const queue = createTaskQueue(redisUrl);
     this.outboxScheduler = new OutboxScheduler(sql, queue, schedulerId);
     this.taskWorker = new BackgroundTaskWorker(redisUrl, sql, rawSql, workerId, deployCommit);
-    this.queueMaintenance = new QueueMaintenance(queue);
+    this.queueMaintenance = new QueueMaintenance(queue, rawSql, deployCommit);
 
     this.outboxScheduler.start();
     this.taskWorker.start();
@@ -69,11 +69,31 @@ export class WorkerRuntimeService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * 健康状态（L37/backstage PRD §11：各部署单元提供存活/就绪两级状态）。
-   * 存活 = 进程活着（/healthz 恒 200）；就绪 = Redis 连接正常且未进入停机。
-   * Redis 失效时进程存活但不再领取新任务（主 PRD §9.8），就绪探针反映为失败。
+   * 存活 = 进程活着（/healthz 恒 200）；就绪 = Redis 与 PostgreSQL 连接均正常且未停机。
+   * Redis 失效或 PG 故障时进程存活但不再领取新任务（主 PRD §9.8），就绪探针反映为失败。
+   *
+   * 问题17 修复：原仅看 Redis 状态，PG 运行期故障时 readyz 仍 200 误导编排层；
+   * 现每次就绪探针主动探测 PG（带 2s 超时，健康状态页低频探测可接受）。
    */
-  getHealth(): { ready: boolean } {
-    return { ready: !this.shuttingDown && this.redis?.status === 'ready' };
+  async getHealth(): Promise<{ ready: boolean }> {
+    if (this.shuttingDown || this.redis?.status !== 'ready') {
+      return { ready: false };
+    }
+    if (!this.pool) {
+      return { ready: false };
+    }
+    try {
+      await Promise.race([
+        this.pool.query('SELECT 1'),
+        new Promise<never>((_, reject) => {
+          const timer = setTimeout(() => reject(new Error('pg readyz probe timeout')), 2_000);
+          timer.unref?.();
+        }),
+      ]);
+      return { ready: true };
+    } catch {
+      return { ready: false };
+    }
   }
 
   /**

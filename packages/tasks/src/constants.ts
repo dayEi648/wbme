@@ -68,9 +68,11 @@ export const QUEUE_MAINTENANCE_INTERVAL_MS = 3_600_000;
 
 /**
  * 执行租约过期后可安全重放的任务类型（主 PRD §9.1）。
- * RESTORE_DELIVERY 不在其中：recovery-executor 写入外部控制清单后重复投递
- * 会重置清单并重跑恢复管道（主 PRD §9.1「数据库恢复在写入外部控制清单后
- * 不再由通用任务扫描器重放」），故其租约过期按失败处理、由人工介入。
+ * RESTORE_DELIVERY 可重放（主 PRD §9.1 第 252 行「数据库恢复在写入外部控制清单
+ * 前可以按上述投递规则重新交付」）：recovery-executor 的 acceptDelivery 对同一
+ * restoreUuid 幂等——清单已存在且未完成时忽略重投、不重跑恢复管道，因此「执行器
+ * 已接收但未回写」之间的崩溃可经租约重领重新投递，不会重置清单；清单写入后的
+ * 执行阶段由执行器保持维护状态、人工核查，不再由通用任务扫描器重放。
  */
 export const SAFELY_REPLAYABLE_TASK_TYPES: readonly TaskType[] = [
   TASK_TYPE_ACCOUNT_LIFECYCLE,
@@ -79,4 +81,5 @@ export const SAFELY_REPLAYABLE_TASK_TYPES: readonly TaskType[] = [
   TASK_TYPE_EMERGENCY_BACKUP,
   TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP,
   TASK_TYPE_APPROVAL_TIMEOUT_SCAN,
+  TASK_TYPE_RESTORE_DELIVERY,
 ];

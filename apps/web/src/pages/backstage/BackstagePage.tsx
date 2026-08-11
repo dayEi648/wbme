@@ -388,7 +388,7 @@ function UserManagement() {
         { key: 'phone', label: '手机号', required: true, maxLength: 32 },
         { key: 'gender', label: '性别', type: 'select', required: true, options: [{ label: '男', value: 'MALE' }, { label: '女', value: 'FEMALE' }], width: 'narrow' },
       ]} />
-      <Drawer title="用户详情" open={detailId !== null} onClose={() => { setDetailId(null); setInvitationUrl(null); }} width={520}>
+      <Drawer title="用户详情" open={detailId !== null} onClose={() => { setDetailId(null); setInvitationUrl(null); }} width="min(92vw, 520px)">
         {detail ? (
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <Descriptions bordered column={1} size="small" items={userDetailItems(detail)} />
@@ -413,7 +413,7 @@ function UserManagement() {
       <ResourceFormModal title="恢复已注销用户" open={restoreOpen} onCancel={() => { setRestoreOpen(false); setRestorePreview(null); }} onSubmit={previewRestore} fields={[
         { key: 'userIds', label: '已注销用户', type: 'remote-multi-select', required: true, remote: deactivatedUsersSource, placeholder: '按姓名或手机号搜索', width: 'full' },
       ]} submitText="生成恢复预览" />
-      {restorePreview ? <Drawer title="恢复预览" open onClose={() => setRestorePreview(null)} width={640}>
+      {restorePreview ? <Drawer title="恢复预览" open onClose={() => setRestorePreview(null)} width="min(92vw, 640px)">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {Array.isArray(restorePreview.items) ? restorePreview.items.map((item, index) => <Card key={index} size="small" title={isRecord(item) ? String(item.name ?? `#${String(item.userId ?? '')}`) : '用户'}>{isRecord(item) ? <RestorePreviewItem item={item} /> : String(item)}</Card>) : null}
           <Popconfirm title="确认恢复预览中全部可恢复用户？" onConfirm={() => void confirmRestore()}><Button type="primary">确认恢复</Button></Popconfirm>
@@ -532,7 +532,7 @@ function PermissionEmployees() {
       actions={<Button disabled={selectedIds.length === 0} onClick={() => setBatchOpen(true)}>批量追加授权</Button>}
       batchAction={{ label: '批量撤销全部可管理授权', danger: true, confirmationDescription: '撤销后，已授予的功能将立即失效。', onExecute: async (ids) => { await http.post('/permission/revocations/batch', { userIds: ids.map(Number) }); } }}
     />
-    <Drawer title="员工授权" open={targetId !== null} onClose={() => setTargetId(null)} width={640}>
+    <Drawer title="员工授权" open={targetId !== null} onClose={() => setTargetId(null)} width="min(92vw, 640px)">
       {grantDetail ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Card size="small" title="授权对象">{isRecord(grantDetail.target) ? Object.entries(grantDetail.target).map(([key, value]) => <div key={key}>{displayLabel(key)}：{String(value ?? '—')}</div>) : JSON.stringify(grantDetail.target ?? {})}</Card>
         <Card size="small" title={`当前授权（版本 ${String(grantDetail.permissionVersion ?? '—')}）`}>
@@ -597,7 +597,7 @@ function PermissionGroups() {
   return <>
     <DataTable key={version} title="权限组" service="platform" endpoint="/permission/groups" pageKey="backstage-permission-groups" columns={[...LIST_COLUMNS, { key: 'itemCount', title: '功能数' }]} onRowClick={(row) => setGroupId(Number(row.id))} actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建权限组</Button>} emptyAction={{ label: '去创建', onExecute: () => setOpen(true) }} batchAction={{ label: '删除权限组', danger: true, onExecute: async (groupIds) => { await http.post('/permission/groups/batch-delete', { groupIds: groupIds.map(Number) }); } }} />
     <ResourceFormModal title="新建权限组" open={open} onCancel={() => setOpen(false)} onSubmit={create} initialValues={{ items: [] }} fields={[{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'description', label: '说明', type: 'textarea', maxLength: 500 }, { key: 'items', label: '授权明细', type: 'permission-grants', permissionVariant: 'matrix', required: true, width: 'full', hidePermissionManage }]} />
-    <Drawer title="权限组详情" open={groupId !== null} onClose={() => setGroupId(null)} width={640}>
+    <Drawer title="权限组详情" open={groupId !== null} onClose={() => setGroupId(null)} width="min(92vw, 640px)">
       {group ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Card size="small" title="基本信息">名称：{String(group.name ?? '—')}；说明：{String(group.description ?? '—')}</Card>
         <Card size="small" title="授权明细">{Array.isArray(group.items) && group.items.length > 0 ? group.items.map((item, index) => <Typography.Paragraph key={index}>{isRecord(item) ? `${String(item.name ?? item.functionCode)}（${String(item.dataScope ?? '—')}）${item.valid === false ? '，已失效' : ''}` : String(item)}</Typography.Paragraph>) : <Typography.Text type="secondary">当前是空权限组。</Typography.Text>}</Card>
@@ -701,7 +701,7 @@ function SystemLogs() {
         { key: 'security', label: '安全日志', children: <DataTable title="安全日志" service="platform" endpoint="/system-logs/security" pageKey="backstage-security-logs" columns={[...LIST_COLUMNS, { key: 'eventType', title: '事件' }, { key: 'actorName', title: '操作者' }, { key: 'targetUserName', title: '目标用户' }, { key: 'result', title: '结果', render: (value: unknown) => <StatusTag value={value} /> }]} filterFields={[{ key: 'eventType', title: '事件类型', type: 'enum', options: SECURITY_EVENT_TYPE_OPTIONS }, { key: 'actorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'targetUserId', title: '目标用户', type: 'remote', remote: permissionEmployeesSource }, { key: 'result', title: '结果', type: 'enum', options: [{ label: '成功', value: 'SUCCESS' }, { label: '失败', value: 'FAILURE' }] }]} exportConfig={{ allEndpoint: '/system-logs/security/export', filename: 'security-logs.xlsx', method: 'POST' }} /> },
       ]}
     />
-    <Drawer title="错误日志详情" open={detailId !== null} onClose={() => setDetailId(null)} width={620}>{detail ? <Descriptions bordered column={1} size="small" items={errorLogDetailItems(detail)} /> : <Typography.Text>正在加载...</Typography.Text>}</Drawer>
+    <Drawer title="错误日志详情" open={detailId !== null} onClose={() => setDetailId(null)} width="min(92vw, 620px)">{detail ? <Descriptions bordered column={1} size="small" items={errorLogDetailItems(detail)} /> : <Typography.Text>正在加载...</Typography.Text>}</Drawer>
   </Space>;
 }
 
@@ -734,7 +734,7 @@ function Backups() {
   const { user } = useSession();
   const [version, setVersion] = useState(0);
   const [restoreOpen, setRestoreOpen] = useState(false);
-  const [restoreStep, setRestoreStep] = useState<'form' | 'precheck'>('form');
+  const [restoreStep, setRestoreStep] = useState<'form' | 'precheck' | 'waiting'>('form');
   const [precheck, setPrecheck] = useState<RecordValue | null>(null);
   /** 可恢复的已完成备份（供预检选择；仅展示类型与完成时间，不展示敏感元数据）。 */
   const [backupOptions, setBackupOptions] = useState<Array<{ label: string; value: number }>>([]);
@@ -761,11 +761,31 @@ function Backups() {
       const backupId = Number(values.backupId);
       const result = await http.post<RecordValue>('/restores/precheck', { backupId });
       setPrecheck({ ...result, backupId });
-      setRestoreStep('precheck');
+      // 预检等待（backstage PRD §10，问题7 修复）：普通备份运行中停留在预检等待，
+      // 不拒绝确认；自动轮询直到放行再进入确认步骤
+      setRestoreStep(result.waitingForBackup ? 'waiting' : 'precheck');
     } catch (error) {
       feedback.error(error, '恢复预检失败');
     }
   };
+  // 预检等待轮询：普通备份运行中每 5s 重新预检，放行（ready）后进入确认步骤
+  useEffect(() => {
+    if (restoreStep !== 'waiting' || !precheck || typeof precheck.backupId !== 'number') return;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const result = await http.post<RecordValue>('/restores/precheck', { backupId: precheck.backupId });
+          setPrecheck({ ...result, backupId: precheck.backupId });
+          if (!result.waitingForBackup) {
+            setRestoreStep('precheck');
+          }
+        } catch {
+          // 轮询失败保留等待状态，下一轮重试
+        }
+      })();
+    }, 5_000);
+    return () => clearInterval(timer);
+  }, [restoreStep, precheck]);
   const confirmRestore = async (values: RecordValue) => {
     if (!precheck || typeof precheck.backupId !== 'number') return;
     try {
@@ -796,13 +816,18 @@ function Backups() {
         { key: 'restores', label: '恢复记录', children: <DataTable key={`restores-${version}`} title="恢复记录" service="platform" endpoint="/restores" pageKey="backstage-restores" columns={[...LIST_COLUMNS, { key: 'backupId', title: '来源备份' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'createdAt', title: '发起时间' }]} /> },
       ]}
     />
-    <Drawer title="数据库恢复" open={restoreOpen} onClose={() => { setRestoreOpen(false); setRestoreStep('form'); setPrecheck(null); form.resetFields(); }} width={620}>
+    <Drawer title="数据库恢复" open={restoreOpen} onClose={() => { setRestoreOpen(false); setRestoreStep('form'); setPrecheck(null); form.resetFields(); }} width="min(92vw, 620px)">
       {restoreStep === 'form' ? (
         <Form form={form} layout="vertical" onFinish={(values) => void submitPrecheck(values)}>
           <Form.Item name="backupId" label="待恢复备份" rules={[{ required: true, message: '请选择待恢复备份' }]}><Select showSearch optionFilterProp="label" loading={backupOptionsLoading} placeholder="选择已完成备份" options={backupOptions} /></Form.Item>
           <Alert type="warning" showIcon message="恢复会覆盖当前数据库。确认后服务端会先创建紧急备份；紧急备份失败时只有明确勾选风险确认才能继续。" />
           <Button type="primary" htmlType="submit" style={{ marginTop: 16 }}>执行预检</Button>
         </Form>
+      ) : restoreStep === 'waiting' && precheck ? (
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Alert type="info" showIcon message={`普通备份运行中（#${String(precheck.runningBackupId ?? '')}），恢复停留在预检等待阶段，系统将自动等待其完成后进入确认。`} />
+          <Spin tip="等待普通备份完成..." />
+        </Space>
       ) : precheck ? (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Descriptions bordered column={1} size="small" items={restorePrecheckItems(precheck)} />

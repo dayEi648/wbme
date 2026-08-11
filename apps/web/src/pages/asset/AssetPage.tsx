@@ -360,7 +360,7 @@ function AssetDetailDrawer({ assetId, onClose }: { assetId: number | null; onClo
     label,
     children: <span>{key === 'usageStatus' ? ASSET_STATUS_LABELS[String(detail?.[key] ?? '')] ?? String(detail?.[key] ?? '—') : key === 'ownership' ? OWNERSHIP_LABELS[String(detail?.[key] ?? '')] ?? String(detail?.[key] ?? '—') : key === 'purchaseAt' || key === 'updatedAt' ? formatBeijingDateTime(String(detail?.[key] ?? '')) : String(detail?.[key] ?? '—')}</span>,
   }));
-  return <Drawer title="资产详情" open={assetId !== null} onClose={onClose} width={720}>
+  return <Drawer title="资产详情" open={assetId !== null} onClose={onClose} width="min(92vw, 720px)">
     {detail ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       {imageUrl ? <Image src={imageUrl} alt="资产主图" style={{ maxWidth: 320, maxHeight: 240, objectFit: 'contain' }} /> : null}
       <Descriptions bordered column={1} size="small" items={basicItems} />
@@ -530,7 +530,7 @@ function InventoryItemDrawer({ itemId, onClose }: { itemId: number | null; onClo
     { label: '账面数量', children: String(item.bookQty ?? '—') },
     { label: '占用数量', children: String(item.reservedQty ?? '—') },
   ] : [];
-  return <Drawer title="库存条目详情" open={itemId !== null} onClose={onClose} width={720}>
+  return <Drawer title="库存条目详情" open={itemId !== null} onClose={onClose} width="min(92vw, 720px)">
     {item ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Descriptions bordered column={1} size="small" items={items} />
       <Card size="small" title={`该条目批次（${batches.length}）`} extra={<Button size="small" onClick={() => navigate(`/asset/inventory-batches?inventoryItemId=${itemId}`)}>查看全部批次</Button>} styles={{ body: { padding: 0 } }}>
@@ -677,7 +677,8 @@ function AgentSharedList() {
   }, [feedback]);
   if (loading) return <Spin tip="正在加载..." />;
   return <Card title="代领共享清单" size="small">
-    <Table<RecordValue> rowKey={(row) => String(row.id)} size="small" pagination={false} dataSource={agentShared} locale={{ emptyText: '暂无代领共享清单' }} columns={[{ key: 'id', title: '记录 ID', dataIndex: 'id' }, { key: 'proxyName', title: '代领人', dataIndex: 'proxyName' }, { key: 'consumableName', title: '物品', dataIndex: 'consumableName' }, { key: 'qty', title: '共享数量', dataIndex: 'qty' }, { key: 'dueAt', title: '到期时间', dataIndex: 'dueAt' }, { key: 'returnedQty', title: '已归还', dataIndex: 'returnedQty' }, { key: 'writtenOffQty', title: '已核销', dataIndex: 'writtenOffQty' }]} />
+    {/* 只读台账清单：无行内交互与分页，窄屏保留全部列、横向滚动查看（不丢列）。 */}
+    <Table<RecordValue> rowKey={(row) => String(row.id)} size="small" pagination={false} scroll={{ x: 'max-content' }} dataSource={agentShared} locale={{ emptyText: '暂无代领共享清单' }} columns={[{ key: 'id', title: '记录 ID', dataIndex: 'id' }, { key: 'proxyName', title: '代领人', dataIndex: 'proxyName' }, { key: 'consumableName', title: '物品', dataIndex: 'consumableName' }, { key: 'qty', title: '共享数量', dataIndex: 'qty' }, { key: 'dueAt', title: '到期时间', dataIndex: 'dueAt' }, { key: 'returnedQty', title: '已归还', dataIndex: 'returnedQty' }, { key: 'writtenOffQty', title: '已核销', dataIndex: 'writtenOffQty' }]} />
   </Card>;
 }
 
@@ -797,7 +798,7 @@ function QrCreateModal({
     }
   }, [form, open]);
   return (
-    <Modal title="生成二维码" open={open} onCancel={onCancel} footer={null} destroyOnHidden width={420}>
+    <Modal title="生成二维码" open={open} onCancel={onCancel} footer={null} destroyOnHidden width="min(92vw, 420px)">
       <Form
         form={form}
         layout="vertical"

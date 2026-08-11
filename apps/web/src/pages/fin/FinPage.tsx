@@ -392,7 +392,7 @@ function ProjectOperations() {
   }, [detailTarget, feedback]);
   return <>
     <DataTable title="项目操作记录" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'id', title: 'ID', fixed: 'left' as const }, { key: 'projectName', title: '项目' }, { key: 'action', title: '操作' }, { key: 'operatorName', title: '操作者' }, { key: 'createdAt', title: '时间' }]} filterFields={[{ key: 'projectId', title: '项目', type: 'remote', remote: finProjectsSource }]} onRowClick={(row) => setDetailTarget({ id: Number(row.id), projectName: typeof row.projectName === 'string' ? row.projectName : null })} />
-    <Drawer title="操作记录详情" open={detailTarget !== null} onClose={() => setDetailTarget(null)} width={720}>
+    <Drawer title="操作记录详情" open={detailTarget !== null} onClose={() => setDetailTarget(null)} width="min(92vw, 720px)">
       {detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Descriptions bordered column={1} size="small" items={[
           { key: 'project', label: '项目', children: detailTarget?.projectName ?? `#${String(detail.projectId ?? '')}` },
@@ -449,8 +449,47 @@ function ProjectDetails({ projectId, canMaintain, onClose }: { projectId: number
     const details = detail?.details;
     return isRecord(details) && Array.isArray(details[key]) ? details[key].filter((item): item is DetailItem => isRecord(item) && typeof item.id === 'number' && typeof item.amount === 'string') : [];
   };
-  const table = (title: string, kind: DetailKind, rows: DetailItem[]) => <Card key={kind} size="small" title={title} extra={canMaintain ? <Button size="small" onClick={() => setEditing({ kind })}>新增</Button> : null}><Table<DetailItem> size="small" rowKey="id" pagination={false} dataSource={rows} locale={{ emptyText: '暂无明细' }} columns={[{ key: 'amount', title: '金额', dataIndex: 'amount' }, { key: 'occurredDate', title: '日期', dataIndex: 'occurredDate' }, { key: 'remark', title: '备注', dataIndex: 'remark' }, ...(canMaintain ? [{ key: 'actions', title: '操作', render: (_: unknown, item: DetailItem) => <Space size="small"><Button size="small" onClick={() => setEditing({ kind, item })}>编辑</Button><Popconfirm title="确认删除这条金额明细？删除不可恢复。" onConfirm={() => void remove(kind, item)}><Button size="small" danger>删除</Button></Popconfirm></Space> }] : [])]} /></Card>;
-  return <Drawer title="项目详情与金额明细" open onClose={onClose} width={860}>{detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}><Card title="项目资料" size="small"><Descriptions bordered column={1} size="small" items={detailItems(isRecord(detail.project) ? detail.project : null, PROJECT_FIELD_LABELS, PROJECT_MONEY_KEYS)} /></Card><Card title="自动计算" size="small"><Descriptions bordered column={1} size="small" items={detailItems(isRecord(detail.auto) ? detail.auto : null, AUTO_FIELD_LABELS, PROJECT_MONEY_KEYS, new Set(['grossMargin']))} /></Card>{table('开票金额', 'invoice', detailRows('invoices'))}{table('已收回款', 'receipt', detailRows('receipts'))}{table('已付分包款', 'subcontract-payment', detailRows('subcontractPayments'))}</Space> : <Typography.Text>正在加载...</Typography.Text>}<ResourceFormModal title={editing?.item ? '编辑金额明细' : '新增金额明细'} open={editing !== null} onCancel={() => setEditing(null)} onSubmit={save} initialValues={editing?.item ?? {}} fields={[{ key: 'amount', label: '金额', type: 'number', required: true, width: 'narrow' }, { key: 'occurredDate', label: '日期', type: 'date' }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }]} /></Drawer>;
+  const table = (title: string, kind: DetailKind, rows: DetailItem[]) => (
+    <Card key={kind} size="small" title={title} extra={canMaintain ? <Button size="small" onClick={() => setEditing({ kind })}>新增</Button> : null}>
+      <div className="wbme-desktop-table">
+        <Table<DetailItem> size="small" rowKey="id" pagination={false} dataSource={rows} locale={{ emptyText: '暂无明细' }} columns={[{ key: 'amount', title: '金额', dataIndex: 'amount' }, { key: 'occurredDate', title: '日期', dataIndex: 'occurredDate' }, { key: 'remark', title: '备注', dataIndex: 'remark' }, ...(canMaintain ? [{ key: 'actions', title: '操作', render: (_: unknown, item: DetailItem) => <Space size="small"><Button size="small" onClick={() => setEditing({ kind, item })}>编辑</Button><Popconfirm title="确认删除这条金额明细？删除不可恢复。" onConfirm={() => void remove(kind, item)}><Button size="small" danger>删除</Button></Popconfirm></Space> }] : [])]} />
+      </div>
+      {/* 移动端：金额明细是只读键值（含编辑/删除操作），逐条成卡展示；触控目标由全局 44px 规则保证。 */}
+      <div className="wbme-mobile-cards">
+        {rows.length === 0 ? <Typography.Text type="secondary">暂无明细</Typography.Text> : (
+          <Space direction="vertical" size="small" style={{ width: '100%' }}>
+            {rows.map((item) => (
+              <Card key={item.id} size="small">
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    <Typography.Text type="secondary">金额</Typography.Text>
+                    <span>{item.amount}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    <Typography.Text type="secondary">日期</Typography.Text>
+                    <span>{item.occurredDate ?? '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    <Typography.Text type="secondary">备注</Typography.Text>
+                    <span>{item.remark ?? '—'}</span>
+                  </div>
+                  {canMaintain ? (
+                    <Space size="small">
+                      <Button size="small" onClick={() => setEditing({ kind, item })}>编辑</Button>
+                      <Popconfirm title="确认删除这条金额明细？删除不可恢复。" onConfirm={() => void remove(kind, item)}>
+                        <Button size="small" danger>删除</Button>
+                      </Popconfirm>
+                    </Space>
+                  ) : null}
+                </Space>
+              </Card>
+            ))}
+          </Space>
+        )}
+      </div>
+    </Card>
+  );
+  return <Drawer title="项目详情与金额明细" open onClose={onClose} width="min(92vw, 860px)">{detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}><Card title="项目资料" size="small"><Descriptions bordered column={1} size="small" items={detailItems(isRecord(detail.project) ? detail.project : null, PROJECT_FIELD_LABELS, PROJECT_MONEY_KEYS)} /></Card><Card title="自动计算" size="small"><Descriptions bordered column={1} size="small" items={detailItems(isRecord(detail.auto) ? detail.auto : null, AUTO_FIELD_LABELS, PROJECT_MONEY_KEYS, new Set(['grossMargin']))} /></Card>{table('开票金额', 'invoice', detailRows('invoices'))}{table('已收回款', 'receipt', detailRows('receipts'))}{table('已付分包款', 'subcontract-payment', detailRows('subcontractPayments'))}</Space> : <Typography.Text>正在加载...</Typography.Text>}<ResourceFormModal title={editing?.item ? '编辑金额明细' : '新增金额明细'} open={editing !== null} onCancel={() => setEditing(null)} onSubmit={save} initialValues={editing?.item ?? {}} fields={[{ key: 'amount', label: '金额', type: 'number', required: true, width: 'narrow' }, { key: 'occurredDate', label: '日期', type: 'date' }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }]} /></Drawer>;
 }
 
 /** 利润分析（导出供组件测试；离开保护时序见 fin-profit-guard.spec，M22） */
@@ -849,7 +888,7 @@ export function ProfitAnalysis() {
       </Space>
     </Card>
     {canEdit && importOpen ? (
-      <Modal title="导入" open footer={null} width={720} onCancel={() => setImportOpen(false)} destroyOnHidden>
+      <Modal title="导入" open footer={null} width="min(92vw, 720px)" onCancel={() => setImportOpen(false)} destroyOnHidden>
         <ImportCard />
       </Modal>
     ) : null}
@@ -1027,6 +1066,9 @@ function FinanceConfig() {
   </Card>;
 }
 
+/** 导入预览分页大小：桌面表格与移动端卡片共用（批次 7：两形态共享同一分页状态）。 */
+const PREVIEW_PAGE_SIZE = 20;
+
 function ImportPreviewCard({ preview, choices, confirmations, onChoiceChange, onConfirmChange }: {
   preview: ImportPreview;
   choices: Record<number, 'OVERWRITE' | 'SKIP'>;
@@ -1035,20 +1077,65 @@ function ImportPreviewCard({ preview, choices, confirmations, onChoiceChange, on
   onConfirmChange: (rowNumber: number, confirmed: boolean) => void;
 }) {
   const pending = preview.pendingChoice ?? [];
+  // 移动端逐行卡片与桌面表格共享分页状态；重新生成预览时回到第一页。
+  const [previewPage, setPreviewPage] = useState(1);
+  useEffect(() => setPreviewPage(1), [preview]);
+  const pagedPending = pending.slice((previewPage - 1) * PREVIEW_PAGE_SIZE, previewPage * PREVIEW_PAGE_SIZE);
   return <Card size="small" title="导入预览">
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       {preview.summary ? <Typography.Text>汇总：{Object.entries(preview.summary).map(([key, value]) => `${key} ${String(value)}`).join('，')}</Typography.Text> : null}
-      {pending.length > 0 ? <Table<PreviewChoice> size="small" rowKey="rowNumber" pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `共 ${total} 条待选择记录` }} dataSource={pending} columns={[
-        { key: 'rowNumber', title: '行', dataIndex: 'rowNumber', width: 70 },
-        { key: 'name', title: '项目', dataIndex: 'name' },
-        { key: 'year', title: '年度', dataIndex: 'year', width: 100 },
-        { key: 'warning', title: '提示', render: (_, row) => row.dataLossWarning ? '覆盖会清空原明细的日期/备注' : '—' },
-        { key: 'decision', title: '处理', render: (_, row) => <Select value={choices[row.rowNumber] ?? 'SKIP'} style={{ minWidth: 120 }} options={[{ label: '跳过', value: 'SKIP' }, { label: '覆盖', value: 'OVERWRITE' }]} onChange={(value: 'OVERWRITE' | 'SKIP') => onChoiceChange(row.rowNumber, value)} /> },
-        // L26：覆盖数据丢失警告须显式勾选确认（未确认时确认导入按钮禁用）
-        { key: 'confirm', title: '警告确认', render: (_, row) => row.dataLossWarning
-          ? <Checkbox checked={confirmations[row.rowNumber] ?? false} disabled={(choices[row.rowNumber] ?? 'SKIP') !== 'OVERWRITE'} onChange={(event) => onConfirmChange(row.rowNumber, event.target.checked)}>已阅读并确认</Checkbox>
-          : null },
-      ]} /> : null}
+      {pending.length > 0 ? <>
+        <div className="wbme-desktop-table">
+          <Table<PreviewChoice> size="small" rowKey="rowNumber" dataSource={pending} pagination={{ current: previewPage, pageSize: PREVIEW_PAGE_SIZE, showSizeChanger: false, showTotal: (total) => `共 ${total} 条待选择记录`, onChange: setPreviewPage }} columns={[
+            { key: 'rowNumber', title: '行', dataIndex: 'rowNumber', width: 70 },
+            { key: 'name', title: '项目', dataIndex: 'name' },
+            { key: 'year', title: '年度', dataIndex: 'year', width: 100 },
+            { key: 'warning', title: '提示', render: (_, row) => row.dataLossWarning ? '覆盖会清空原明细的日期/备注' : '—' },
+            { key: 'decision', title: '处理', render: (_, row) => <Select value={choices[row.rowNumber] ?? 'SKIP'} style={{ minWidth: 120 }} options={[{ label: '跳过', value: 'SKIP' }, { label: '覆盖', value: 'OVERWRITE' }]} onChange={(value: 'OVERWRITE' | 'SKIP') => onChoiceChange(row.rowNumber, value)} /> },
+            // L26：覆盖数据丢失警告须显式勾选确认（未确认时确认导入按钮禁用）
+            { key: 'confirm', title: '警告确认', render: (_, row) => row.dataLossWarning
+              ? <Checkbox checked={confirmations[row.rowNumber] ?? false} disabled={(choices[row.rowNumber] ?? 'SKIP') !== 'OVERWRITE'} onChange={(event) => onConfirmChange(row.rowNumber, event.target.checked)}>已阅读并确认</Checkbox>
+              : null },
+          ]} />
+        </div>
+        {/* 移动端：逐行决策与警告确认（L26）须同屏可达，改卡片纵排，避免横向滚动找勾选。 */}
+        <div className="wbme-mobile-cards">
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            {pagedPending.map((row) => (
+              <Card key={row.rowNumber} size="small">
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    <Typography.Text type="secondary">行</Typography.Text>
+                    <span>{row.rowNumber}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    <Typography.Text type="secondary">项目</Typography.Text>
+                    <span>{row.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    <Typography.Text type="secondary">年度</Typography.Text>
+                    <span>{row.year ?? '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    <Typography.Text type="secondary">提示</Typography.Text>
+                    <span>{row.dataLossWarning ? '覆盖会清空原明细的日期/备注' : '—'}</span>
+                  </div>
+                  <div>
+                    <Typography.Text type="secondary">处理</Typography.Text>
+                    <Select value={choices[row.rowNumber] ?? 'SKIP'} style={{ width: '100%', marginTop: 4 }} options={[{ label: '跳过', value: 'SKIP' }, { label: '覆盖', value: 'OVERWRITE' }]} onChange={(value: 'OVERWRITE' | 'SKIP') => onChoiceChange(row.rowNumber, value)} />
+                  </div>
+                  {row.dataLossWarning ? (
+                    <Checkbox checked={confirmations[row.rowNumber] ?? false} disabled={(choices[row.rowNumber] ?? 'SKIP') !== 'OVERWRITE'} onChange={(event) => onConfirmChange(row.rowNumber, event.target.checked)}>已阅读并确认</Checkbox>
+                  ) : null}
+                </Space>
+              </Card>
+            ))}
+          </Space>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <Pagination current={previewPage} pageSize={PREVIEW_PAGE_SIZE} total={pending.length} showSizeChanger={false} onChange={setPreviewPage} />
+          </div>
+        </div>
+      </> : null}
       {(preview.created?.length ?? 0) > 0 ? <Typography.Text type="success">将新增 {preview.created?.length} 行。</Typography.Text> : null}
       {(preview.conflicts?.length ?? 0) > 0 ? <Typography.Text type="warning">存在 {preview.conflicts?.length} 行冲突，不能导入。</Typography.Text> : null}
       {(preview.errors?.length ?? 0) > 0 ? <Typography.Text type="danger">存在 {preview.errors?.length} 行校验错误，不能导入。</Typography.Text> : null}

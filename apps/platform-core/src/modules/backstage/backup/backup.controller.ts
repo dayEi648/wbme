@@ -58,8 +58,8 @@ export class BackupController {
 
   /**
    * 签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10）。
-   * Cookie 透传设置（path=/recovery；生产链路为演练机命令行直连恢复执行器
-   * 3090 端口携带 Cookie——Nginx 无反代 /recovery/*，M32 复核修正）。
+   * Cookie 透传设置（path=/recovery；维护状态下浏览器经 Nginx /recovery/ 反代
+   * 到恢复执行器携带本 Cookie 操作，非维护状态 /recovery/ 一律 404）。
    */
   @Post('restores/session')
   async issueRecoverySession(

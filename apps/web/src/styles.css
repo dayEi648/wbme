@@ -1,11 +1,13 @@
 @media (min-width: 769px) {
-  .wbme-mobile-cards {
+  .wbme-mobile-cards,
+  .wbme-mobile-toolbar {
     display: none;
   }
 }
 
 @media (max-width: 768px) {
-  .wbme-desktop-table {
+  .wbme-desktop-table,
+  .wbme-desktop-toolbar {
     display: none;
   }
 
@@ -36,5 +38,13 @@
   .ant-pagination-next {
     min-width: 44px;
     justify-content: center;
+  }
+
+  /* DataTable 移动端「更多」下拉菜单项同为触控目标。 */
+  .ant-dropdown .ant-dropdown-menu-item,
+  .ant-dropdown .ant-dropdown-menu-submenu-title {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
   }
 }

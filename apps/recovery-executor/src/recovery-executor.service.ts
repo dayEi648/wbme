@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rm, mkdtemp } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm, mkdtemp, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
@@ -38,7 +38,11 @@ export interface RecoveryExecutorDeps {
   /** 文件存储（取回备份文件 / 扫描备份前缀） */
   storage: {
     getObject(key: string): Promise<Buffer>;
+    /** 流式下载（问题16 修复；缺省时回退 getObject 整体读入，仅测试替身路径） */
+    getObjectStream?(key: string): Promise<NodeJS.ReadableStream>;
     listPrefix(prefix: string): Promise<string[]>;
+    /** 对象元数据（服务端加密校验；本地替身可缺省，缺省时跳过加密验证） */
+    headObject?(key: string): Promise<{ serverSideEncryption?: string }>;
   };
   /** Redis 连接串（恢复后清空） */
   redisUrl: string;
@@ -64,6 +68,20 @@ function writeDrainMaxWaitMs(): number {
 function writeDrainPollMs(): number {
   return Number(process.env.RESTORE_WRITE_DRAIN_POLL_MS ?? WRITE_DRAIN_POLL_MS_DEFAULT);
 }
+
+/** 业务服务就绪等待上限（毫秒；恢复完成、容器启动后等待全部 /readyz 通过） */
+const BUSINESS_READY_MAX_WAIT_MS_DEFAULT = 120_000;
+
+/** 业务服务就绪等待上限（环境变量可配置，默认 120s） */
+function businessReadyMaxWaitMs(): number {
+  return Number(process.env.RESTORE_BUSINESS_READY_MAX_WAIT_MS ?? BUSINESS_READY_MAX_WAIT_MS_DEFAULT);
+}
+
+/** 业务服务就绪轮询间隔（毫秒） */
+const BUSINESS_READY_POLL_MS = 5_000;
+
+/** 业务服务就绪探测超时（毫秒） */
+const BUSINESS_READY_PROBE_TIMEOUT_MS = 5_000;
 
 /**
  * 恢复执行状态机（backstage PRD §10）。
@@ -141,6 +159,15 @@ export class RecoveryExecutorService {
       this.logger.error('就绪检查失败：REDIS_URL 未配置');
       return { ready: false, reason: 'Redis 连接串未配置' };
     }
+    // OSS 配置完整性（问题18 修复）：恢复需从 OSS 取回备份对象，配置缺失时
+    // createFileStorage 在生产抛错--不应等到 RESTORING 阶段才失败。
+    // 仅校验配置完整性，连接不可用不阻断（恢复时 OSS 可能暂不可达，与 DB 同口径）。
+    if (!this.deps) {
+      if (!process.env.OSS_BUCKET?.trim() || !process.env.OSS_REGION?.trim()) {
+        this.logger.error('就绪检查失败：OSS_BUCKET / OSS_REGION 未配置（恢复取回备份不可用）');
+        return { ready: false, reason: 'OSS 存储配置未配置' };
+      }
+    }
     return { ready: true };
   }
 
@@ -154,9 +181,13 @@ export class RecoveryExecutorService {
   /**
    * 接收 RESTORE_DELIVERY：持久化外部清单并进入维护状态。
    *
-   * 幂等语义（backstage PRD §10「清单写入后不再重放」）：
-   * - 既有清单 stage ≠ DONE 且 restoreUuid 相同 → 忽略重复投递（恢复进行中）；
-   * - 既有清单 restoreUuid 不同 → 拒绝（避免覆盖进行中的恢复，清单被覆盖会重跑破坏性管道）。
+   * 幂等与阻断语义（backstage PRD §10「清单写入后不再重放」；批次8复核修复终态处理）：
+   * - 既有清单 restoreUuid 相同 → 忽略重复投递（进行中：重投不推进；DONE：幂等忽略，
+   *   不得重跑破坏性管道）；
+   * - 既有清单 restoreUuid 不同且非终态（stage ≠ DONE）→ 拒绝（避免覆盖进行中的恢复，
+   *   清单被覆盖会重跑破坏性管道）；
+   * - 既有清单 restoreUuid 不同且已终态（DONE）→ 不阻断新一轮恢复：旧清单另存归档名
+   *   保留审计痕迹（清单本身按 PRD 保留不删），覆盖写入新清单开始新一轮。
    *
    * @param ref 任务 ref
    */
@@ -164,13 +195,14 @@ export class RecoveryExecutorService {
     await this.ensureStateDir();
     const existing = await this.loadManifestIfExists();
     if (existing) {
-      if (existing.restoreUuid === ref.restoreUuid && existing.stage !== 'DONE') {
+      if (existing.restoreUuid === ref.restoreUuid) {
         this.logger.warn(`恢复投递重复（restoreUuid=${ref.restoreUuid} stage=${existing.stage}），忽略重投`);
         return;
       }
-      if (existing.restoreUuid !== ref.restoreUuid) {
+      if (existing.stage !== 'DONE') {
         throw new Error(`已有进行中的恢复 ${existing.restoreUuid}，拒绝接收新的投递 ${ref.restoreUuid}`);
       }
+      await this.archiveManifest(existing);
     }
     this.manifest = {
       restoreUuid: ref.restoreUuid,
@@ -352,7 +384,7 @@ export class RecoveryExecutorService {
     }
   }
 
-  /** 预检：所选备份记录完整、校验和与对象可达 */
+  /** 预检：所选备份记录完整、校验和与对象可达、PG 大版本兼容 */
   private async stagePrecheck(): Promise<void> {
     const db = await this.openDb();
     try {
@@ -361,8 +393,9 @@ export class RecoveryExecutorService {
         checksum: string | null;
         oss_object_key: string | null;
         file_size: string | null;
+        pg_version: string | null;
       }>(
-        `SELECT status, checksum, oss_object_key, file_size::text AS file_size
+        `SELECT status, checksum, oss_object_key, file_size::text AS file_size, pg_version
          FROM backstage.backups WHERE id = $1`,
         [this.manifest!.backupId],
       );
@@ -373,23 +406,61 @@ export class RecoveryExecutorService {
       if (backup.status !== 'SUCCEEDED' || !backup.checksum || !backup.oss_object_key) {
         throw new Error(`备份未通过校验（状态=${backup.status}），禁止恢复`);
       }
+      // PG 大版本兼容性校验（问题11）：跨大版本降级恢复（新备份->旧库）pg_restore
+      // 中途失败可能留下半恢复状态；仅允许向前兼容（备份版本 <= 目标库版本）。
+      const backupMajor = parsePgMajor(backup.pg_version);
+      if (backupMajor > 0) {
+        const serverRows = await db.queryRows<{ n: string }>(
+          `SELECT current_setting('server_version_num')::bigint::text AS n`,
+        );
+        const serverMajor = Math.floor(Number(serverRows[0]?.n ?? 0) / 10000);
+        if (serverMajor > 0 && backupMajor > serverMajor) {
+          throw new Error(
+            `备份 PostgreSQL 大版本(${backupMajor})高于目标库(${serverMajor})，跨大版本降级恢复不被支持（可能留下半恢复状态）`,
+          );
+        }
+      }
       // 对象可达性（对象缺失在 RESTORING 下载阶段暴露；此处校验键存在即可提前失败）
       const storage = await this.getStorage();
       const keys = await storage.listPrefix(`backups/${this.manifest!.backupId}/`);
       if (keys.length === 0) {
         throw new Error('备份对象在存储中不可达');
       }
+      // 服务端加密元数据校验（主 PRD §9.2 第 265 行，问题6 修复）：
+      // 备份写入时统一携带 SSE-OSS/AES256；预检验证该头，有元数据但非 AES256 即拒绝，
+      // 防止明文落盘无法发现。本地替身无元数据（headObject 缺省/空）时跳过。
+      if (storage.headObject) {
+        let encryption: string | undefined;
+        try {
+          const meta = await storage.headObject(`backups/${this.manifest!.backupId}/dump.fc`);
+          encryption = meta.serverSideEncryption;
+        } catch (error) {
+          this.logger.warn(
+            `备份对象元数据读取失败（跳过加密校验）: ${
+              error instanceof Error ? error.message : error
+            }`,
+          );
+        }
+        if (encryption && encryption.toUpperCase() !== 'AES256') {
+          throw new Error(
+            `备份对象服务端加密元数据异常（${encryption}），未使用 SSE-OSS/AES256，禁止恢复`,
+          );
+        }
+      }
     } finally {
       await db.end();
     }
   }
 
-  /** 维护：确保标记在位、镜像恢复记录、确认存量写连接排空后进入恢复 */
+  /** 维护：确保标记在位、镜像恢复记录、确认存量连接排空后进入恢复 */
   private async stageMaintenance(): Promise<void> {
     await this.setMaintenanceMarker(true);
     await this.syncRestoreRow({ status: 'MAINTENANCE', stage: 'MAINTENANCE' }).catch(() => undefined);
-    // 确认除恢复执行器外不存在仍可写目标数据库的连接（backstage PRD §10）：
-    // 轮询 pg_stat_activity 等待活跃写事务为 0；超时则记录明细并中止恢复（保持维护状态）。
+    // 确认除恢复执行器外不存在仍可写目标数据库的连接（backstage PRD §10 第 125 行：
+    // 「关闭各应用连接池，并确认除恢复执行器外不存在仍可写入目标数据库的连接」）：
+    // 轮询 pg_stat_activity 等待全部 client backend 连接（含 idle）排空——idle 连接
+    // 同样可能随时发起新事务写入（TOCTOU 窗口，问题8 修复）；连接池空闲连接在
+    // 维护状态下无新查询，经连接池空闲超时自然关闭。超时则记录明细并中止恢复（保持维护状态）。
     const databaseUrl = process.env.DATABASE_URL?.trim();
     if (!databaseUrl) {
       throw new Error('DATABASE_URL 未配置，无法确认写连接排空');
@@ -413,8 +484,6 @@ export class RecoveryExecutorService {
            WHERE datname = current_database()
              AND pid <> pg_backend_pid()
              AND backend_type = 'client backend'
-             AND state IN ('active', 'idle in transaction')
-             AND xact_start IS NOT NULL
              AND query NOT ILIKE '%pg_stat_activity%'`,
         );
         if (rows.length === 0) {
@@ -426,9 +495,14 @@ export class RecoveryExecutorService {
         }
         if (Date.now() >= deadline) {
           const detail = rows
-            .map((row) => `pid=${row.pid} app=${row.application_name} addr=${row.client_addr ?? '-'} since=${row.xact_start?.toISOString()}`)
+            .map(
+              (row) =>
+                `pid=${row.pid} app=${row.application_name} addr=${row.client_addr ?? '-'} state=${row.state} since=${row.xact_start?.toISOString() ?? '-'}`,
+            )
             .join('；');
-          throw new Error(`停写等待超时：仍存在 ${rows.length} 个活跃写连接（${detail}），中止恢复并保持维护状态`);
+          throw new Error(
+            `停写等待超时：仍存在 ${rows.length} 个连接（含 idle，${detail}），中止恢复并保持维护状态`,
+          );
         }
         await this.sleep(writeDrainPollMs());
       }
@@ -447,12 +521,18 @@ export class RecoveryExecutorService {
     const workDir = await mkdtemp(join(tmpdir(), 'wbme-restore-'));
     const dumpPath = join(workDir, 'dump.fc');
     try {
-      const body = await storage.getObject(backup.oss_object_key!);
-      await writeFile(dumpPath, body);
-      if (backup.checksum) {
-        const digest = createHash('sha256').update(body).digest('hex');
-        if (digest !== backup.checksum) {
-          throw new Error('备份校验和不匹配，禁止覆盖数据库');
+      // 流式下载 + 流式 SHA-256（问题16 修复）：大备份不整体读入内存（执行器 128m 上限防 OOM）
+      if (storage.getObjectStream) {
+        await this.downloadObjectStreaming(storage, backup.oss_object_key!, dumpPath, backup.checksum);
+      } else {
+        // 测试替身回退：整体读入（仅测试路径，生产 storage 恒提供 getObjectStream）
+        const body = await storage.getObject(backup.oss_object_key!);
+        await writeFile(dumpPath, body);
+        if (backup.checksum) {
+          const digest = createHash('sha256').update(body).digest('hex');
+          if (digest !== backup.checksum) {
+            throw new Error('备份校验和不匹配，禁止覆盖数据库');
+          }
         }
       }
       await this.pgRestoreList(dumpPath);
@@ -498,10 +578,12 @@ export class RecoveryExecutorService {
     }
   }
 
-  /** 补回 OSS 中完整存在的备份记录（清单合法、对象完整；幂等） */
+  /** 补回 OSS 中完整存在的备份记录（清单合法、对象完整、大小/校验和/格式校验通过；幂等） */
   private async stageReinstateBackups(): Promise<void> {
     const storage = await this.getStorage();
     const db = await this.openDb();
+    // 格式校验（pg_restore --list）需要临时文件，整轮复用一个工作目录
+    const workDir = await mkdtemp(join(tmpdir(), 'wbme-reinstate-'));
     try {
       const keys = await storage.listPrefix('backups/');
       const backupIds = new Set<number>();
@@ -541,10 +623,54 @@ export class RecoveryExecutorService {
             continue;
           }
           const objectKeys = await storage.listPrefix(`backups/${backupId}/`);
-          const hasObject = objectKeys.some((k) => k.endsWith('/dump.fc'));
-          if (!hasObject) {
+          const dumpKey = objectKeys.find((k) => k.endsWith('/dump.fc'));
+          if (!dumpKey) {
             this.logger.warn(`备份对象不完整，不登记 backupId=${backupId}`);
             continue;
+          }
+          // 对象大小/校验和/格式校验（问题9 修复）：损坏/截断的备份对象不得登记为可恢复。
+          // 流式执行（批次8复核修复）：下载落临时文件后 stat 比大小、下载同时流式算
+          // SHA-256、pg_restore --list 校验格式——不整体读入内存（执行器 128m 上限防 OOM，
+          // 与 stageRestoring 同口径）；校验失败 continue 不登记、单备份异常隔离。
+          const dumpPath = join(workDir, `${backupId}-dump.fc`);
+          try {
+            if (storage.getObjectStream) {
+              await this.downloadObjectStreaming(storage, dumpKey, dumpPath, manifest.checksum);
+            } else {
+              // 测试替身回退：整体读入（仅测试路径，生产 storage 恒提供 getObjectStream）
+              const body = await storage.getObject(dumpKey);
+              await writeFile(dumpPath, body);
+              const digest = createHash('sha256').update(body).digest('hex');
+              if (digest !== manifest.checksum) {
+                throw new Error('备份校验和不匹配');
+              }
+            }
+            const info = await stat(dumpPath);
+            if (info.size !== manifest.size) {
+              this.logger.warn(
+                `备份对象大小不匹配（期望 ${manifest.size}，实际 ${info.size}），不登记 backupId=${backupId}`,
+              );
+              continue;
+            }
+            try {
+              await this.pgRestoreList(dumpPath);
+            } catch (error) {
+              this.logger.warn(
+                `备份对象格式不合法（pg_restore --list 失败），不登记 backupId=${backupId}: ${
+                  error instanceof Error ? error.message : error
+                }`,
+              );
+              continue;
+            }
+          } catch (error) {
+            this.logger.warn(
+              `备份对象下载/校验失败，不登记 backupId=${backupId}: ${
+                error instanceof Error ? error.message : error
+              }`,
+            );
+            continue;
+          } finally {
+            await rm(dumpPath, { force: true });
           }
           await db.query(
             `INSERT INTO backstage.backups
@@ -573,6 +699,7 @@ export class RecoveryExecutorService {
       }
     } finally {
       await db.end();
+      await rm(workDir, { recursive: true, force: true });
     }
   }
 
@@ -592,7 +719,7 @@ export class RecoveryExecutorService {
     }
   }
 
-  /** 恢复后校验：数据库连接、迁移元数据、至少一名可用超管 */
+  /** 恢复后校验：数据库连接、迁移元数据、至少一名可用超管、全部应运行服务就绪 */
   private async stageReadiness(): Promise<void> {
     const db = await this.openDb();
     try {
@@ -617,10 +744,55 @@ export class RecoveryExecutorService {
       if (Number(admins[0]?.n ?? 0) === 0) {
         throw new Error('恢复后不存在可用超级管理员，保持维护状态');
       }
-      // 应运行服务就绪由部署编排（Nginx/容器健康检查）保证；执行器侧仅校验数据库侧事实
       this.logger.log('恢复后校验通过（迁移完整性 + 权限目录 + 超管存在）');
     } finally {
       await db.end();
+    }
+    // 业务服务就绪（backstage PRD §10 第 125 行「全部应运行服务的就绪检查，全部通过后才
+    // 退出维护状态」，问题10 修复）：轮询等待 RESTORE_READINESS_URLS 全部 /readyz 通过，
+    // 未就绪则保持维护状态，不得带着未就绪栈开放流量。
+    await this.waitForBusinessServicesReady();
+  }
+
+  /** 轮询等待全部应运行业务服务就绪（有界等待，超时失败保持维护状态） */
+  private async waitForBusinessServicesReady(): Promise<void> {
+    const urls = (process.env.RESTORE_READINESS_URLS ?? '')
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (urls.length === 0) {
+      this.logger.warn('RESTORE_READINESS_URLS 未配置，跳过业务服务就绪校验');
+      return;
+    }
+    const deadline = Date.now() + businessReadyMaxWaitMs();
+    for (;;) {
+      const notReady: string[] = [];
+      for (const url of urls) {
+        if (!(await this.probeReadyUrl(url))) {
+          notReady.push(url);
+        }
+      }
+      if (notReady.length === 0) {
+        this.logger.log('全部应运行业务服务就绪');
+        return;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`业务服务未就绪（${notReady.join('，')}），保持维护状态等待服务恢复`);
+      }
+      await this.sleep(BUSINESS_READY_POLL_MS);
+    }
+  }
+
+  /** 探测单个服务就绪端点（带超时；HTTP 2xx 视为就绪） */
+  private async probeReadyUrl(url: string): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), BUSINESS_READY_PROBE_TIMEOUT_MS);
+      timer.unref?.();
+      const res = await fetch(url, { signal: controller.signal });
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 
@@ -643,9 +815,17 @@ export class RecoveryExecutorService {
           const { createFileStorage } = await import('@wbme/files');
           return (await createFileStorage()).getObject(key);
         },
+        getObjectStream: async (key) => {
+          const { createFileStorage } = await import('@wbme/files');
+          return (await createFileStorage()).getObjectStream(key);
+        },
         listPrefix: async (prefix) => {
           const { createFileStorage } = await import('@wbme/files');
           return (await createFileStorage()).listPrefix(prefix);
+        },
+        headObject: async (key) => {
+          const { createFileStorage } = await import('@wbme/files');
+          return (await createFileStorage()).headObject(key);
         },
       },
       migrateCmd: process.env.RECOVERY_MIGRATE_CMD,
@@ -690,6 +870,47 @@ export class RecoveryExecutorService {
     }
   }
 
+  /**
+   * 流式下载备份对象并校验 SHA-256（问题16 修复）。
+   *
+   * pipeline 串联「下载 → 流式算 hash → 写盘」：背压由 pipeline 管理，全程不整体读入内存；
+   * 任一环节（网络中断/磁盘写失败）出错即销毁全部流并 reject（批次8复核修复：原实现
+   * 在 for-await 结束后才挂接 out 的 error 监听、失败路径 out 未销毁，磁盘中途错误会
+   * 成为未捕获异常）；临时文件清理由调用方 finally 负责。
+   *
+   * @param storage 文件存储
+   * @param objectKey OSS 对象键
+   * @param dumpPath 落盘路径
+   * @param checksum 期望 SHA-256（可空）
+   */
+  private async downloadObjectStreaming(
+    storage: RecoveryExecutorDeps['storage'],
+    objectKey: string,
+    dumpPath: string,
+    checksum: string | null,
+  ): Promise<void> {
+    const { createWriteStream } = await import('node:fs');
+    const { pipeline } = await import('node:stream/promises');
+    const stream = (await storage.getObjectStream!(objectKey)) as AsyncIterable<Buffer>;
+    const hash = createHash('sha256');
+    await pipeline(
+      stream,
+      async function* (source: AsyncIterable<Buffer>) {
+        for await (const chunk of source) {
+          hash.update(chunk);
+          yield chunk;
+        }
+      },
+      createWriteStream(dumpPath),
+    );
+    if (checksum) {
+      const digest = hash.digest('hex');
+      if (digest !== checksum) {
+        throw new Error('备份校验和不匹配，禁止覆盖数据库');
+      }
+    }
+  }
+
   /** pg_restore --list 归档完整性校验（pg 工具路径可经环境变量注入） */
   private async pgRestoreList(dumpPath: string): Promise<void> {
     const restore = this.pgRestorePath();
@@ -723,6 +944,17 @@ export class RecoveryExecutorService {
     return join(this.stateDir, 'control-manifest.json');
   }
 
+  /**
+   * 归档既有终态清单（批次8复核修复）：DONE 清单不阻断新一轮恢复，但也不删除——
+   * 另存为 control-manifest.<restoreUuid>.json 保留审计痕迹（同一 restoreUuid 不会
+   * 两次完成：同 uuid 的 DONE 重投已被幂等忽略，归档名不冲突）。
+   */
+  private async archiveManifest(manifest: RestoreControlManifest): Promise<void> {
+    const archivePath = join(this.stateDir, `control-manifest.${manifest.restoreUuid}.json`);
+    await rename(this.manifestPath(), archivePath);
+    this.logger.log(`已归档终态恢复清单 restoreUuid=${manifest.restoreUuid} → ${archivePath}`);
+  }
+
   private maintenancePath(): string {
     return join(this.stateDir, 'maintenance.marker');
   }
@@ -734,7 +966,6 @@ export class RecoveryExecutorService {
     // 原子替换：先写临时文件再 rename，避免半写状态（PRD §10 恢复控制状态独立性）
     const tmp = `${this.manifestPath()}.tmp`;
     await writeFile(tmp, JSON.stringify(this.manifest, null, 2), 'utf8');
-    const { rename } = await import('node:fs/promises');
     await rename(tmp, this.manifestPath());
   }
 
@@ -774,6 +1005,23 @@ export class RecoveryExecutorService {
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/**
+ * 从 PostgreSQL 版本字符串提取主版本号。
+ *
+ * 备份 pg_version 来自 `SHOW server_version`（如 "18.4" 或 "18.4 (Ubuntu 18.4-1.pgdg12+1)"）；
+ * 解析失败返回 0（跳过大版本校验，交由 pg_restore 自行暴露不兼容）。
+ *
+ * @param version PG 版本字符串
+ * @returns 主版本号或 0
+ */
+function parsePgMajor(version: string | null | undefined): number {
+  if (!version) {
+    return 0;
+  }
+  const match = /(\d+)/.exec(version.trim());
+  return match?.[1] ? parseInt(match[1], 10) : 0;
 }
 
 export { RECOVERY_COOKIE_NAME };

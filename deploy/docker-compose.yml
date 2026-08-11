@@ -154,7 +154,8 @@ services:
       <<: *backend-env
       PLATFORM_CORE_PORT: "3001"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
-      COOKIE_SECURE: "true"
+      # 会话 Cookie Secure 属性（主 PRD §9.14）：生产 HTTPS 下为 true；纯内网/开发 HTTP 可显式 false
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
       DINGTALK_APP_KEY: ${DINGTALK_APP_KEY}
       DINGTALK_APP_SECRET: ${DINGTALK_APP_SECRET}
@@ -330,6 +331,9 @@ services:
       HEALTH_DISK_PATHS: /opt/wbme/disk-volumes/postgres,/opt/wbme/disk-volumes/redis,/opt/wbme/persist/restore-state
       HEALTH_DISK_WARN_RATIO: ${HEALTH_DISK_WARN_RATIO:-0.8}
       HEALTH_DISK_CRITICAL_RATIO: ${HEALTH_DISK_CRITICAL_RATIO:-0.9}
+      # 恢复退出维护状态前的「全部应运行服务就绪检查」（backstage PRD §10，问题10 修复）：
+      # 恢复执行器轮询以下各服务 /readyz 全部通过后才移除维护标记
+      RESTORE_READINESS_URLS: http://platform-core:3001/readyz,http://asset:3002/readyz,http://hr:3003/readyz,http://fin:3004/readyz,http://worker:3105/readyz
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state
       - postgres_data:/opt/wbme/disk-volumes/postgres:ro
@@ -358,8 +362,10 @@ services:
     image: wbme/web:${WBME_TAG:-local}
     restart: unless-stopped
     logging: *default-logging
+    # 80 仅健康探针直答 + 跳转 HTTPS；443 为唯一公网业务通道（主 PRD §9.14）
     ports:
       - "80:80"
+      - "443:443"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
       interval: 15s
@@ -377,6 +383,8 @@ services:
     networks: [wbme-net]
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
+      # TLS 证书（HTTPS，主 PRD §9.14）：部署前放置 fullchain.pem/privkey.pem 到 TLS_CERT_DIR
+      - ${TLS_CERT_DIR:-/opt/wbme/tls}:/etc/nginx/certs:ro
     mem_limit: 64m
     cpus: "0.1"
     depends_on:

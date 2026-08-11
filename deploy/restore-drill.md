@@ -63,6 +63,11 @@ docker compose --env-file .env.production exec -T platform-core node -e '
 > **时序要求（M32 复核修正）**：步骤 2 会停止 platform-core 与 web，而恢复控制 Cookie 的签发
 > （`POST /api/v1/restores/session`，需超管平台登录会话 + data_backup 权限）依赖 platform-core
 > 运行——Cookie 必须在步骤 2 **之前**签发。控制会话有效期 60 分钟，覆盖步骤 2→4 的窗口。
+>
+> **控制通道（backstage PRD §10，批次 8 修复）**：维护状态下 Nginx 额外放行 `/recovery/` 到
+> 恢复执行器（非维护状态 404），浏览器可经 `https://<入口>/recovery/status`（GET）与
+> `/recovery/retry`（POST）携带本 Cookie 操作。演练步骤 2 停止 web 容器后浏览器不可达，
+> 改用下述 docker exec 直连（同 Cookie）。
 
 ```bash
 # 从浏览器 DevTools 复制超管登录的完整 Cookie（wbme_session=...; wbme_csrf=...，两者都要）：
@@ -137,10 +142,20 @@ watch -n 5 'docker compose --env-file .env.production exec -T recovery-executor 
   "wbme_recovery_session=<token>"'
 ```
 
+> **READINESS 阶段时序（批次 8 就绪语义）**：恢复管道 READINESS 阶段会轮询全部应运行
+> 业务服务 `/readyz`（`RESTORE_READINESS_URLS`；上限 120s，`RESTORE_BUSINESS_READY_MAX_WAIT_MS`
+> 可覆盖），全部就绪才进入 DONE 退出维护。**轮询看到 stage 进入 READINESS 时立即启动业务
+> 容器**——业务容器停着会让 READINESS 等满超时、恢复失败保持维护状态：
+
+```bash
+# stage 到 READINESS 即执行（等不及可在 MAINTENANCE→READINESS 切换期间提前执行）
+docker compose --env-file .env.production up -d
+```
+
 ### 步骤 5：恢复后校验
 
 ```bash
-# 业务容器恢复启动并等待就绪
+# 业务容器应已在步骤 4 READINESS 阶段启动（未启动则此时补启并等待就绪）：
 docker compose --env-file .env.production up -d
 # 校验：至少一名可用超管存在（恢复管道内已校验；此处人工确认可登录）
 # 校验：发布基线重新对齐（§9.9 恢复后数据库基线 = 当前运行 commit）

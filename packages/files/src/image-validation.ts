@@ -1,6 +1,6 @@
 import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import sharp from 'sharp';
-import { IMAGE_MAX_BYTES } from './constants';
+import { IMAGE_MAX_BYTES, IMAGE_MAX_DIMENSION, IMAGE_MAX_TOTAL_PIXELS } from './constants';
 
 /** 允许的栅格图片 MIME */
 export const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const;
@@ -51,6 +51,8 @@ export async function validateAndReencodeImage(input: Buffer): Promise<{ buffer:
     });
   }
   const format = detectImageFormat(input);
+  // 像素尺寸/总像素上限：防解压炸弹（1MB 压缩可解压成上亿像素，sharp 解码时 OOM）
+  await assertImageDimensions(input);
   const pipeline = sharp(input, { failOn: 'error' }).rotate();
   let output: Buffer;
   let mime: string;
@@ -71,4 +73,39 @@ export async function validateAndReencodeImage(input: Buffer): Promise<{ buffer:
     });
   }
   return { buffer: output, mime, format };
+}
+
+/**
+ * 校验图片像素尺寸与总像素上限（防解压炸弹）。
+ *
+ * sharp.metadata() 只读图片头解析尺寸、不解码全图，是廉价且正确的拦截点；
+ * 解析失败时不抛错（交由后续 toBuffer 解码失败处理），仅对成功解析的尺寸做上限校验。
+ *
+ * @param input 原始图片字节
+ * @throws BusinessException VALIDATION_FAILED 单边或总像素超上限
+ */
+async function assertImageDimensions(input: Buffer): Promise<void> {
+  let metadata: sharp.Metadata;
+  try {
+    metadata = await sharp(input).metadata();
+  } catch {
+    return;
+  }
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  if (width > IMAGE_MAX_DIMENSION || height > IMAGE_MAX_DIMENSION) {
+    throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+      field: 'file',
+      reason: `图片单边超过 ${IMAGE_MAX_DIMENSION}px 上限`,
+    });
+  }
+  if (width * height > IMAGE_MAX_TOTAL_PIXELS) {
+    throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+      field: 'file',
+      reason: `图片总像素超过 ${IMAGE_MAX_TOTAL_PIXELS} 上限`,
+    });
+  }
 }

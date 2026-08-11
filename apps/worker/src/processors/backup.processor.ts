@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -104,17 +104,21 @@ export async function runImmediateBackup(
     } else {
       await import('node:fs/promises').then((fs) => fs.writeFile(dumpPath, Buffer.from('WBME_DRY_RUN_BACKUP')));
     }
-    const body = await readFile(dumpPath);
-    const checksum = createHash('sha256').update(body).digest('hex');
-    const { objectKey, manifestKey } = await storage.presignBackupUpload(ref.backupId, body, {
-      taskType,
-      backupTime: new Date().toISOString(),
-      pgVersion,
-      checksum,
-    });
+    // 流式上传 + 流式 SHA-256（问题16 修复）：大备份不整体读入内存（worker 256m 上限防 OOM）
+    const fileSize = (await stat(dumpPath)).size;
+    const { objectKey, manifestKey, checksum } = await storage.presignBackupUpload(
+      ref.backupId,
+      createReadStream(dumpPath),
+      {
+        taskType,
+        backupTime: new Date().toISOString(),
+        pgVersion,
+        size: fileSize,
+      },
+    );
     await deps.updateBackupSucceeded(ref.backupId, {
       checksum,
-      fileSize: BigInt(body.length),
+      fileSize: BigInt(fileSize),
       ossObjectKey: objectKey,
       ossManifestKey: manifestKey,
       pgVersion,

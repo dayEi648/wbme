@@ -36,6 +36,17 @@ fail() { printf '[release] 失败：%s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null || fail "docker 不可用"
 command -v git >/dev/null || fail "git 不可用"
 docker compose version >/dev/null 2>&1 || fail "docker compose 插件不可用"
+# 配置合法性校验（§9.12）：compose + env 解析失败立即停止，不进入构建；
+# 不重定向 stderr，失败时保留 docker 的具体错误原因
+if ! docker compose "${COMPOSE_OPTS[@]}" config --quiet >/dev/null; then
+  fail "docker compose 配置校验失败（上方为具体错误；检查 .env.production 与 docker-compose.yml）"
+fi
+# TLS 证书前置检查（§9.14 HTTPS）：nginx 443 强制 HTTPS，证书缺失 web 容器起不来，
+# 会在就绪等待 5 分钟超时后才发现——前置 fail 并提示放置位置
+TLS_CERT_DIR="${TLS_CERT_DIR:-$(grep -E '^TLS_CERT_DIR=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)}"
+TLS_CERT_DIR="${TLS_CERT_DIR:-/opt/wbme/tls}"
+[ -f "$TLS_CERT_DIR/fullchain.pem" ] || fail "缺少 TLS 证书 $TLS_CERT_DIR/fullchain.pem（§9.14：部署前放置 fullchain.pem 与 privkey.pem 到 TLS_CERT_DIR）"
+[ -f "$TLS_CERT_DIR/privkey.pem" ] || fail "缺少 TLS 私钥 $TLS_CERT_DIR/privkey.pem（§9.14：部署前放置 fullchain.pem 与 privkey.pem 到 TLS_CERT_DIR）"
 mkdir -p "$RELEASE_STATE_DIR"
 chmod 700 "$RELEASE_STATE_DIR"
 mkdir -p "$RESTORE_STATE_DIR"
@@ -88,6 +99,18 @@ wait_worker_healthy() {
   fail "worker 未就绪（容器健康状态超时）"
 }
 
+# 发布前已主动停用的服务清单（第 4 节填充；顶层初始化保证 set -u 下第 5 节安全展开）
+STOPPED_BEFORE=()
+# $1 服务名；发布前已停用则返回 0（第 5 节就绪等待据此跳过，保持运维停用状态）
+# ${arr[@]+...} 写法兼容空数组 + set -u（bash 3.2 空数组直接展开会报 unbound）
+is_stopped_before() {
+  local svc="$1" s
+  for s in ${STOPPED_BEFORE[@]+"${STOPPED_BEFORE[@]}"}; do
+    [ "$s" = "$svc" ] && return 0
+  done
+  return 1
+}
+
 # ---- 4. 构建与部署 ----
 if [ -z "${SKIP_DEPLOY:-}" ]; then
   # L35：统一构建/启动镜像 tag（compose image 为 wbme/backend:${WBME_TAG:-local}），
@@ -109,27 +132,64 @@ if [ -z "${SKIP_DEPLOY:-}" ]; then
   log "执行迁移（migration-runner；迁移前自动立即备份钩子）..."
   docker compose "${COMPOSE_OPTS[@]}" run --rm migration-runner
 
+  # 记录发布前主动停用的常驻服务（主 PRD §1.3：停止状态业务服务不被强制启动）
+  # migration-runner 为一次性容器，不参与记录；仅记录有容器且状态非 running 的服务。
+  # 必须加 --all/-a：docker compose ps 默认只列 running 容器，docker compose stop 后的
+  # exited 容器不可见，不加则 STOPPED_BEFORE 恒为空、重新 stop 逻辑成为死代码
+  for svc in $(docker compose "${COMPOSE_OPTS[@]}" ps --all --services 2>/dev/null | grep -v '^migration-runner$'); do
+    cid="$(docker compose "${COMPOSE_OPTS[@]}" ps -aq "$svc" 2>/dev/null | head -1)"
+    if [ -n "$cid" ]; then
+      state="$(docker inspect --format '{{.State.Status}}' "$cid" 2>/dev/null)"
+      if [ "$state" != "running" ]; then
+        STOPPED_BEFORE+=("$svc")
+      fi
+    fi
+  done
+
   log "更新全部容器（优雅停机由 stop_grace_period 保证）..."
   docker compose "${COMPOSE_OPTS[@]}" up -d
+
+  # 恢复发布前主动停用的服务（保持运维停用状态，主 PRD §1.3）
+  if [ ${#STOPPED_BEFORE[@]} -gt 0 ]; then
+    for svc in "${STOPPED_BEFORE[@]}"; do
+      docker compose "${COMPOSE_OPTS[@]}" stop "$svc" 2>/dev/null || true
+      log "保持运维主动停用状态：$svc（主 PRD §1.3）"
+    done
+  fi
 else
   # 重复发布：仍按状态文件 commit 构建镜像可跳过，但需要 WBME_TAG 与镜像一致
   :
 fi
 
-# ---- 5. 就绪等待（全部应运行服务）----
-wait_ready platform-core 3001
-wait_ready asset 3002
-wait_ready hr 3003
-wait_ready fin 3004
-wait_worker_healthy
-wait_ready recovery-executor 3090 /recovery/readyz
+# ---- 5. 就绪等待（全部应运行服务；发布前已主动停用的服务跳过探测，否则等满超时必然发布失败）----
+wait_ready_running() { # $1 服务名 $2 端口 [$3 探针路径 默认 /readyz]
+  if is_stopped_before "$1"; then
+    log "跳过就绪探测：$1（发布前已停用，保持停用状态，主 PRD §1.3）"
+    return 0
+  fi
+  wait_ready "$@"
+}
+wait_ready_running platform-core 3001
+wait_ready_running asset 3002
+wait_ready_running hr 3003
+wait_ready_running fin 3004
+if is_stopped_before worker; then
+  log "跳过就绪探测：worker（发布前已停用，保持停用状态，主 PRD §1.3）"
+else
+  wait_worker_healthy
+fi
+wait_ready_running recovery-executor 3090 /recovery/readyz
 # web（nginx alpine 内置 wget；探针经 Nginx 回源 platform-core）
-for i in $(seq 1 60); do
-  docker compose "${COMPOSE_OPTS[@]}" exec -T web wget -q -O /dev/null http://127.0.0.1/healthz && break
-  [ "$i" = 60 ] && fail "web 未就绪"
-  sleep 5
-done
-log "全部服务就绪"
+if is_stopped_before web; then
+  log "跳过就绪探测：web（发布前已停用，保持停用状态，主 PRD §1.3）"
+else
+  for i in $(seq 1 60); do
+    docker compose "${COMPOSE_OPTS[@]}" exec -T web wget -q -O /dev/null http://127.0.0.1/healthz && break
+    [ "$i" = 60 ] && fail "web 未就绪"
+    sleep 5
+  done
+fi
+log "全部应运行服务就绪"
 
 # ---- 6. 发布核验（§9.12 日志驱动 / §9.14 特权、端口、时钟）----
 log "核验日志驱动（local 20m×5+compress）..."
@@ -146,9 +206,27 @@ for cid in $(docker compose "${COMPOSE_OPTS[@]}" ps -q); do
   docker inspect --format '{{.HostConfig.Binds}}' "$cid" | grep -q '/var/run/docker.sock' && fail "容器 $cid 挂载了 Docker Socket（§9.14 禁止）" || true
 done
 
-log "核验公网端口（仅 web 80）..."
+log "核验数据卷持久化（命名卷 postgres_data / redis_data，§9.13）..."
+docker volume inspect wbme_postgres_data >/dev/null 2>&1 \
+  || fail "命名卷 wbme_postgres_data 不存在（§9.13：正式数据须在命名卷）"
+docker volume inspect wbme_redis_data >/dev/null 2>&1 \
+  || fail "命名卷 wbme_redis_data 不存在（§9.13）"
+
+log "核验公网端口（web 80/443 应监听，5432/6379/3090 不得暴露公网，§9.14）..."
 if command -v ss >/dev/null 2>&1; then
-  ss -ltn 2>/dev/null | grep -q ':80 ' || fail "80 端口未监听（§9.14：仅 Nginx 入口暴露公网）"
+  # ss -ltnH 输出无表头（LISTEN Recv-Q Send-Q Local Address:Port Peer Address:Port），
+  # Local Address:Port 在第 4 列——必须按列匹配；行首锚定 ^(0.0.0.0|::):port 匹配的是
+  # 行首的 LISTEN 状态列，永不命中（曾导致暴露漏报）
+  for port in 80 443; do
+    ss -ltnH 2>/dev/null | awk -v port="$port" '$4 ~ ":" port "$" { found = 1 } END { exit(found ? 0 : 1) }' \
+      || fail "$port 端口未监听（§9.14：仅 Nginx 入口 80/443 暴露公网）"
+  done
+  # 5432（PG）/6379（Redis）/3090（恢复执行器）不得监听在非回环地址（127.0.0.0/8 回环允许）
+  for port in 5432 6379 3090; do
+    if ss -ltnH 2>/dev/null | awk -v port="$port" '$4 ~ ":" port "$" && $4 !~ /^127\./ { found = 1 } END { exit(found ? 0 : 1) }'; then
+      fail "端口 $port 监听在非回环地址（§9.14：仅 80/443 暴露公网，业务端口应仅在容器网络）"
+    fi
+  done
 else
   log "警告：未找到 ss（iproute2 未安装），跳过公网端口核验（§9.14 建议安装 iproute2 以启用该检查）"
 fi

@@ -55,6 +55,8 @@ export {
   loadTaskByUuid,
   markQueued,
   claimRunning,
+  renewRunningLease,
+  failTimedOutTasks,
   markSucceeded,
   markFailed,
   markCancelled,

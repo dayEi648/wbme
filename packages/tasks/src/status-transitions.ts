@@ -60,6 +60,12 @@ export async function loadTaskByUuid(client: SqlClient, taskUuid: string): Promi
 /**
  * 投递成功后条件更新为 QUEUED。
  *
+ * 覆盖两类来源（批次8复核修复）：
+ * - PENDING_ENQUEUE 首投：常规流转；
+ * - 租约重领/卡死重投（QUEUED/RUNNING 残留行被 claimOutboxBatch 重领）：归队并清空
+ *   调度器投递租约——旧执行者租约已过期才可能被重领，保留投递租约会挡住 Worker 的
+ *   claimRunning（需等投递租约自然过期），重投链路空转直至 timeout_at 误标 FAILED。
+ *
  * @param client SQL 客户端
  * @param taskUuid 任务 UUID
  * @param leaseOwner 投递租约持有者
@@ -76,7 +82,11 @@ export async function markQueued(client: SqlClient, taskUuid: string, leaseOwner
       next_retry_at = NULL,
       last_error = NULL
     WHERE task_uuid = $1::uuid
-      AND status = 'PENDING_ENQUEUE'::backstage."TaskStatus"
+      AND status IN (
+        'PENDING_ENQUEUE'::backstage."TaskStatus",
+        'QUEUED'::backstage."TaskStatus",
+        'RUNNING'::backstage."TaskStatus"
+      )
       AND lease_owner = $2
     `,
     [taskUuid, leaseOwner],
@@ -126,6 +136,71 @@ export async function claimRunning(
     [taskUuid, leaseOwner, leaseExpiresAt, now, timeoutAt],
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * 续期 RUNNING 任务执行租约（长任务心跳，问题13 修复）。
+ *
+ * 长任务（如大库备份 >10 分钟）执行期间定期续期 lease_expires_at，防止租约过期
+ * 被 claimOutboxBatch 重领导致同一任务被重复执行（pg_dump/上传第二次）。
+ * 同时重置 timeout_at（问题12 修复）：任务仍在续期 = 仍在执行，不触发超时终态化；
+ * 超时只针对不再续期的卡死任务。
+ *
+ * @param client SQL 客户端
+ * @param taskUuid 任务 UUID
+ * @param leaseOwner 租约持有者
+ * @param now 当前时间
+ * @returns 是否续期成功（任务已不在本租约下时返回 false）
+ */
+export async function renewRunningLease(
+  client: SqlClient,
+  taskUuid: string,
+  leaseOwner: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const leaseExpiresAt = new Date(now.getTime() + TASK_RUNNING_LEASE_SECONDS * 1_000);
+  const timeoutAt = new Date(now.getTime() + TASK_RUNNING_LEASE_SECONDS * 2 * 1_000);
+  const result = await client.query(
+    `
+    UPDATE backstage.background_tasks
+    SET lease_expires_at = $3::timestamptz,
+        timeout_at = $4::timestamptz
+    WHERE task_uuid = $1::uuid
+      AND status = 'RUNNING'::backstage."TaskStatus"
+      AND lease_owner = $2
+    `,
+    [taskUuid, leaseOwner, leaseExpiresAt, timeoutAt],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * 超时终态化（主 PRD §9.1 第 250 行「支持超时控制、卡死任务发现」，问题12 修复）。
+ *
+ * RUNNING 且 timeout_at 已过期的任务判定为卡死/超时，终态化为 FAILED（不再重领、
+ * 不再重试），由人工核查；活着的任务经 renewRunningLease 持续重置 timeout_at 不触发。
+ *
+ * @param client SQL 客户端
+ * @param now 当前时间
+ * @returns 被终态化的任务数
+ */
+export async function failTimedOutTasks(client: SqlClient, now: Date = new Date()): Promise<number> {
+  const result = await client.query(
+    `
+    UPDATE backstage.background_tasks
+    SET
+      status = 'FAILED'::backstage."TaskStatus",
+      finished_at = $1::timestamptz,
+      last_error = '任务执行超时（timeout_at）',
+      lease_owner = NULL,
+      lease_expires_at = NULL
+    WHERE status = 'RUNNING'::backstage."TaskStatus"
+      AND timeout_at IS NOT NULL
+      AND timeout_at <= $1::timestamptz
+    `,
+    [now],
+  );
+  return result.rowCount ?? 0;
 }
 
 /**

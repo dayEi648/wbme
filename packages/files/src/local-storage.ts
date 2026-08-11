@@ -1,5 +1,7 @@
+import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { LOCAL_OSS_ROOT } from './constants';
 
 /**
@@ -43,6 +45,28 @@ export class LocalFileStorage {
    */
   async getObject(objectKey: string): Promise<Buffer> {
     return readFile(this.resolvePath(objectKey));
+  }
+
+  /**
+   * 流式写入对象（问题16 修复：大备份不整体读入内存）。
+   *
+   * @param objectKey OSS 对象键
+   * @param stream 内容流
+   */
+  async putObjectStream(objectKey: string, stream: NodeJS.ReadableStream): Promise<void> {
+    const filePath = this.resolvePath(objectKey);
+    await mkdir(dirname(filePath), { recursive: true });
+    await pipeline(stream as NodeJS.ReadableStream, createWriteStream(filePath));
+  }
+
+  /**
+   * 流式读取对象（问题16 修复：恢复取回备份流式写盘）。
+   *
+   * @param objectKey OSS 对象键
+   * @returns 文件读取流
+   */
+  async getObjectStream(objectKey: string): Promise<NodeJS.ReadableStream> {
+    return createReadStream(this.resolvePath(objectKey));
   }
 
   /**

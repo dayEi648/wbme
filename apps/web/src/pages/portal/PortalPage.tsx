@@ -105,7 +105,7 @@ export default function PortalPage() {
           ))}
       </div>
 
-      <Drawer title="系统公告" open={announcementOpen} onClose={() => setAnnouncementOpen(false)} width={420}>
+      <Drawer title="系统公告" open={announcementOpen} onClose={() => setAnnouncementOpen(false)} width="min(92vw, 420px)">
         {portal?.announcement ? (
           <Space direction="vertical" size="middle">
             <Typography.Title level={5}>{portal.announcement.title}</Typography.Title>

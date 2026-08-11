@@ -6,17 +6,14 @@
 
 1. Thinking and Communication
     - When encountering doubts, uncertainties, or information gaps, you must ask user questions.
-    - When encountering ambiguity: immediately pause, mark the problem and ask questions.
-    - If a problem has multiple solutions, all of them should be presented to the user - do not silently select one of them.
+    - If there are multiple solutions to a problem, all of them should be presented to the user for him to choose from.
 2. Scope and Decisions
-    - Before proposing a repair solution, assess whether this solution is the best option, whether it can truly solve the problem, and ensure that it does not introduce regression issues.
+    - Before proposing a repair solution, you should send a sub-agent to evaluate whether this solution is the best option, whether it can truly solve the problem, and ensure that it does not introduce regression issues.
     - Every operation you perform must be traceable back to the user's explicit instruction.
 3. Work Habits
-    - Try frequently using websearch tool to obtain the latest information from internet, such as the latest features of a certain dependency.
+    - You should often use web search tools to assist your work. Are you not sure about the latest version of a certain dependency? Search for the latest information. Need a good page design? Search for the design styles of other products.
     - You must use the appropriate SKILL to assist you in completing the task, even if a certain SKILL has only a 1% correlation with the current task.
     - The network environment is the Chinese mainland. This means that all package managers must use the domestic mirror registry.
-4. Git 操作纪律
-    - 执行 `git commit` 或 `git push` 之前，必须先征得用户明确同意，不得擅自提交或推送。
 
 ---
 
@@ -25,25 +22,19 @@
 1. Code style
     - Write explicit code. Do not hide implicit behavior or intent.
     - Prefers simple rather than complex code structure.
-    - Favor flat structures over deep nesting; sparse code over dense code.
     - If there is a reliable dependency that can reduce 200 lines of code to just a few lines, use it first.
-    - Explainability is the litmus test: if you cannot describe the implementation in simple terms, rewrite it.
-    - Add standard docstring comments: function purpose, input parameters, return values, and exception handling.
-    - Use proper encapsulation, namespaces, and modular boundaries.
+    - docstring comments: specify "why/what is required/notes".
+    - Name files, variables, and functions with full names that contain an intent, such as "isEligibleForDiscount" is better than "check."
 2. Change Discipline
-    - Modify only what is strictly required.
-    - Do not "optimize," reformat, or refactor adjacent untouched code without a user request.
+    - Modify only what is required.
     - Clean up imports, variables, or functions made useless by your change.
 3. Error Handling
-    - If you find any issues that previously exist, inform the user instead of fix them yourself.
-    - Never silently swallow or ignore errors; handle real failures explicitly.
+    - If you find any issues that previously exist, inform the user.
 4. Maintainability
     - Extract duplicate code into common methods, but do not abstract code used only once.
-    - Do not weaken functionality for the sake of reducing code.
     - Hardcoding magic numbers and AI prompts is prohibited; extract them into maintainable forms (constants, config, environment variables).
 5. Security
     - Pay attention to the impact your code has on memory, network, threads, and other resources; security is extremely important.
-    - Prohibit hard-coding of sensitive information (API keys, passwords, tokens) in the code.
 6. Testing
     - Run the relevant tests after development is complete to ensure the changes do not break existing functionality.
     - Clean temporary data (databases, caches, files) after tests.
@@ -91,14 +82,33 @@ Access project resources on demand according to the current task:
 | --- | --- | --- | --- |
 | PRD | `docs/prds/` | Requirement documents | The PRD of this project |
 | Task Plans | `.agents/plans/` | Task lists, plans and schedules | Store complex, long-term, or temporarily deferred plans and planning documents in this directory |
-| Directory Structure | `docs/directory.md` | Project directory structure | Check this document when you need to understand the project directory structure. If the project structure changes, update `directory.md` |
+| Directory Structure | `docs/directory.md` | Project directory structure | Check this document when you need to understand the project directory structure. |
 | Frontend References | `docs/for-frontend/` | Frontend design guidance | Check this folder when you need frontend guidance such as frontend development standards, styles and design |
+| Backend References | `docs/for-backend/` | Backend implementation guidance | Check this folder when you need backend implementation guidance |
 | Temporary Images | `.agents/pngs/` | Storage and cleanup of temporary image resources | Store temporary image resources in `.agents/pngs/`, and clean up unused images after work is done |
-| API Documentations | `docs/api-documentations/` | API documents | Write API documents in this directory; check this directory when you need to understand the API documents |
+| API Documentations | `docs/api-documentations/` | API documents | Handwritten or automatically generated OpenAPI contract documents |
 
 ---
 
-## 3. Git Commit Guidelines
+## 3. Project Constraints
+
+### 3.1 Local dev dependencies (local services, no Docker)
+
+- **PostgreSQL 18**: Running as a system service (listening on 5432). Dev database `wbme-dev` (connection string in root `.env` → `DATABASE_URL`).
+- **Redis**: running as a Homebrew service (`brew services list` shows `redis started`), listening on 6379.
+- To check availability, connect directly using the `.env` connection string (`psql ... -c "SELECT 1"`, `redis-cli ping`) instead of relying on `which` / `brew list`.
+
+### 3.2 Front-end view validation
+
+Every time you finish developing the front-end page/component/button and other view-related code, you must use Playwright or utilize the `kimi-webbridge` skill to verify the front-end view effect. If you find that the effect is not as expected, you should make timely adjustments.
+
+### 3.3 Document maintenance
+
+- If the project structure changes, update `directory.md` 
+- If the requirements expressed in user's message conflict with the PRD or are not documented in the PRD, then you need to update the `prd.md`. (Before making the modification, you should first ask user for confirmation whether to modify the PRD.)
+- When writing or modifying any document content or code comments, do not leave any traces. Do not write "After being approved by the user..." "Previously it was xxx, but it has been changed to xxx...." I do not need them. You can just write down the information that is relevant and useful for the present, and delete the outdated and useless information.
+
+### 3.4 Git Guidelines
 
 - Commit messages follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 - Commit titles are written in bilingual Chinese and English conveying the same meaning, with Chinese and English separated by `/`.
@@ -106,14 +116,6 @@ Access project resources on demand according to the current task:
   ```
   docs: 完善 AGENTS.md 并初始化 directory.md / Update AGENTS.md and initialize directory.md
   ```
+- Before executing `git commit` or `git push`, it is necessary to obtain the explicit consent of the user. Unauthorized submission or pushing is strictly prohibited.
 
 ---
-
-## 4. Project Constraints
-
-### 4.1 Local dev dependencies (local services, no Docker)
-
-- **PostgreSQL 18**: Running as a system service (listening on 5432). Dev database `wbme-dev` (connection string in root `.env` → `DATABASE_URL`).
-- **Redis**: running as a Homebrew service (`brew services list` shows `redis started`), listening on 6379.
-- To check availability, connect directly using the `.env` connection string (`psql ... -c "SELECT 1"`, `redis-cli ping`) instead of relying on `which` / `brew list`.
-

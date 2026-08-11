@@ -225,7 +225,7 @@ function MeHome() {
         <Button onClick={() => navigate('/me/operation-logs')}>我的操作日志</Button>
       </Space>
 
-      <Drawer title="岗位变更申请" open={positionOpen} onClose={() => { setPositionOpen(false); positionForm.resetFields(); }} width={420}>
+      <Drawer title="岗位变更申请" open={positionOpen} onClose={() => { setPositionOpen(false); positionForm.resetFields(); }} width="min(92vw, 420px)">
         <Form form={positionForm} layout="vertical" onFinish={(values) => void submitPositionApplication(values)}>
           <Form.Item name="targetDepartmentId" label="目标部门" rules={[{ required: true, message: '请选择目标部门' }]}><Select showSearch optionFilterProp="label" loading={positionOptionsLoading} options={positionOptions.departments.map((department) => ({ label: department.name, value: department.id }))} onChange={() => positionForm.setFieldValue('targetPositionId', undefined)} /></Form.Item>
           <Form.Item name="targetPositionId" label="目标岗位" rules={[{ required: true, message: '请选择目标岗位' }]}><Select showSearch optionFilterProp="label" loading={positionOptionsLoading} disabled={selectedDepartmentId === undefined} options={positionSelectOptions} /></Form.Item>

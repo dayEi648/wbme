@@ -88,11 +88,9 @@ export class BackupService {
     initiatorId: number,
     initiatorType: TaskInitiatorType,
   ): Promise<{ backupId: number; taskUuid: string }> {
-    // 任意运行中的备份（定时/立即）都互斥：备份按创建时间串行（backstage PRD §10）
-    const running = await tx.backup.findFirst({ where: { status: 'RUNNING' } });
-    if (running) {
-      throw new BusinessException(backupErrors.BACKUP_LOCK_BUSY);
-    }
+    // 排队串行（backstage PRD §10「定时与立即备份相遇时保留各自任务记录并按创建时间
+    // 串行执行」，问题7 修复）：普通备份运行中不拒绝，保留备份记录与任务记录，
+    // 由单实例 Worker 逐条串行消费（pg_dump 互斥由 Worker concurrency=1 保证）。
     const backup = await tx.backup.create({
       data: {
         taskType: 'IMMEDIATE',
@@ -188,6 +186,20 @@ export class BackupService {
       throw new BusinessException(backupErrors.BACKUP_UNVERIFIED);
     }
     await this.assertNoActiveRestore();
+    // 预检等待（backstage PRD §10「普通备份仍在运行时，整库恢复只能停留在预检等待阶段」，
+    // 问题7 修复）：普通（定时/立即，排除紧急）备份运行中返回 waiting 状态，
+    // 由前端轮询本接口直到放行，再进入恢复确认；不拒绝、不并发 pg_dump。
+    const running = await this.prisma.client.backup.findFirst({
+      where: { status: 'RUNNING', taskType: { in: ['SCHEDULED', 'IMMEDIATE'] } },
+    });
+    if (running) {
+      return {
+        backupId: backup.id,
+        ready: false,
+        waitingForBackup: true,
+        runningBackupId: running.id,
+      };
+    }
     return {
       backupId: backup.id,
       backupTime: backup.backupTime,
@@ -212,9 +224,12 @@ export class BackupService {
       throw new BusinessException(backupErrors.BACKUP_UNVERIFIED);
     }
     await this.assertNoActiveRestore();
-    // 运行中的普通备份必须先行结束（backstage PRD §10：普通备份仍在运行时，
-    // 整库恢复停留在预检等待，不得并发 pg_dump）
-    const runningBackup = await this.prisma.client.backup.findFirst({ where: { status: 'RUNNING' } });
+    // 防御性检查（backstage PRD §10，问题7 修复）：预检等待已由 precheckRestore 的
+    // waitingForBackup 状态 + 前端轮询承担，正常流程到达确认时普通备份已完成；
+    // 此处保留检查兜底，防止绕过预检直接确认时并发 pg_dump。
+    const runningBackup = await this.prisma.client.backup.findFirst({
+      where: { status: 'RUNNING', taskType: { in: ['SCHEDULED', 'IMMEDIATE'] } },
+    });
     if (runningBackup) {
       throw new BusinessException(backupErrors.BACKUP_LOCK_BUSY, { backupId: runningBackup.id });
     }

@@ -83,12 +83,15 @@ describe('BackupService', () => {
   });
 
   describe('triggerImmediateBackup', () => {
-    it('任意运行中备份存在时抛 BACKUP_LOCK_BUSY', async () => {
+    it('运行中备份存在时排队创建备份记录与任务（串行执行，问题7）', async () => {
       const prisma = prismaMock();
       vi.mocked(prisma.client.backup.findFirst).mockResolvedValue({ id: 9, status: 'RUNNING' });
-      await expect(makeService(prisma).triggerImmediateBackup(1, {})).rejects.toMatchObject({
-        entry: expect.objectContaining({ code: backupErrors.BACKUP_LOCK_BUSY.code }),
-      });
+      vi.mocked(prisma.client.backup.create).mockResolvedValue({ id: 10, taskType: 'IMMEDIATE', status: 'RUNNING' });
+      vi.mocked(prisma.client.backup.update).mockResolvedValue({ id: 10 });
+      const result = (await makeService(prisma).triggerImmediateBackup(1, {})) as { result: { backupId: number; taskUuid: string } };
+      // 不拒绝：保留备份记录与任务记录，由 Worker 按创建时间串行执行（backstage PRD §10）
+      expect(result.result.backupId).toBe(10);
+      expect(mockedStableUuid).toHaveBeenCalledWith('IMMEDIATE_BACKUP:10');
     });
 
     it('创建 IMMEDIATE 备份行 + 稳定 taskUuid 任务，自动幂等键为随机 UUID（L3，非分钟窗口）', async () => {
@@ -183,8 +186,23 @@ describe('BackupService', () => {
       vi.mocked(prisma.client.user.findUnique).mockResolvedValue(superAdminUser);
       vi.mocked(prisma.client.backup.findUnique).mockResolvedValue(succeededBackup);
       vi.mocked(prisma.client.restore.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.client.backup.findFirst).mockResolvedValue(null);
       const result = (await makeService(prisma).precheckRestore(1, 1)) as { ready: boolean; checksum: string };
       expect(result).toMatchObject({ ready: true, checksum: 'abc' });
+    });
+
+    it('普通备份运行中返回预检等待状态（waitingForBackup，问题7）', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.user.findUnique).mockResolvedValue(superAdminUser);
+      vi.mocked(prisma.client.backup.findUnique).mockResolvedValue(succeededBackup);
+      vi.mocked(prisma.client.restore.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.client.backup.findFirst).mockResolvedValue({ id: 9, taskType: 'SCHEDULED', status: 'RUNNING' });
+      const result = (await makeService(prisma).precheckRestore(1, 1)) as {
+        ready: boolean;
+        waitingForBackup: boolean;
+        runningBackupId: number;
+      };
+      expect(result).toMatchObject({ ready: false, waitingForBackup: true, runningBackupId: 9 });
     });
   });
 

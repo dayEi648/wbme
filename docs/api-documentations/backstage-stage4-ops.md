@@ -24,10 +24,12 @@
 | GET | `/backups` | `data_backup` | 备份列表 |
 | POST | `/backups/immediate` | `data_backup` | 立即备份（写 IMMEDIATE_BACKUP 任务） |
 | GET | `/restores` | `data_backup` | 恢复记录 |
-| POST | `/restores/precheck` | `data_backup` + 超管 | 恢复预检 |
+| POST | `/restores/precheck` | `data_backup` + 超管 | 恢复预检（普通备份运行中返回预检等待状态） |
 | POST | `/restores/confirm` | `data_backup` + 超管 | 确认恢复（先创建并等待恢复前紧急备份，成功后才投递 RESTORE_DELIVERY 任务） |
 
-`/restores/confirm` 请求体：`backupId`、`idempotencyKey`、可选 `note`、可选 `proceedWithoutEmergency`（紧急备份失败时置 `true` 表示已人工确认风险后继续，backstage PRD §10 不得伪装为已有回退副本）。紧急备份与所选备份互斥（`BACKUP_LOCK_BUSY`）；等待窗口 300s，超时按失败处理、任务仍在执行时可重试继续等待（复用窗口内进行中的紧急备份）。
+`/restores/precheck` 请求体：`backupId`。普通（定时/立即）备份运行中返回 `{ ready: false, waitingForBackup: true, runningBackupId }`，前端停留在预检等待并轮询本接口直到放行（backstage PRD §10，不拒绝、不并发 pg_dump）；放行后返回 `{ ready: true, backupTime, fileSize, checksum, pgVersion }`。
+
+`/restores/confirm` 请求体：`backupId`、`idempotencyKey`、可选 `note`、可选 `proceedWithoutEmergency`（紧急备份失败时置 `true` 表示已人工确认风险后继续，backstage PRD §10 不得伪装为已有回退副本）。普通备份运行中的防御性检查仍返回 `BACKUP_LOCK_BUSY`（正常流程由预检等待保证不触发）；紧急备份等待窗口 300s，超时按失败处理、任务仍在执行时可重试继续等待（复用窗口内进行中的紧急备份）。
 
 错误码见 contracts `backupErrors`：`RESTORE_IN_PROGRESS`、`BACKUP_LOCK_BUSY`、`EMERGENCY_BACKUP_FAILED` 等。
 
@@ -97,9 +99,9 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 `RESTORE_DRY_RUN=1` 模拟阶段（仅推进状态机）；状态目录 `RESTORE_STATE_DIR`（默认 `.agents/restore-state/`）。
 
-恢复管道阶段（外部控制清单为唯一事实来源，原子替换写入）：PRECHECK（备份记录/校验和/对象可达）→ MAINTENANCE（维护标记 + 停写等待）→ RESTORING（下载 → SHA-256 校验 → `pg_restore --list` → `pg_restore -Fc --clean`）→ MIGRATE_FORWARD（`RECOVERY_MIGRATE_CMD` 正向迁移）→ CANCEL_TASKS（历史非终态任务标记"因整库恢复取消"）→ REINSTATE_BACKUPS（OSS 清单校验 + 幂等补回备份记录）→ CLEAR_REDIS（`flushdb`，`RECOVERY_SKIP_REDIS_FLUSH=1` 跳过）→ READINESS（迁移元数据 + 至少一名可用超管）→ DONE（退出维护）。
+恢复管道阶段（外部控制清单为唯一事实来源，原子替换写入）：PRECHECK（备份记录/校验和/对象可达/SSE-OSS/AES256 加密元数据/PG 大版本兼容）→ MAINTENANCE（维护标记 + 停写等待：全部 client backend 连接含 idle 排空）→ RESTORING（流式下载 → SHA-256 校验 → `pg_restore --list` → `pg_restore -Fc --clean`）→ MIGRATE_FORWARD（`RECOVERY_MIGRATE_CMD` 正向迁移）→ CANCEL_TASKS（历史非终态任务标记"因整库恢复取消"）→ REINSTATE_BACKUPS（OSS 清单 + 对象大小/SHA-256/`pg_restore --list` 校验 + 幂等补回备份记录）→ CLEAR_REDIS（`flushdb`，`RECOVERY_SKIP_REDIS_FLUSH=1` 跳过）→ READINESS（迁移元数据 + 至少一名可用超管 + `RESTORE_READINESS_URLS` 全部应运行业务服务 `/readyz` 就绪）→ DONE（退出维护）。
 
-任一阶段失败保持维护状态并保存脱敏原因，由超管经恢复控制会话手动重试；`backstage.restores` 为镜像尽力同步（数据库可能被覆盖，失败不阻塞）。维护标记存在时 Nginx 在公网入口先行返回 503；platform-core、asset、hr、fin 的应用层对除 `/healthz`、`/readyz` 外的全部请求返回 `SYSTEM_MAINTENANCE`，Worker 也停止投递新任务。pg 工具路径可经 `PG_RESTORE_PATH` 注入（macOS EDB 安装不在 PATH）。
+任一阶段失败保持维护状态并保存脱敏原因，由超管经恢复控制会话手动重试；`backstage.restores` 为镜像尽力同步（数据库可能被覆盖，失败不阻塞）。维护标记存在时 Nginx 对业务页面与 API 先行返回 503，仅额外放行健康探针与恢复控制路由 `/recovery/`（浏览器携带恢复控制会话 Cookie 访问 `GET /recovery/status` / `POST /recovery/retry`；Cookie 为 `Path=/recovery` 的受限 HttpOnly Cookie，由超管在停止服务前经 `POST /api/v1/restores/session` 签发；非维护状态 `/recovery/` 一律 404）；platform-core、asset、hr、fin 的应用层对除 `/healthz`、`/readyz` 外的全部请求返回 `SYSTEM_MAINTENANCE`，Worker 也停止投递新任务。pg 工具路径可经 `PG_RESTORE_PATH` 注入（macOS EDB 安装不在 PATH）。
 
 ## 迁移前备份
 

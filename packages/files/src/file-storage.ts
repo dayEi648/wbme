@@ -1,4 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { PassThrough } from 'node:stream';
+import type { Readable } from 'node:stream';
 import type OSS from 'ali-oss';
 import {
   IMAGE_PRESIGN_EXPIRES_SECONDS,
@@ -127,34 +130,73 @@ export class FileStorageService {
   }
 
   /**
-   * 备份文件服务端上传（Worker 使用 PUT，非浏览器预签名）。
+   * 备份文件服务端流式上传（Worker 使用 PUT，非浏览器预签名；问题16 修复）。
    *
-   * 上传成功的同时写入不可变最小清单（backstage PRD §10）：不含凭证或业务内容；
+   * 大备份不整体读入内存（worker 256m 上限内防 OOM）：流式上传同时计算 SHA-256，
+   * 上传成功后写入不可变最小清单（backstage PRD §10）：不含凭证或业务内容；
    * 整库恢复后恢复执行器以清单为唯一依据补回被旧快照覆盖的备份目录记录。
    *
    * @param backupId 备份记录 id
-   * @param body 备份文件内容
-   * @param meta 清单元数据（类型/完成时间/库版本/校验和）
+   * @param stream 备份文件内容流（如 pg_dump 输出文件读取流）
+   * @param meta 清单元数据（类型/完成时间/库版本/大小；校验和由本方法流式计算返回）
    */
   async presignBackupUpload(
     backupId: number,
-    body: Buffer,
-    meta: BackupManifestMeta,
-  ): Promise<{ objectKey: string; manifestKey: string }> {
+    stream: NodeJS.ReadableStream,
+    meta: Omit<BackupManifestMeta, 'checksum'> & { size: number },
+  ): Promise<{ objectKey: string; manifestKey: string; checksum: string }> {
     const objectKey = `${OSS_PREFIX_BACKUPS}${backupId}/dump.fc`;
     const manifestKey = `${OSS_PREFIX_BACKUPS}${backupId}/manifest.json`;
-    await this.putObjectBytes(objectKey, body, 'application/octet-stream');
+    // 流式上传与 SHA-256 并行：显式泵把源流逐块扇出到 hash 与 tee（上传消费者）。
+    // 不用 tee.pipe 多路分流：pipe 会让 tee 进入 flowing 模式，晚挂接的消费者丢失已流出
+    // 的块（本地替身 putObjectStream 内部先 await mkdir 才挂接消费，存在该竞态）；
+    // PassThrough 在消费者挂接前缓冲写入，write 返回值提供背压（按最慢消费者暂停源流）。
+    //
+    // 失败路径（批次8复核修复）：任一环节失败都显式销毁 tee 并让所有等待方 reject——
+    // - 上传中途失败：就地 catch 销毁 tee（ali-oss 不保证销毁输入流），泵内 drain 等待
+    //   立即 reject 退出；就地挂接 catch 避免 await 前 reject 造成 unhandled rejection；
+    // - 源流错误：for-await 抛出，catch 销毁 tee 把错误传播给上传消费方；
+    // - tee 的 'error' 常驻吸收监听：泵正等待源流数据时上传失败销毁 tee 不致 uncaught。
+    const hash = createHash('sha256');
+    const tee = new PassThrough();
+    const uploadPromise = this.putObjectStream(objectKey, tee, 'application/octet-stream');
+    // 上传中途失败：就地 catch 销毁 tee，泵内 drain 等待立即 reject 退出（ali-oss 不保证
+    // 销毁输入流）；就地挂接 catch 避免 await 前 reject 造成 unhandled rejection；
+    // uploadError 保留原始失败原因，泵退出时优先抛出（drain 等待可能只拿到销毁错误）
+    let uploadError: Error | null = null;
+    uploadPromise.catch((error: unknown) => {
+      uploadError = error instanceof Error ? error : new Error(String(error));
+      tee.destroy(uploadError);
+    });
+    tee.on('error', () => undefined);
+    try {
+      for await (const chunk of stream as AsyncIterable<Buffer>) {
+        hash.update(chunk);
+        if (!tee.write(chunk)) {
+          // 背压：等待 tee 排空；tee 被销毁（上传失败）时 once 以该错误 reject，泵随之退出
+          await once(tee, 'drain');
+        }
+      }
+    } catch (error) {
+      const failure = uploadError ?? (error instanceof Error ? error : new Error(String(error)));
+      tee.destroy(failure);
+      throw failure;
+    }
+    tee.end();
+    const checksum = hash.digest('hex');
+    // 上传成功才写清单（backstage PRD §10 语义不变）
+    await uploadPromise;
     const manifest = JSON.stringify({
       backupId,
       taskType: meta.taskType,
       backupTime: meta.backupTime,
-      size: body.length,
-      checksum: meta.checksum,
+      size: meta.size,
+      checksum,
       pgVersion: meta.pgVersion,
       objectKey,
     });
     await this.putObjectBytes(manifestKey, Buffer.from(manifest, 'utf8'), 'application/json');
-    return { objectKey, manifestKey };
+    return { objectKey, manifestKey, checksum };
   }
 
   /**
@@ -164,6 +206,63 @@ export class FileStorageService {
    */
   async getObject(objectKey: string): Promise<Buffer> {
     return this.getObjectBytes(objectKey);
+  }
+
+  /**
+   * 读取对象元数据（恢复预检验证服务端加密用，问题6 修复）。
+   *
+   * OSS 对象级 SSE（写入时携带 x-oss-server-side-encryption）会经 HEAD 响应头回显；
+   * 本地替身无加密概念，返回空元数据（调用方跳过验证）。
+   *
+   * @param objectKey OSS 对象键
+   * @returns 服务端加密方式（无元数据时为空）
+   */
+  async headObject(objectKey: string): Promise<{ serverSideEncryption?: string }> {
+    if (this.oss) {
+      const result = await this.oss.head(objectKey);
+      const headers = (result.res?.headers ?? {}) as Record<string, unknown>;
+      const encryption = headers['x-oss-server-side-encryption'];
+      return {
+        serverSideEncryption: typeof encryption === 'string' ? encryption : undefined,
+      };
+    }
+    return {};
+  }
+
+  /**
+   * 流式上传对象（问题16 修复：大备份不整体读入内存）。
+   *
+   * @param objectKey OSS 对象键
+   * @param stream 内容流
+   * @param contentType 内容类型
+   */
+  async putObjectStream(objectKey: string, stream: NodeJS.ReadableStream, contentType: string): Promise<void> {
+    if (this.oss) {
+      // ali-oss putStream 以 mime 选项声明内容类型；SSE-OSS/AES256 对象级加密经 headers 携带。
+      // @types/ali-oss 的 PutStreamOptions 把 timeout/meta/callback 误标必填，实际运行均可选，断言绕过
+      await this.oss.putStream(objectKey, stream as Readable, {
+        mime: contentType,
+        headers: {
+          'x-oss-server-side-encryption': 'AES256',
+        },
+      } as never);
+      return;
+    }
+    await this.local.putObjectStream(objectKey, stream);
+  }
+
+  /**
+   * 流式下载对象（问题16 修复：恢复取回备份流式写盘，不整体读入内存）。
+   *
+   * @param objectKey OSS 对象键
+   * @returns 内容流（支持 async iteration 背压）
+   */
+  async getObjectStream(objectKey: string): Promise<NodeJS.ReadableStream> {
+    if (this.oss) {
+      const result = await this.oss.getStream(objectKey);
+      return result.stream as unknown as NodeJS.ReadableStream;
+    }
+    return this.local.getObjectStream(objectKey);
   }
 
   /**
@@ -243,7 +342,14 @@ export class FileStorageService {
 
   private async putObjectBytes(objectKey: string, body: Buffer, contentType: string): Promise<void> {
     if (this.oss) {
-      await this.oss.put(objectKey, body, { headers: { 'Content-Type': contentType } });
+      // 对象级服务端加密（主 PRD §9.2 第 265 行）：统一携带 SSE-OSS/AES256，
+      // 备份写入时必带、恢复预检按此头验证；图片对象同样受对象级加密保护
+      await this.oss.put(objectKey, body, {
+        headers: {
+          'Content-Type': contentType,
+          'x-oss-server-side-encryption': 'AES256',
+        },
+      });
       return;
     }
     await this.local.putObject(objectKey, body);

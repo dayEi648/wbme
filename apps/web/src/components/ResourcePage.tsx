@@ -236,7 +236,7 @@ export function ResourcePage({
       />
       {create ? <ResourceFormModal title={create.title} open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={submitCreate} fields={create.fields} initialValues={create.initialValues} /> : null}
       {edit ? <ResourceFormModal title={edit.title} open={editingRow !== null} onCancel={() => setEditingRow(null)} onSubmit={submitEdit} fields={edit.fields} initialValues={editingRow ?? {}} /> : null}
-      <Modal title={`${title}详情`} open={detailRow !== null} onCancel={() => setDetailRow(null)} footer={<Button onClick={() => setDetailRow(null)}>关闭</Button>} width={720}>
+      <Modal title={`${title}详情`} open={detailRow !== null} onCancel={() => setDetailRow(null)} footer={<Button onClick={() => setDetailRow(null)}>关闭</Button>} width="min(92vw, 720px)">
         <Descriptions bordered column={1} items={detailItems} />
       </Modal>
       <Modal

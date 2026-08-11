@@ -263,7 +263,7 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
       onRowsLoaded={setRows}
       onRowClick={(row) => setCurrentIndex(rows.findIndex((item) => item.id === row.id))}
     />
-    <Drawer title="审批详情" open={currentIndex !== null} onClose={() => setCurrentIndex(null)} width={560}>
+    <Drawer title="审批详情" open={currentIndex !== null} onClose={() => setCurrentIndex(null)} width="min(92vw, 560px)">
       {detailLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}><Spin />正在加载详情...</div>
       ) : detail ? (

@@ -94,7 +94,7 @@ export default function LoginPage() {
   const { token } = theme.useToken();
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
-      <Card style={{ width: 380 }}>
+      <Card style={{ width: 'min(380px, 100vw - 32px)' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>
             <Typography.Title level={3} style={{ marginBottom: 4 }}>
@@ -131,7 +131,7 @@ export default function LoginPage() {
         </Space>
       </Card>
 
-      <Modal title="重置密码" open={resetOpen} onCancel={() => setResetOpen(false)} footer={null} width={380}>
+      <Modal title="重置密码" open={resetOpen} onCancel={() => setResetOpen(false)} footer={null} width="min(92vw, 380px)">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             已绑定钉钉的账号可输入手机号，完成钉钉验证后重新设置密码

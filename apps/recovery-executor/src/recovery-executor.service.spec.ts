@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RecoveryExecutorService } from './recovery-executor.service';
@@ -53,6 +53,9 @@ describe('RecoveryExecutorService 状态机', () => {
     // readiness 要求依赖配置完整（dry-run 不实际连接，无效端口即可）
     process.env.DATABASE_URL = 'postgresql://nobody:nobody@127.0.0.1:1/nope';
     process.env.REDIS_URL = 'redis://127.0.0.1:1';
+    // 问题18 修复：就绪检查要求 OSS 配置完整（不连接，仅校验配置存在）
+    process.env.OSS_BUCKET = 'test-bucket';
+    process.env.OSS_REGION = 'oss-cn-hangzhou';
     const service = new RecoveryExecutorService();
     try {
       // 就绪基线（状态目录可写 + 控制配置完整）
@@ -75,6 +78,103 @@ describe('RecoveryExecutorService 状态机', () => {
       delete process.env.RECOVERY_SESSION_SECRET;
       delete process.env.DATABASE_URL;
       delete process.env.REDIS_URL;
+      delete process.env.OSS_BUCKET;
+      delete process.env.OSS_REGION;
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});
+
+
+describe('acceptDelivery 终态清单语义（批次8复核修复）', () => {
+  const doneManifest = (restoreUuid: string): Record<string, unknown> => ({
+    restoreUuid,
+    backupId: 1,
+    stage: 'DONE',
+    updatedAt: '2026-08-10T02:00:00.000Z',
+  });
+
+  async function seedStateDir(manifest: Record<string, unknown>): Promise<string> {
+    const stateDir = await mkdtemp(join(tmpdir(), 'wbme-accept-'));
+    await writeFile(join(stateDir, 'control-manifest.json'), JSON.stringify(manifest), 'utf8');
+    return stateDir;
+  }
+
+  function createService(stateDir: string): RecoveryExecutorService {
+    process.env.RESTORE_DRY_RUN = '1';
+    process.env.RESTORE_STATE_DIR = stateDir;
+    return new RecoveryExecutorService();
+  }
+
+  it('DONE 清单 + 同 restoreUuid：幂等忽略，不重跑破坏性管道', async () => {
+    const stateDir = await seedStateDir(doneManifest('uuid-a'));
+    const service = createService(stateDir);
+    try {
+      await service.acceptDelivery({ restoreUuid: 'uuid-a', backupId: 1 });
+      // 等待足够一轮 dry-run 管道时间：若被重跑，清单会被改写（updatedAt 变化）
+      await new Promise((r) => setTimeout(r, 600));
+      const raw = await readFile(join(stateDir, 'control-manifest.json'), 'utf8');
+      expect(JSON.parse(raw)).toEqual(doneManifest('uuid-a'));
+      // 未开始新一轮：不产生归档文件
+      await expect(readFile(join(stateDir, 'control-manifest.uuid-a.json'), 'utf8')).rejects.toThrow();
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it('DONE 清单 + 不同 restoreUuid：归档旧清单（保留审计痕迹）并开始新一轮恢复', async () => {
+    const stateDir = await seedStateDir(doneManifest('uuid-a'));
+    const service = createService(stateDir);
+    try {
+      await service.acceptDelivery({ restoreUuid: 'uuid-b', backupId: 2 });
+      // 旧清单另存归档名保留（按 PRD 不删除）
+      const archived = JSON.parse(await readFile(join(stateDir, 'control-manifest.uuid-a.json'), 'utf8'));
+      expect(archived).toEqual(doneManifest('uuid-a'));
+      // 新清单开始新一轮；dry-run 管道推进到 DONE 并退出维护状态
+      await new Promise((r) => setTimeout(r, 900));
+      const status = await service.getStatus();
+      expect(status.manifest?.restoreUuid).toBe('uuid-b');
+      expect(status.manifest?.stage).toBe('DONE');
+      expect(status.maintenance).toBe(false);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it('进行中清单 + 不同 restoreUuid：拒绝新投递，清单不被覆盖', async () => {
+    const inFlight = {
+      restoreUuid: 'uuid-a',
+      backupId: 1,
+      stage: 'RESTORING',
+      updatedAt: '2026-08-10T02:00:00.000Z',
+    };
+    const stateDir = await seedStateDir(inFlight);
+    const service = createService(stateDir);
+    try {
+      await expect(service.acceptDelivery({ restoreUuid: 'uuid-b', backupId: 2 })).rejects.toThrow(
+        '已有进行中的恢复',
+      );
+      const raw = await readFile(join(stateDir, 'control-manifest.json'), 'utf8');
+      expect(JSON.parse(raw)).toEqual(inFlight);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it('进行中清单 + 同 restoreUuid：忽略重投（既不拒绝也不重跑）', async () => {
+    const inFlight = {
+      restoreUuid: 'uuid-a',
+      backupId: 1,
+      stage: 'RESTORING',
+      updatedAt: '2026-08-10T02:00:00.000Z',
+    };
+    const stateDir = await seedStateDir(inFlight);
+    const service = createService(stateDir);
+    try {
+      await service.acceptDelivery({ restoreUuid: 'uuid-a', backupId: 1 });
+      const raw = await readFile(join(stateDir, 'control-manifest.json'), 'utf8');
+      expect(JSON.parse(raw)).toEqual(inFlight);
+    } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
   });

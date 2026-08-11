@@ -11,8 +11,10 @@ import {
   loadTaskByUuid,
   markFailed,
   markSucceeded,
+  renewRunningLease,
   TASK_MAX_ATTEMPTS,
   TASK_QUEUE_NAME,
+  TASK_RUNNING_LEASE_SECONDS,
   type BackgroundTaskRow,
   type SqlClient,
   type TaskType,
@@ -21,6 +23,13 @@ import { REDIS_NAMESPACE } from '@wbme/server';
 import { getTaskProcessor } from './processors';
 
 import type { ProcessorContext } from './processors/types';
+
+/**
+ * 执行租约暂不可领（旧租约未过期/状态竞态）。
+ * 与「真执行失败」区分：不标记任务 FAILED、不写集中错误日志——任务行仍归旧租约持有者，
+ * 由 BullMQ 按 attempts+退避重试（撑到租约过期后领取成功），或由调度器租约重领后重新投递。
+ */
+export class LeaseNotClaimableError extends Error {}
 
 /** BullMQ Worker 封装 */
 export class BackgroundTaskWorker {
@@ -87,9 +96,21 @@ export class BackgroundTaskWorker {
 
     const claimed = await claimRunning(this.sql, taskUuid, this.leaseOwner);
     if (!claimed) {
-      console.warn(`[worker] 未能领取执行租约 taskUuid=${taskUuid}`);
-      return;
+      // 租约暂不可领（典型：Worker 崩溃后 BullMQ stalled 重跑，旧执行租约尚未过期）。
+      // 不得 return 假完成——BullMQ 侧假 completed 的残留 job 会架空调度器租约重领后的
+      // 重投链路（同 jobId 去重静默丢弃），任务行空转到 timeout_at 被误标 FAILED。
+      // 改为抛出：BullMQ 按 attempts+退避重试，撑到租约过期后领取成功。
+      console.warn(`[worker] 执行租约暂不可领取 taskUuid=${taskUuid}，交由 BullMQ 重试/调度器租约重领`);
+      throw new LeaseNotClaimableError(`执行租约暂不可领取 taskUuid=${taskUuid}`);
     }
+
+    // 租约续期心跳（问题13 修复）：长任务（如大库备份 >10 分钟）执行期间定期续期，
+    // 防止 lease_expires_at 过期被 claimOutboxBatch 重领导致同一任务被重复执行。
+    // 续期间隔为租约时长的一半，Node 单线程下 await execFileAsync 期间能正常触发。
+    const leaseRenewer = setInterval(() => {
+      void renewRunningLease(this.sql, taskUuid, this.leaseOwner).catch(() => undefined);
+    }, Math.floor(TASK_RUNNING_LEASE_SECONDS / 2) * 1_000);
+    leaseRenewer.unref?.();
 
     const ctx: ProcessorContext = {
       sql: this.sql,
@@ -110,35 +131,51 @@ export class BackgroundTaskWorker {
       const isFinal = job.attemptsMade + 1 >= attempts;
       if (isFinal) {
         await markFailed(this.sql, taskUuid, this.leaseOwner, message);
-        await this.recordTaskError(task.taskType as TaskType, message);
+        await this.recordTaskError(task as BackgroundTaskRow, message);
       }
       throw error;
+    } finally {
+      clearInterval(leaseRenewer);
     }
   }
 
-  private async recordTaskError(taskType: TaskType, sample: string): Promise<void> {
+  /**
+   * 记录任务最终失败到集中错误日志（主 PRD §9.1 第 254 行）。
+   *
+   * 归属与可定位性（问题3 修复）：
+   * - service 字段 = 任务所属模块（backstage/asset/hr），健康页可按模块筛选/跳转日志；
+   * - source 固定为 `BACKGROUND_TASK:<任务类型>`（PRD 原文口径，不含模块）；
+   * - requestId 写入 taskUuid，sample 前缀同 taskUuid，便于定位具体任务行；
+   * - entryPoint/fingerprint 输入含模块，保证同类型不同模块的失败聚合独立。
+   */
+  private async recordTaskError(task: BackgroundTaskRow, sample: string): Promise<void> {
     const now = new Date();
+    const module = task.module;
+    const taskType = task.taskType as TaskType;
+    const source = `BACKGROUND_TASK:${taskType}`;
     const fingerprint = computeErrorFingerprint({
-      service: '@wbme/worker',
+      service: module,
       deployCommit: this.deployCommit,
       errorCategory: 'BACKGROUND_TASK',
-      entryPoint: `BACKGROUND_TASK:${taskType}`,
-      stackLocation: taskType,
+      entryPoint: source,
+      stackLocation: `${module}:${taskType}`,
     });
     const ok = await upsertErrorLog(this.rawSql, {
       level: 'ERROR',
-      service: '@wbme/worker',
-      source: `BACKGROUND_TASK:${taskType}`,
+      service: module,
+      source,
       errorCategory: 'BACKGROUND_TASK',
       deployCommit: this.deployCommit,
       fingerprint,
       bucketStart: bucketStart(now),
       occurredAt: now,
-      requestId: null,
-      sample,
+      requestId: task.taskUuid,
+      sample: `[taskUuid=${task.taskUuid}] ${sample}`,
     });
     if (!ok) {
-      console.error(`[worker] 错误日志写入失败 taskType=${taskType}`);
+      console.error(
+        `[worker] 错误日志写入失败 module=${module} taskType=${taskType} taskUuid=${task.taskUuid}`,
+      );
     }
   }
 }

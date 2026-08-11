@@ -169,7 +169,7 @@ export function ResourceFormModal({
   }, []);
 
   return (
-    <Modal title={title} open={open} onCancel={onCancel} footer={null} destroyOnHidden width={modalWidth}>
+    <Modal title={title} open={open} onCancel={onCancel} footer={null} destroyOnHidden width={`min(92vw, ${modalWidth}px)`}>
       <Form<Record<string, unknown>>
         form={form}
         layout="vertical"

@@ -190,7 +190,7 @@ function OrganizationEmployees() {
   ] : [];
   return <>
     <DataTable key={version} title="组织成员" service="hr" endpoint="/org/employees" pageKey="hr-employees" columns={[{ key: 'id', title: '员工 ID', fixed: 'left' }, { key: 'name', title: '姓名' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'departmentNames', title: '部门' }, { key: 'positionName', title: '岗位' }, { key: 'titleName', title: '职称' }]} filterFields={[{ key: 'keyword', title: '姓名关键字', type: 'text' }, { key: 'departmentId', title: '部门', type: 'tree', remote: departmentTreeSource }, { key: 'positionId', title: '岗位', type: 'remote', remote: positionsSource }, { key: 'status', title: '账号状态', type: 'enum', options: [{ label: '在职', value: 'ACTIVE' }, { label: '已注销', value: 'DEACTIVATED' }] }]} onRowClick={setTarget} rowActions={(row) => <Space size="small"><Button size="small" onClick={() => { setTarget(row); setMode('departments'); }}>调整部门</Button><Button size="small" onClick={() => { setTarget(row); setMode('position'); }}>调整岗位</Button></Space>} />
-    <Drawer title="组织成员详情" open={target !== null} onClose={() => setTarget(null)} width={520}><Descriptions bordered column={1} size="small" items={detailItems} /></Drawer>
+    <Drawer title="组织成员详情" open={target !== null} onClose={() => setTarget(null)} width="min(92vw, 520px)"><Descriptions bordered column={1} size="small" items={detailItems} /></Drawer>
     <ResourceFormModal title="调整员工部门" open={mode === 'departments'} onCancel={() => setMode(null)} onSubmit={saveDepartments} initialValues={{ departmentIds: Array.isArray(target?.departmentIds) ? target.departmentIds : [] }} fields={[{ key: 'departmentIds', label: '部门', type: 'tree-multi-select', remote: departmentTreeSource, required: true }]} />
     <ResourceFormModal title="调整员工岗位" open={mode === 'position'} onCancel={() => setMode(null)} onSubmit={savePosition} initialValues={{ positionId: target?.positionId }} fields={[{ key: 'positionId', label: '岗位', type: 'remote-select', remote: positionsSource, width: 'full' }]} />
   </>;
@@ -370,7 +370,7 @@ function OvertimeRecords() {
       </Space>
     </Card> : null}
     <DataTable title="加班历史记录" service="hr" endpoint="/overtime/records" pageKey="hr-overtime-records" columns={[{ key: 'id', title: '员工 ID', fixed: 'left' }, { key: 'name', title: '员工' }, { key: 'minutes', title: '分钟' }, { key: 'hours', title: '小时' }, { key: 'count', title: '次数' }]} filterFields={[{ key: 'month', title: '月份', type: 'text' }, { key: 'keyword', title: '员工关键字', type: 'text' }]} exportConfig={{ allEndpoint: '/overtime/records/export', filename: 'overtime-records.xlsx' }} rowActions={(row) => <Button size="small" onClick={() => void openDetail(row)}>明细</Button>} />
-    <Drawer title="加班明细" open={detailOpen} onClose={() => setDetailOpen(false)} width={620} loading={detailLoading}>
+    <Drawer title="加班明细" open={detailOpen} onClose={() => setDetailOpen(false)} width="min(92vw, 620px)" loading={detailLoading}>
       {detail.length > 0 ? <Table<RecordValue> size="small" rowKey={(row) => String(row.id ?? row.applicationNo ?? row.overtimeDate)} dataSource={detail} pagination={false} locale={{ emptyText: '暂无已批准加班明细' }} columns={[
         { key: 'overtimeDate', title: '日期', render: (value: unknown, row: RecordValue) => String(row.overtime_date ?? row.overtimeDate ?? value ?? '—') },
         { key: 'timeRange', title: '时间段', render: (_: unknown, row: RecordValue) => `${toClock(row.start_minute ?? row.startMinute)} - ${toClock(row.end_minute ?? row.endMinute)}` },

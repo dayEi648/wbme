@@ -45,7 +45,7 @@ export class RawSqlErrorLogWriter {
         entryPoint: input.source,
         stackLocation,
       });
-      await upsertErrorLog(this.client, {
+      const ok = await upsertErrorLog(this.client, {
         level: 'ERROR',
         service: input.service,
         source: input.source,
@@ -57,8 +57,19 @@ export class RawSqlErrorLogWriter {
         requestId: input.requestId,
         sample: stack ? `${message}\n${stack}` : message,
       });
-    } catch {
-      // fire-and-forget：写入失败不阻塞 HTTP 响应（错误日志本身不得再抛错）
+      if (!ok) {
+        // 写入失败（DB 不可用/超时--最需要日志的时刻）：退回容器标准错误输出（主 PRD §9.3），
+        // 与 PlatformErrorLogWriter 行为对齐，不得静默丢失。
+        console.error(
+          `[error-log] 写入失败（service=${input.service} source=${input.source} category=${input.errorCategory} requestId=${input.requestId}）`,
+        );
+      }
+    } catch (writeError) {
+      // fire-and-forget：意外异常不阻塞 HTTP 响应（错误日志本身不得再抛错），仍退回 stderr 兜底
+      const reason = writeError instanceof Error ? writeError.message : String(writeError);
+      console.error(
+        `[error-log] 写入异常（service=${input.service} requestId=${input.requestId}）: ${reason}`,
+      );
     }
   }
 }

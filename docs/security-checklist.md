@@ -8,7 +8,7 @@
 
 | 项 | 结论 | 证据/落实方式 |
 | --- | --- | --- |
-| 仅 HTTPS 对外提供 | 配置就绪（部署时启用） | `deploy/nginx.conf` 提供 80 入口并注释 443 启用方式；§9.14 安全组仅开放 80/443 |
+| 仅 HTTPS 对外提供 | 配置就绪 | `deploy/nginx.conf` 已实现强制 HTTPS：80 仅健康探针直答、其余 308 跳转，443 承载全部业务（证书经 `TLS_CERT_DIR` 挂载，部署前放置；`release.sh` 前置检查缺失即失败）；§9.14 安全组仅开放 80/443 |
 | CSP / HSTS / X-Content-Type-Options / 防点击劫持 / Referrer-Policy | 已落实 | `deploy/nginx.conf` 统一 add_header：CSP（self + OSS https 图片）、HSTS、nosniff、X-Frame-Options SAMEORIGIN、Referrer-Policy |
 | CORS 仅明确域名 | 已落实 | 后端未启用 `app.enableCors`（同源网关，无跨域来源）；浏览器同源访问，CORS 无通配配置 |
 | 会话 Cookie httpOnly + secure + sameSite | 已落实 | 会话 Cookie `HttpOnly` + `SameSite=Lax`；生产 `COOKIE_SECURE=true`（compose platform-core 环境注入） |
@@ -34,8 +34,8 @@
 
 | 项 | 结论 | 证据/落实方式 |
 | --- | --- | --- |
-| 仅 Nginx 公网入口 | 配置就绪 | compose 仅 web 发布 `80:80`；其余容器无 ports |
-| `/internal/v1` 与 `/recovery/*` 不暴露公网 | 配置就绪 | nginx.conf 对 `location /api/` 与 `location ~ ^/(internal|recovery)/` 均返回 404（L34：防止 /internal 落入 SPA fallback 返回 200）；内部端口仅私网 |
+| 仅 Nginx 公网入口 | 配置就绪 | compose 仅 web 发布 `80:80` 与 `443:443`（80 仅健康探针直答 + 308 跳转）；其余容器无 ports |
+| `/internal/v1` 不暴露公网；`/recovery/` 仅维护态放行 | 配置就绪 | nginx.conf 对 `location /api/` 与 `location ~ ^/internal/` 返回 404（L34：防止 /internal 落入 SPA fallback 返回 200）；`location /recovery/` 仅在维护标记存在时反代到恢复执行器（backstage PRD §10 人工介入通道，静态 upstream proxy_pass），平时一律 404；内部端口仅私网 |
 | 无 Docker Socket / privileged / host 网络 | 配置就绪 | compose 全部容器 `cap_drop: ALL`（+ 最小必要 `cap_add`：web 为 CHOWN/SETUID/SETGID/NET_BIND_SERVICE，postgres 为 CHOWN）+ `no-new-privileges`；无 socket 挂载、无 host 网络 |
 | 非 root + 只读根文件系统 + 有界 tmpfs | 配置就绪 | runtime 镜像 `USER wbme`、postgres/redis 镜像内置非 root 用户；nginx 官方镜像 master 进程仍以 root 运行（镜像固定行为，worker 降权 nginx），由 compose `cap_drop: ALL` + `no-new-privileges` + `read_only` 兜底；全部容器 `read_only: true` + 有界 tmpfs（backend `/tmp`、web `/var/cache/nginx /var/run /tmp`、postgres `/tmp /run/postgresql`、redis `/tmp`） |
 | 命名持久化卷（不写容器可写层） | 配置就绪 | `postgres_data` / `redis_data` 命名卷；恢复状态与发布基线用 `/opt/wbme/persist` 宿主目录 |
@@ -52,7 +52,7 @@
 
 ## 部署后待落实（不在本期执行）
 
-- [ ] HTTPS 证书签发与 443 配置（`deploy/nginx.conf` 已预留说明）
+- [ ] TLS 证书签发与放置（`deploy/nginx.conf` 已实现 443 强制 HTTPS；`fullchain.pem`/`privkey.pem` 放置到 `TLS_CERT_DIR`，`release.sh` 前置检查缺失即失败）
 - [ ] ECS 安全组仅开放 80/443；SSH 密钥认证 + 来源限制
 - [ ] 生产机密文件权限（chmod 600）与 `.env.production` 注入
 - [ ] 实际发布、恢复演练与容器运行验证（阶段 10 部署约束：本期不执行）

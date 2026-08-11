@@ -52,6 +52,12 @@ export async function processImageCleanup(task: BackgroundTaskRow, ctx: Processo
       skipped += 1;
       continue;
     }
+    // 删除前重新确认引用（问题5 修复）：清理运行期间刚被 finalize 关联的图片
+    // 不会出现在轮开始快照里，二次查询单 key 引用可捕获并保留，避免误删裂图
+    if (await isKeyReferenced(ctx, key)) {
+      skipped += 1;
+      continue;
+    }
     // 先删注册表行（幂等、立即关闭下载通道）再删对象（M5 复核修复）：
     // 对象删除失败时任务报错重试，下一轮仍会列举到该对象并完成删除；
     // 原顺序（先删对象）下注册表删除失败会留下指向已删对象的孤儿行，且
@@ -61,6 +67,38 @@ export async function processImageCleanup(task: BackgroundTaskRow, ctx: Processo
     removed += 1;
   }
   console.log(`[image-cleanup] 完成：删除 ${removed} 个未关联对象，保留 ${skipped} 个（含正式关联）`);
+}
+
+/**
+ * 删除前单 key 引用确认（问题5 修复）。
+ *
+ * 清理运行期间刚被 finalize 关联的图片不在轮开始快照里，删除前查一次当前 key
+ * 是否已被 asset.assets / asset.consumables 引用，命中则保留待下一轮。
+ *
+ * @param ctx 处理器上下文
+ * @param key 对象键
+ * @returns true=已被引用（保留）；查询失败按保守保留（true）
+ */
+async function isKeyReferenced(ctx: ProcessorContext, key: string): Promise<boolean> {
+  try {
+    const rows = await ctx.sql.queryRows<{ n: string }>(
+      `SELECT count(*)::text AS n FROM (
+         SELECT 1 FROM asset.assets WHERE image_oss_key = $1
+         UNION ALL
+         SELECT 1 FROM asset.consumables WHERE image_oss_key = $1
+       ) t`,
+      [key],
+    );
+    return Number(rows[0]?.n ?? 0) > 0;
+  } catch (error) {
+    // 查询失败按保守保留（宁可保留不可误删正式关联图片）
+    console.warn(
+      `[image-cleanup] 删除前引用确认失败，按保留处理（key=${key}）：${
+        error instanceof Error ? error.message : error
+      }`,
+    );
+    return true;
+  }
 }
 
 /** 读取未关联图片保留时长（小时）；缺省或非法回退默认 24 */

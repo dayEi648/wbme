@@ -15,6 +15,12 @@ export const IMAGE_PRESIGN_EXPIRES_SECONDS = 300;
 /** 图片最大体积（字节）：1MB */
 export const IMAGE_MAX_BYTES = 1_048_576;
 
+/** 图片单边像素上限（防解压炸弹；worker 256m 内存上限内安全解压） */
+export const IMAGE_MAX_DIMENSION = 8_000;
+
+/** 图片总像素上限（24MP；解压后约 96MB RGBA，安全在 worker 内存上限内） */
+export const IMAGE_MAX_TOTAL_PIXELS = 24_000_000;
+
 /** 备份预签名/直传有效期（秒） */
 export const BACKUP_PRESIGN_EXPIRES_SECONDS = 3_600;
 

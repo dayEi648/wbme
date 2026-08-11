@@ -49,7 +49,7 @@ export default function ActivateCompletePage() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card style={{ width: 420 }}>
+      <Card style={{ width: 'min(420px, 100vw - 32px)' }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>
             <Typography.Title level={4} style={{ marginBottom: 4 }}>

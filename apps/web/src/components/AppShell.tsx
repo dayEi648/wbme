@@ -148,7 +148,7 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
           {children}
         </Content>
       </Layout>
-      <Drawer title={systemName} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} placement="left" width={280} styles={{ body: { padding: 0 } }}>
+      <Drawer title={systemName} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} placement="left" width="min(92vw, 280px)" styles={{ body: { padding: 0 } }}>
         <div style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar icon={<UserOutlined />} />
           <Typography.Text>{user?.name}</Typography.Text>

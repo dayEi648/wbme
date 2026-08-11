@@ -59,7 +59,7 @@ export default function ActivatePage() {
   }
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card style={{ width: 420 }}>
+      <Card style={{ width: 'min(420px, 100vw - 32px)' }}>
         <Result status="error" title="激活失败" subTitle={errorMessage} />
         <Typography.Paragraph type="secondary" style={{ textAlign: 'center' }}>
           请联系管理员重新生成激活邀请

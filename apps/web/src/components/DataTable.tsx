@@ -18,9 +18,11 @@ import {
   Table,
   Tag,
   Typography,
+  Dropdown,
+  type MenuProps,
   type TableColumnsType,
 } from 'antd';
-import { ExportOutlined, FilterOutlined, SettingOutlined, SortAscendingOutlined } from '@ant-design/icons';
+import { ExportOutlined, FilterOutlined, MoreOutlined, SettingOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFeedback } from '../request/feedback';
 import { download, http, type ApiService } from '../request/http';
@@ -641,6 +643,58 @@ export function DataTable({
     }
   };
 
+  /** 应用筛选预设（桌面「使用预设」下拉与移动端「更多」菜单共用同一套状态迁移）。 */
+  const applyPreset = (preset: FilterPreset) => {
+    setActivePresetId(preset.id);
+    setFilters(preset.content.filters ?? []);
+    setFilterGroups(preset.content.filterGroups ?? []);
+    setFilterLogic(preset.content.filterLogic ?? 'AND');
+    setSorts(preset.content.sorts ?? []);
+    setAppliedFilters(preset.content.filters ?? []);
+    setAppliedFilterGroups(preset.content.filterGroups ?? []);
+    setAppliedFilterLogic(preset.content.filterLogic ?? 'AND');
+    setAppliedSorts(preset.content.sorts ?? []);
+    setPage(1);
+  };
+
+  /** 清除工具栏全部已应用条件（筛选/排序/预设），桌面「清除全部条件」与移动端「更多」菜单共用。 */
+  const clearAllConditions = () => {
+    setFilters([]);
+    setFilterGroups([]);
+    setFilterLogic('AND');
+    setSorts([]);
+    setAppliedFilters([]);
+    setAppliedFilterGroups([]);
+    setAppliedFilterLogic('AND');
+    setAppliedSorts([]);
+    setActivePresetId(undefined);
+    setPage(1);
+  };
+
+  /**
+   * 移动端「更多」菜单：承接桌面工具栏的次要操作（排序/列设置/预设/导出/清除条件），
+   * 首屏只保留筛选与页面主操作，避免窄屏下工具栏换行堆叠数屏。
+   */
+  const moreMenuItems: NonNullable<MenuProps['items']> = [
+    { key: 'sort', icon: <SortAscendingOutlined />, label: `排序${appliedSorts.length > 0 ? `（${appliedSorts.length}）` : ''}`, onClick: () => setSortOpen(true) },
+    { key: 'columns', icon: <SettingOutlined />, label: '列设置', onClick: () => setColumnOpen(true) },
+    { key: 'preset-save', label: '保存预设', onClick: () => setPresetOpen(true) },
+    presets.length > 0
+      ? { key: 'preset-apply', label: '使用预设', children: presets.map((preset) => ({ key: `preset-${preset.id}`, label: preset.name, onClick: () => applyPreset(preset) })) }
+      : { key: 'preset-apply-empty', label: '使用预设（暂无已保存）', disabled: true },
+    { key: 'preset-manage', label: '管理预设', disabled: presets.length === 0, onClick: () => setPresetManageOpen(true) },
+    ...(exportConfig
+      ? [
+          { type: 'divider' as const },
+          { key: 'export-all', icon: <ExportOutlined />, label: '导出全部', onClick: () => void exportRows('all') },
+          { key: 'export-filtered', icon: <ExportOutlined />, label: '导出已筛选', onClick: () => void exportRows('filtered') },
+        ]
+      : []),
+    ...(appliedFilters.length > 0 || appliedFilterGroups.length > 0 || appliedSorts.length > 0
+      ? [{ type: 'divider' as const }, { key: 'clear-all', label: '清除全部条件', danger: true, onClick: clearAllConditions }]
+      : []),
+  ];
+
   const renderFilterEditor = (
     filter: FilterCondition,
     changeField: (field: string) => void,
@@ -687,66 +741,62 @@ export function DataTable({
         {description ? <Typography.Text type="secondary">{description}</Typography.Text> : null}
       </div>
 
-      <Space wrap>
-        <Button icon={<FilterOutlined />} onClick={() => setFilterOpen(true)}>
-          筛选{appliedFilterCount > 0 ? `（${appliedFilterCount}）` : ''}
-        </Button>
-        <Button icon={<SortAscendingOutlined />} onClick={() => setSortOpen(true)}>
-          排序{appliedSorts.length > 0 ? `（${appliedSorts.length}）` : ''}
-        </Button>
-        <Button onClick={() => setPresetOpen(true)}>保存预设</Button>
-        <Select
-          allowClear
-          placeholder="使用预设"
-          style={{ minWidth: 128, maxWidth: 180 }}
-          options={presets.map((preset) => ({ label: preset.name, value: preset.id }))}
-          onChange={(id: number | undefined) => {
-            setActivePresetId(id);
-            const preset = presets.find((item) => item.id === id);
-            if (preset) {
-              setFilters(preset.content.filters ?? []);
-              setFilterGroups(preset.content.filterGroups ?? []);
-              setFilterLogic(preset.content.filterLogic ?? 'AND');
-              setSorts(preset.content.sorts ?? []);
-              setAppliedFilters(preset.content.filters ?? []);
-              setAppliedFilterGroups(preset.content.filterGroups ?? []);
-              setAppliedFilterLogic(preset.content.filterLogic ?? 'AND');
-              setAppliedSorts(preset.content.sorts ?? []);
-              setPage(1);
-            }
-          }}
-        />
-        <Button disabled={presets.length === 0} onClick={() => setPresetManageOpen(true)}>管理预设</Button>
-        <Button icon={<SettingOutlined />} onClick={() => setColumnOpen(true)}>
-          列设置
-        </Button>
-        {exportConfig ? (
-          <Space.Compact>
-            <Button icon={<ExportOutlined />} onClick={() => void exportRows('all')}>导出全部</Button>
-            <Button icon={<ExportOutlined />} onClick={() => void exportRows('filtered')}>导出已筛选</Button>
-          </Space.Compact>
-        ) : null}
-        {appliedFilters.length > 0 || appliedFilterGroups.length > 0 || appliedSorts.length > 0 ? (
-          <Button
-            type="link"
-            onClick={() => {
-              setFilters([]);
-              setFilterGroups([]);
-              setFilterLogic('AND');
-              setSorts([]);
-              setAppliedFilters([]);
-              setAppliedFilterGroups([]);
-              setAppliedFilterLogic('AND');
-              setAppliedSorts([]);
-              setActivePresetId(undefined);
-              setPage(1);
-            }}
-          >
-            清除全部条件
+      {/* 移动端工具栏：首屏只保留筛选与页面主操作，次要操作折叠进「更多」（桌面端形态不变）。 */}
+      <div className="wbme-mobile-toolbar">
+        <Space wrap>
+          <Button icon={<FilterOutlined />} onClick={() => setFilterOpen(true)}>
+            筛选{appliedFilterCount > 0 ? `（${appliedFilterCount}）` : ''}
           </Button>
-        ) : null}
-        {actions}
-      </Space>
+          {actions}
+          <Dropdown menu={{ items: moreMenuItems }} trigger={['click']} placement="bottomLeft">
+            <Button icon={<MoreOutlined />}>更多</Button>
+          </Dropdown>
+        </Space>
+      </div>
+      <div className="wbme-desktop-toolbar">
+        <Space wrap>
+          <Button icon={<FilterOutlined />} onClick={() => setFilterOpen(true)}>
+            筛选{appliedFilterCount > 0 ? `（${appliedFilterCount}）` : ''}
+          </Button>
+          <Button icon={<SortAscendingOutlined />} onClick={() => setSortOpen(true)}>
+            排序{appliedSorts.length > 0 ? `（${appliedSorts.length}）` : ''}
+          </Button>
+          <Button onClick={() => setPresetOpen(true)}>保存预设</Button>
+          <Select
+            allowClear
+            placeholder="使用预设"
+            style={{ minWidth: 128, maxWidth: 180 }}
+            options={presets.map((preset) => ({ label: preset.name, value: preset.id }))}
+            onChange={(id: number | undefined) => {
+              const preset = presets.find((item) => item.id === id);
+              if (preset) {
+                applyPreset(preset);
+              } else {
+                setActivePresetId(undefined);
+              }
+            }}
+          />
+          <Button disabled={presets.length === 0} onClick={() => setPresetManageOpen(true)}>管理预设</Button>
+          <Button icon={<SettingOutlined />} onClick={() => setColumnOpen(true)}>
+            列设置
+          </Button>
+          {exportConfig ? (
+            <Space.Compact>
+              <Button icon={<ExportOutlined />} onClick={() => void exportRows('all')}>导出全部</Button>
+              <Button icon={<ExportOutlined />} onClick={() => void exportRows('filtered')}>导出已筛选</Button>
+            </Space.Compact>
+          ) : null}
+          {appliedFilters.length > 0 || appliedFilterGroups.length > 0 || appliedSorts.length > 0 ? (
+            <Button
+              type="link"
+              onClick={clearAllConditions}
+            >
+              清除全部条件
+            </Button>
+          ) : null}
+          {actions}
+        </Space>
+      </div>
 
       {batchAction && selectedKeys.length > 0 ? (
         <Card size="small">
@@ -870,7 +920,7 @@ export function DataTable({
           setFilterLogic(appliedFilterLogic);
           setFilterOpen(false);
         }}
-        width={420}
+        width="min(92vw, 420px)"
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {quickFilterFields.length > 0 ? (
@@ -964,7 +1014,7 @@ export function DataTable({
         </Space>
       </Drawer>
 
-      <Drawer title="排序" placement="right" open={sortOpen} onClose={() => { setSorts(appliedSorts); setSortOpen(false); }} width={420}>
+      <Drawer title="排序" placement="right" open={sortOpen} onClose={() => { setSorts(appliedSorts); setSortOpen(false); }} width="min(92vw, 420px)">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {sorts.map((sort, index) => (
             <Card key={`${sort.field}-${index}`} size="small">
@@ -986,7 +1036,7 @@ export function DataTable({
         </Space>
       </Drawer>
 
-      <Drawer title="列设置" placement="right" open={columnOpen} onClose={() => setColumnOpen(false)} width={360}>
+      <Drawer title="列设置" placement="right" open={columnOpen} onClose={() => setColumnOpen(false)} width="min(92vw, 360px)">
         <Checkbox.Group value={visibleKeys} onChange={(values) => void saveColumns(values.map(String))} style={{ width: '100%' }}>
           <Space direction="vertical" style={{ width: '100%' }}>
             {[...visibleColumns, ...columns.filter((column) => !visibleKeys.includes(column.key))].map((column) => {

@@ -30,13 +30,16 @@ async function bootstrap(): Promise<void> {
       return;
     }
     if (url === '/readyz') {
-      if (runtime.getHealth().ready) {
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok' }));
-      } else {
-        res.writeHead(503, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ status: 'unready' }));
-      }
+      // 就绪探针异步探测 Redis + PostgreSQL（问题17：反映 PG 运行期故障）
+      void runtime.getHealth().then((health) => {
+        if (health.ready) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ status: 'ok' }));
+        } else {
+          res.writeHead(503, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ status: 'unready' }));
+        }
+      });
       return;
     }
     res.writeHead(404, { 'content-type': 'application/json' });

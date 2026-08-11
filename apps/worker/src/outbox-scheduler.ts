@@ -3,6 +3,7 @@ import {
   beijingDateString,
   beijingHour,
   claimOutboxBatch,
+  failTimedOutTasks,
   insertPendingTaskSql,
   isPastScheduledBackupBoundary,
   markQueued,
@@ -179,6 +180,13 @@ export class OutboxScheduler {
       await ensureDailyScheduledBackup(this.sql, now);
       await ensureDailyImageCleanup(this.sql, now);
       await ensureDailyApprovalTimeoutScan(this.sql, now);
+      // 超时控制（主 PRD §9.1 第 250 行「支持超时控制、卡死任务发现」，问题12 修复）：
+      // RUNNING 且 timeout_at 过期的卡死任务终态化为 FAILED（不再重领/重试，人工核查）；
+      // 活着的长任务经 renewRunningLease 持续重置 timeout_at，不触发。
+      const timedOut = await failTimedOutTasks(this.sql, now);
+      if (timedOut > 0) {
+        console.warn(`[outbox] 超时终态化 ${timedOut} 个卡死任务`);
+      }
       const batch = await claimOutboxBatch(
         this.sql,
         this.schedulerId,
@@ -187,12 +195,23 @@ export class OutboxScheduler {
       );
       for (const row of batch) {
         try {
+          if (row.status !== 'PENDING_ENQUEUE') {
+            // 租约重领/卡死重投（QUEUED/RUNNING 残留行）：同 jobId 的 completed/failed
+            // 残留 job 会让 BullMQ 按 jobId 去重静默丢弃本次投递（批次8复核修复）——
+            // 先删残留再投递。remove 返回 0 = 残留 job 仍被旧 Worker 持锁（极端竞态：
+            // 旧执行者其实活着），放弃本轮投递，投递租约到期后下个周期重试，
+            // 避免与在途执行并发。
+            const removed = await this.queue.remove(row.taskUuid);
+            if (removed === 0) {
+              throw new Error(`残留 job 仍被锁定 taskUuid=${row.taskUuid}，下个调度周期重试`);
+            }
+          }
           await this.queue.add(
             row.taskType,
             { taskUuid: row.taskUuid },
             {
               jobId: row.taskUuid,
-              // 恢复投递不自动重试（backstage PRD §10）；其余任务按默认重试
+              // 恢复投递有限重试（执行器幂等，主 PRD §9.1）；其余任务按默认重试
               ...(row.taskType === TASK_TYPE_RESTORE_DELIVERY
                 ? RESTORE_DELIVERY_JOB_OPTIONS
                 : DEFAULT_JOB_OPTIONS),

@@ -52,7 +52,7 @@ export default function ResetPasswordPage() {
   }
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card style={{ width: 420 }}>
+      <Card style={{ width: 'min(420px, 100vw - 32px)' }}>
         <Typography.Paragraph style={{ textAlign: 'center' }}>{errorMessage}</Typography.Paragraph>
         <Button type="primary" block onClick={() => navigate('/login')}>
           返回登录
@@ -92,7 +92,7 @@ export function ResetCompletePage() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card style={{ width: 420 }}>
+      <Card style={{ width: 'min(420px, 100vw - 32px)' }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>
             <Typography.Title level={4} style={{ marginBottom: 4 }}>
