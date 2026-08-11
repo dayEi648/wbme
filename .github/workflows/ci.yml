@@ -183,8 +183,11 @@ jobs:
       - name: Run migrations on CI database
         run: pnpm --filter @wbme/migration-runner start
 
+      # e2e-seed.mjs 位于仓库根 scripts/，且内部经 createRequire 按仓库根解析
+      # platform-core(@node-rs/argon2) 与 migration-runner(pg) 的依赖，
+      # 必须在仓库根执行（--filter 会把工作目录切到包目录导致脚本找不到）
       - name: Seed E2E test user
-        run: pnpm --filter @wbme/platform-core exec node scripts/e2e-seed.mjs
+        run: node scripts/e2e-seed.mjs
 
       - name: Install Playwright browsers
         run: pnpm --filter @wbme/web exec playwright install --with-deps chromium
