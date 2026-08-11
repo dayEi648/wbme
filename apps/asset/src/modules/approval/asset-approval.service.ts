@@ -476,22 +476,16 @@ export class AssetApprovalService {
   }
 
   /**
-   * 可见待审批数量（按类型 breakdown）。
+   * 待审批数量（按类型 breakdown）。
+   *
+   * 只按显式功能授权统计：超管隐式全量授权不计入（无对应授权记录即计 0），
+   * 与列表/详情的超管全量可见性口径不同。
    *
    * @param userId 用户 id
-   * @param isSuperAdmin 是否超管（可省略）
    * @returns total + byType
    */
-  async pendingCount(
-    userId: number,
-    isSuperAdmin?: boolean,
-  ): Promise<{ total: number; byType: Record<string, number> }> {
-    let superAdmin = isSuperAdmin;
-    if (superAdmin === undefined) {
-      const user = await loadSessionUser(this.prisma.client, userId);
-      superAdmin = user?.isSuperAdmin ?? false;
-    }
-    const visibleTypes = await this.resolveVisibleTypes(userId, superAdmin);
+  async pendingCount(userId: number): Promise<{ total: number; byType: Record<string, number> }> {
+    const visibleTypes = await this.resolveVisibleTypes(userId, { explicitGrantsOnly: true });
     if (visibleTypes.length === 0) {
       return { total: 0, byType: {} };
     }
@@ -524,21 +518,26 @@ export class AssetApprovalService {
    *
    * 超管 / COMPANY：全部类型；DEPARTMENT：排除 STOCK_IN / STOCK_CHANGE
    * （`isCompanyOnlyRequestType`）并按部门闭包裁剪。
+   * explicitGrantsOnly（待办计数口径）：超管隐式全量不生效，仅按显式授权解析。
    *
    * @param userId 用户
-   * @param isSuperAdminHint 可选超管提示
+   * @param options.explicitGrantsOnly 仅显式授权（默认 false）
    * @returns 可见类型条目（requestType + dataScope）
    */
   private async resolveVisibleTypes(
     userId: number,
-    isSuperAdminHint?: boolean,
+    options?: { explicitGrantsOnly?: boolean },
   ): Promise<Array<{ requestType: AssetRequestType; dataScope: DataScope | null }>> {
-    const access = await getFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPROVAL_FUNCTION_CODE);
+    const explicitGrantsOnly = options?.explicitGrantsOnly ?? false;
+    const access = await getFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPROVAL_FUNCTION_CODE, {
+      includeImplicitSuperAdmin: !explicitGrantsOnly,
+    });
     if (!access.registered || !access.systemOpen) {
       return [];
     }
-    const user = isSuperAdminHint === undefined ? await loadSessionUser(this.prisma.client, userId) : null;
-    const isSuperAdmin = isSuperAdminHint ?? user?.isSuperAdmin ?? false;
+    // 仅显式授权口径下超管标记无意义（隐式全量不生效），无需读取会话
+    const user = explicitGrantsOnly ? null : await loadSessionUser(this.prisma.client, userId);
+    const isSuperAdmin = !explicitGrantsOnly && (user?.isSuperAdmin ?? false);
     if (!isSuperAdmin && !access.allowed) {
       return [];
     }

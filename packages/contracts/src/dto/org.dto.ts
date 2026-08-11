@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -148,6 +148,18 @@ export class DepartmentDeleteDto extends IdempotentDto {
   @ArrayUnique()
   @IsInt({ each: true })
   ids!: number[];
+}
+
+/** 岗位列表查询（hr PRD §7；includeDisabled=true 含停用，默认只含启用） */
+export class PositionListQueryDto extends PaginationQueryDto {
+  @ApiProperty({
+    description: 'includeDisabled=true 含停用（默认只含启用）',
+    required: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  includeDisabled?: boolean;
 }
 
 /** 批量硬删除岗位（主 PRD §9.5 批量操作幂等） */

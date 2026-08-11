@@ -566,22 +566,16 @@ export class HrApprovalService {
   }
 
   /**
-   * 可见待审批数量（按类型 breakdown；DEPARTMENT 档按闭包裁剪）。
+   * 待审批数量（按类型 breakdown；DEPARTMENT 档按闭包裁剪）。
+   *
+   * 只按显式功能授权统计：超管隐式全量授权不计入（无对应授权记录即计 0），
+   * 与列表/详情的超管全量可见性口径不同。
    *
    * @param userId 用户 id
-   * @param isSuperAdmin 是否超管（可省略，将从视图读取）
    * @returns total + byType
    */
-  async pendingCount(
-    userId: number,
-    isSuperAdmin?: boolean,
-  ): Promise<{ total: number; byType: Record<string, number> }> {
-    let superAdmin = isSuperAdmin;
-    if (superAdmin === undefined) {
-      const user = await loadSessionUser(this.prisma.client, userId);
-      superAdmin = user?.isSuperAdmin ?? false;
-    }
-    const visibleTypes = await this.resolveVisibleTypes(userId, superAdmin);
+  async pendingCount(userId: number): Promise<{ total: number; byType: Record<string, number> }> {
+    const visibleTypes = await this.resolveVisibleTypes(userId, { explicitGrantsOnly: true });
     if (visibleTypes.length === 0) {
       return { total: 0, byType: {} };
     }
@@ -604,20 +598,25 @@ export class HrApprovalService {
    * 解析用户可见的申请类型集合（携带数据范围档位）。
    *
    * 超管/公司档全量可见；DEPARTMENT 档按部门闭包过滤。
+   * explicitGrantsOnly（待办计数口径）：超管隐式全量不生效，仅按显式授权解析。
    *
    * @param userId 用户
-   * @param isSuperAdminHint 可选超管提示
+   * @param options.explicitGrantsOnly 仅显式授权（默认 false）
    * @returns 可见类型（含档位）
    */
   private async resolveVisibleTypes(
     userId: number,
-    isSuperAdminHint?: boolean,
+    options?: { explicitGrantsOnly?: boolean },
   ): Promise<VisibleTypeEntry[]> {
-    const user = isSuperAdminHint === undefined ? await loadSessionUser(this.prisma.client, userId) : null;
-    const isSuperAdmin = isSuperAdminHint ?? user?.isSuperAdmin ?? false;
+    const explicitGrantsOnly = options?.explicitGrantsOnly ?? false;
+    // 仅显式授权口径下超管标记无意义（隐式全量不生效），无需读取会话
+    const user = explicitGrantsOnly ? null : await loadSessionUser(this.prisma.client, userId);
+    const isSuperAdmin = !explicitGrantsOnly && (user?.isSuperAdmin ?? false);
     const types: VisibleTypeEntry[] = [];
     for (const [functionCode, requestTypes] of Object.entries(FUNCTION_TO_TYPES)) {
-      const access = await getFunctionAccess(this.prisma.client, userId, functionCode);
+      const access = await getFunctionAccess(this.prisma.client, userId, functionCode, {
+        includeImplicitSuperAdmin: !explicitGrantsOnly,
+      });
       if (!access.registered || !access.systemOpen) {
         continue;
       }

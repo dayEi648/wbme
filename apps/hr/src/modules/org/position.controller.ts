@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
-import { createPaginationResponse, ORG_STRUCTURE_FUNCTION_CODE, PaginationQueryDto, POSITION_MANAGE_FUNCTION_CODE, PositionCreateDto, PositionDeleteDto, PositionDepartmentsUpdateDto, PositionUpdateDto, TITLE_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
+import { createPaginationResponse, ORG_STRUCTURE_FUNCTION_CODE, POSITION_MANAGE_FUNCTION_CODE, PositionCreateDto, PositionDeleteDto, PositionDepartmentsUpdateDto, PositionListQueryDto, PositionUpdateDto, TITLE_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess, getFunctionAccess } from '../../shared/cross-schema-auth';
@@ -21,12 +21,10 @@ export class PositionController {
    *  只读引用对「组织架构」开放（hr PRD §7：岗位管理为独立权限，组织架构可引用岗位档案）；
    *  写操作仍仅 position_manage。 */
   @Get()
-  async list(@CurrentUser() userId: number, @Query() query: PaginationQueryDto, @Query('includeDisabled') includeDisabled?: string): Promise<unknown> {
+  async list(@CurrentUser() userId: number, @Query() query: PositionListQueryDto): Promise<unknown> {
     await this.assertEitherAccess(userId);
-    const result = await this.positions.list(includeDisabled === 'true');
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-    return createPaginationResponse(result.slice((page - 1) * pageSize, page * pageSize), result.length, page, pageSize);
+    const result = await this.positions.list(query.includeDisabled ?? false);
+    return createPaginationResponse(result.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), result.length, query.page, query.pageSize);
   }
 
   /** 创建岗位（幂等；岗位名唯一） */

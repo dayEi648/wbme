@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { PrismaService } from '../../../prisma.service';
 import { ApprovalCenterService } from '../approval-proxy/approval-center.service';
 import { PendingBadgeClient } from './pending-badge.client';
@@ -8,7 +9,8 @@ import { PendingBadgeClient } from './pending-badge.client';
  *
  * - 系统入口可见规则：当前用户拥有该系统至少一项功能授权；超级管理员视为拥有全部；
  * - 公告：仅展示当前唯一"正在展示"（PUBLISHING）的系统公告；
- * - 待办角标：本地 backstage 可见待办 + hr/asset 内部 pending-count 之和。
+ * - 待办角标：本地 backstage 可见待办 + hr/asset 内部 pending-count 之和；
+ *   角标只按显式功能授权统计，超管隐式全量授权不计入。
  */
 @Injectable()
 export class PortalService {
@@ -34,7 +36,7 @@ export class PortalService {
         orderBy: { publishedAt: 'desc' },
         select: { title: true, content: true, publishedAt: true },
       }),
-      this.countLocalPending(userId, isSuperAdmin),
+      this.countLocalPending(userId),
       this.pendingBadge.fetchRemotePendingBySystem(userId),
     ]);
 
@@ -82,21 +84,19 @@ export class PortalService {
   }
 
   /**
-   * 本地 backstage 待办：持有 user_manage 或超管才计入资料修改 PENDING。
+   * 本地 backstage 待办：持有 user_manage 显式授权才计入资料修改 PENDING；
+   * 超管隐式全量授权不计入角标（与 hr/asset pending-count 口径一致）。
    *
    * @param userId 用户
-   * @param isSuperAdmin 是否超管
    * @returns 本地待办数
    */
-  private async countLocalPending(userId: number, isSuperAdmin: boolean): Promise<number> {
-    if (!isSuperAdmin) {
-      const grant = await this.prisma.client.employeeGrant.findFirst({
-        where: { userId, functionCode: 'user_manage' },
-        select: { id: true },
-      });
-      if (!grant) {
-        return 0;
-      }
+  private async countLocalPending(userId: number): Promise<number> {
+    const grant = await this.prisma.client.employeeGrant.findFirst({
+      where: { userId, functionCode: USER_MANAGE_FUNCTION_CODE },
+      select: { id: true },
+    });
+    if (!grant) {
+      return 0;
     }
     const { total } = await this.approvalCenter.pendingCount();
     return total;

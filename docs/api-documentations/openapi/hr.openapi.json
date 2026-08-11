@@ -2824,11 +2824,12 @@
             }
           },
           {
+            "description": "includeDisabled=true 含停用（默认只含启用）",
             "in": "query",
             "name": "includeDisabled",
             "required": false,
             "schema": {
-              "type": "string"
+              "type": "boolean"
             }
           }
         ],

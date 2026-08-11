@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 
 // 加载仓库根 .env（集成测试使用真实本地 PostgreSQL；CI 由环境变量注入）
 try {
@@ -31,13 +32,14 @@ const TEST_PHONE_PREFIX = '+8613934';
 describe.skipIf(!DATABASE_URL)('门户入口推导（T3-4 真实授权核对）', () => {
   let prisma: PrismaService;
   let portal: PortalService;
+  let approvalCenter: ApprovalCenterService;
   let phoneSeq = 0;
   const testUserIds: number[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaService();
     // 导出不在本规格路径；RedisService 以空对象占位（构造仅存储引用）
-    const approvalCenter = new ApprovalCenterService(prisma, {} as never, new SettingsService(prisma));
+    approvalCenter = new ApprovalCenterService(prisma, {} as never, new SettingsService(prisma));
     // 门户角标远程依赖注入空客户端（本规格不测 hr/asset 联调）
     const pendingBadge = new PendingBadgeClient(null, null);
     portal = new PortalService(prisma, approvalCenter, pendingBadge);
@@ -127,5 +129,27 @@ describe.skipIf(!DATABASE_URL)('门户入口推导（T3-4 真实授权核对）'
     expect(result.systems.length).toBeGreaterThanOrEqual(4);
     expect(result.systems.every((system) => system.hasPermission)).toBe(true);
     expect(result.systems.find((system) => system.code === 'BACKSTAGE')?.productStatus).toBe('OPEN');
+  });
+
+  it('待办角标只按显式授权统计：超管无 user_manage 授权 → 0；授权后计入本地全量待办', async () => {
+    const superAdmin = await createUser({ name: `${TEST_NAME_PREFIX}角标超管`, isSuperAdmin: true });
+    const operator = await createUser({ name: `${TEST_NAME_PREFIX}角标操作` });
+
+    // 超管隐式全量授权不计入角标；普通用户无授权同样为 0
+    const noGrant = await portal.getPortal(superAdmin.id, true);
+    expect(noGrant.badgeBySystem.BACKSTAGE).toBe(0);
+    const operatorPortal = await portal.getPortal(operator.id, false);
+    expect(operatorPortal.badgeBySystem.BACKSTAGE).toBe(0);
+
+    // 显式授予 user_manage → 角标 = 本地全部 PENDING 资料修改审批
+    await prisma.client.employeeGrant.create({
+      data: { userId: superAdmin.id, functionCode: USER_MANAGE_FUNCTION_CODE, dataScope: 'COMPANY', grantedBy: operator.id },
+    });
+    const { total: expectedLocalPending } = await approvalCenter.pendingCount();
+    const granted = await portal.getPortal(superAdmin.id, true);
+    expect(granted.badgeBySystem.BACKSTAGE).toBe(expectedLocalPending);
+    // 远程角标客户端置空（本规格不测 hr/asset 联调），远程系统贡献 0
+    expect(granted.badgeBySystem.HR).toBe(0);
+    expect(granted.badgeBySystem.ASSET).toBe(0);
   });
 });

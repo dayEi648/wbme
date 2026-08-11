@@ -399,8 +399,8 @@ describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
     });
   });
 
-  describe('pendingCount：超管全量、DEPARTMENT 档闭包裁剪', () => {
-    it('超管提示位传 true 时不查会话且全量可见', async () => {
+  describe('pendingCount：仅显式授权计数（超管隐式全量不计入）', () => {
+    it('超管无显式授权 → total 0，且不读会话、关闭隐式全量放行', async () => {
       mockedGetAccess.mockImplementation(async () => ({
         registered: true,
         systemCode: 'HR',
@@ -410,14 +410,63 @@ describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
         dataScope: null,
       }));
       const prisma = makePrisma();
-      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ id: 1 }]);
+      const service = makeService(prisma);
+      const result = await service.pendingCount(9);
+      expect(result).toEqual({ total: 0, byType: {} });
+      expect(prisma.client.hrApprovalRequest.groupBy).not.toHaveBeenCalled();
+      // 计数口径不依赖会话超管标记（隐式全量不生效）
+      expect(mockedLoadSessionUser).not.toHaveBeenCalled();
+      // 计数路径必须关闭超管隐式全量放行（列表/详情保持默认开启）
+      for (const call of mockedGetAccess.mock.calls) {
+        expect(call[3]).toEqual({ includeImplicitSuperAdmin: false });
+      }
+    });
+
+    it('超管有显式授权 → 按授权范围计数（未授权类型不计入）', async () => {
+      // 显式授权仅覆盖加班（COMPANY 档）；岗位变更未授权
+      mockedGetAccess.mockImplementation(async (_prisma, _userId, code) => ({
+        registered: true,
+        systemCode: 'HR',
+        systemName: 'hr',
+        systemOpen: true,
+        allowed: code === OVERTIME_APPROVAL_FUNCTION_CODE,
+        dataScope: code === OVERTIME_APPROVAL_FUNCTION_CODE ? 'COMPANY' : null,
+      }));
+      const prisma = makePrisma();
       vi.mocked(prisma.client.hrApprovalRequest.groupBy).mockResolvedValue([
         { requestType: 'OVERTIME', _count: { _all: 3 } } as never,
       ]);
       const service = makeService(prisma);
-      const result = await service.pendingCount(9, true);
-      expect(mockedLoadSessionUser).not.toHaveBeenCalled();
+      const result = await service.pendingCount(9);
       expect(result).toEqual({ total: 3, byType: { OVERTIME: 3 } });
+      // COMPANY 档不触发闭包裁剪，where 限定已授权类型 + PENDING
+      expect(prisma.client.hrApprovalRequest.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: 'PENDING', requestType: { in: ['OVERTIME'] } },
+        }),
+      );
+    });
+
+    it('普通授权用户口径不变：DEPARTMENT 档按闭包裁剪计数', async () => {
+      mockDepartmentAccess();
+      const prisma = makePrisma();
+      // 闭包内加班明细记录（request_id 11、22）
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ id: 11 }, { id: 22 }]);
+      vi.mocked(prisma.client.hrApprovalRequest.groupBy).mockResolvedValue([
+        { requestType: 'OVERTIME', _count: { _all: 2 } } as never,
+      ]);
+      const service = makeService(prisma);
+      const result = await service.pendingCount(5);
+      expect(result).toEqual({ total: 2, byType: { OVERTIME: 2 } });
+      expect(prisma.client.hrApprovalRequest.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'PENDING',
+            requestType: { in: ['OVERTIME'] },
+            AND: [{ OR: [{ requestType: 'OVERTIME', id: { in: [11, 22] } }] }],
+          }),
+        }),
+      );
     });
   });
 });

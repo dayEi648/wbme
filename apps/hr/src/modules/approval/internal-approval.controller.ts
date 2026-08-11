@@ -14,7 +14,7 @@ export class InternalApprovalController {
   constructor(private readonly approval: HrApprovalService) {}
 
   /**
-   * 按用户统计可见待审批数（门户角标）。
+   * 按用户统计待审批数（门户角标；仅显式功能授权口径，超管隐式全量不计入）。
    *
    * @param query userId
    * @returns total + byType

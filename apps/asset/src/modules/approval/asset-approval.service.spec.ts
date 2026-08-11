@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CONSUMABLE_APPROVAL_FUNCTION_CODE } from '@wbme/contracts';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { ensurePermissionCatalog } from '../../test-support/ensure-permission-catalog';
@@ -182,6 +183,59 @@ describeDb('asset 审批头（T5-3）', () => {
     const adminList = await service.list(processorId, { page: 1, pageSize: 50, status: 'PENDING' });
     const adminTypes = new Set(adminList.items.map((item) => item.requestType));
     expect(adminTypes.has('STOCK_IN')).toBe(true);
+  });
+
+  it('pendingCount 仅按显式授权计数：超管无授权 → 0；授权后按授权范围计数', async () => {
+    // 超管隐式全量不计入角标：即使库里有 PENDING 积压也计 0
+    await expect(service.pendingCount(processorId)).resolves.toEqual({ total: 0, byType: {} });
+
+    // 显式授予消耗品审批（COMPANY 档）→ 统计授权范围内全部类型
+    const applicantId = BASE_APPLICANT + 15;
+    await service.submitTestHeader({
+      requestType: 'CONSUMABLE_REQUEST',
+      applicantId,
+      applicantName: '角标语义申请人',
+    });
+    await prisma.client.$executeRaw`
+      INSERT INTO backstage.employee_grants (user_id, function_code, data_scope, granted_by)
+      VALUES (${processorId}, ${CONSUMABLE_APPROVAL_FUNCTION_CODE}, 'COMPANY', ${processorId})
+    `;
+    try {
+      const granted = await service.pendingCount(processorId);
+      expect(granted.byType.CONSUMABLE_REQUEST).toBeGreaterThanOrEqual(1);
+      const byTypeTotal = Object.values(granted.byType).reduce((sum, count) => sum + count, 0);
+      expect(granted.total).toBe(byTypeTotal);
+    } finally {
+      await prisma.client.$executeRaw`
+        DELETE FROM backstage.employee_grants
+        WHERE user_id = ${processorId} AND function_code = ${CONSUMABLE_APPROVAL_FUNCTION_CODE}
+      `;
+    }
+  });
+
+  it('pendingCount DEPARTMENT 档按闭包裁剪（普通授权用户口径不变）', async () => {
+    // deptUserId 持有 consumable_approval 的 DEPARTMENT 档授权（beforeAll 授予）；
+    // 闭包 = 测试部门，用增量断言避免并行用例的存量数据干扰
+    const before = await service.pendingCount(deptUserId);
+    await service.submitTestHeader({
+      requestType: 'CONSUMABLE_REQUEST',
+      applicantId: BASE_APPLICANT + 16,
+      applicantName: '闭包内申领人',
+      applicantDepartmentSnapshot: { id: TEST_DEPARTMENT_ID, name: 'asset审批测试部门' },
+    });
+    const afterInClosure = await service.pendingCount(deptUserId);
+    expect(afterInClosure.total).toBe(before.total + 1);
+    // 公司专属类型对 DEPARTMENT 档不可见
+    expect(afterInClosure.byType.STOCK_IN).toBeUndefined();
+
+    await service.submitTestHeader({
+      requestType: 'CONSUMABLE_REQUEST',
+      applicantId: BASE_APPLICANT + 17,
+      applicantName: '闭包外申领人',
+      applicantDepartmentSnapshot: { id: TEST_DEPARTMENT_ID + 1, name: '非测试部门' },
+    });
+    const afterOutsideClosure = await service.pendingCount(deptUserId);
+    expect(afterOutsideClosure.total).toBe(afterInClosure.total);
   });
 
   it('并发 process → 仅一个成功，另一个 STATUS_CONFLICT', async () => {

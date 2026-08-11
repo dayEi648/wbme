@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { OVERTIME_APPROVAL_FUNCTION_CODE } from '@wbme/contracts';
 import type { RedisService } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -251,5 +252,33 @@ describeDb('hr 审批头（T5-3）', () => {
     await prisma.client.$executeRaw`
       DELETE FROM base.users WHERE id = ${applicantId}
     `;
+  });
+
+  it('pendingCount 仅按显式授权计数：超管无授权 → 0；授权后按授权类型计数', async () => {
+    // 制造一条 PENDING 积压，验证超管隐式全量不计入角标
+    const applicantId = BASE_APPLICANT + 5;
+    await service.submitTestHeader({
+      requestType: 'OVERTIME',
+      applicantId,
+      applicantName: '角标语义申请人',
+    });
+    await expect(service.pendingCount(processorId)).resolves.toEqual({ total: 0, byType: {} });
+
+    // 显式授予加班审批（COMPANY 档）→ 只统计授权类型，未授权类型不出现
+    await prisma.client.$executeRaw`
+      INSERT INTO backstage.employee_grants (user_id, function_code, data_scope, granted_by)
+      VALUES (${processorId}, ${OVERTIME_APPROVAL_FUNCTION_CODE}, 'COMPANY', ${processorId})
+    `;
+    try {
+      const granted = await service.pendingCount(processorId);
+      expect(granted.byType.OVERTIME).toBeGreaterThanOrEqual(1);
+      expect(granted.byType.POSITION_CHANGE).toBeUndefined();
+      expect(granted.total).toBe(granted.byType.OVERTIME);
+    } finally {
+      await prisma.client.$executeRaw`
+        DELETE FROM backstage.employee_grants
+        WHERE user_id = ${processorId} AND function_code = ${OVERTIME_APPROVAL_FUNCTION_CODE}
+      `;
+    }
   });
 });

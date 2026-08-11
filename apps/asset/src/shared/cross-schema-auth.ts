@@ -95,12 +95,15 @@ export async function loadUserName(prisma: RawPrisma, userId: number): Promise<s
  * @param prisma Prisma 客户端
  * @param userId 员工账号 id
  * @param functionCode 稳定功能编码
+ * @param options.includeImplicitSuperAdmin 超管隐式全量放行（默认 true）；
+ *   待办角标计数传 false：只按 backstage.function_grants 显式授权判定，超管无授权即不可见
  * @returns 注册/系统开放/是否放行/数据范围
  */
 export async function getFunctionAccess(
   prisma: RawPrisma,
   userId: number,
   functionCode: string,
+  options?: { includeImplicitSuperAdmin?: boolean },
 ): Promise<FunctionAccess> {
   const fnRows = await prisma.$queryRaw<
     Array<{
@@ -129,7 +132,7 @@ export async function getFunctionAccess(
   if (!user) {
     return { ...base, allowed: false, dataScope: null };
   }
-  if (user.isSuperAdmin) {
+  if (user.isSuperAdmin && (options?.includeImplicitSuperAdmin ?? true)) {
     return { ...base, allowed: true, dataScope: null };
   }
   const grantRows = await prisma.$queryRaw<Array<{ data_scope: DataScope }>>`
