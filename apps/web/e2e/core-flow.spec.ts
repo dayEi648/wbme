@@ -26,10 +26,8 @@ test.describe('核心业务链路', () => {
     await page.getByText('操作日志').first().click();
     await expect(page).toHaveURL(/\/backstage\/operation-logs/);
     await expect(page.getByRole('heading', { name: '操作日志' })).toBeVisible({ timeout: 15_000 });
-    // DataTable 空列表只渲染 Empty（无表头）；新鲜 CI 库通常无操作日志。
-    // 列表加载完成：空态「暂无数据」，或有历史数据时出现列文案「操作者」。
-    await expect(page.getByText(/暂无数据|操作者/).first()).toBeVisible({ timeout: 15_000 });
     // 筛选契约（与用例名对齐）：抽屉快捷筛选含「操作者」字段，不依赖表格是否有行。
+    // 勿用 getByText('暂无数据')：Ant Empty 的 SVG <title> 同文案但不可见，.first() 会命中 hidden 节点。
     // accessible name 形如「filter 筛选」或「filter 筛选（n）」；须锚定开头，避免命中「导出已筛选」。
     await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /^(filter\s+)?筛\s*选/ }).click();
     await expect(page.locator('.ant-drawer').getByText('操作者').first()).toBeVisible({ timeout: 15_000 });

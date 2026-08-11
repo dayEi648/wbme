@@ -674,7 +674,13 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     const preview = await imports.preview(OPERATOR, buffer);
     expect(preview.summary.created).toBe(1);
 
-    const key = 'fin-confirm-m17';
+    // 每轮唯一键：固定键跨运行残留于 fin.operation_logs 时，首次确认会因指纹不符抛 IDEMPOTENCY_KEY_REUSED
+    const key = `fin-confirm-m17:${Date.now()}`;
+    await prisma.client.$executeRaw`
+      DELETE FROM fin.operation_logs
+      WHERE operator_id = ${OPERATOR.id}
+        AND idempotency_key IN (${key}, ${`${key}-overwrite`})
+    `;
     // 首次确认：新增行无需选择（默认创建；L18：对新增行提交 OVERWRITE 属预览过期语义）
     const first = await imports.confirm(OPERATOR, buffer, [], key);
     expect(first.summary.created).toBe(1);
@@ -706,10 +712,17 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     sheet2.getCell(3, COL.NAME).value = `${projectName}异文件`;
     sheet2.getCell(3, COL.YEAR).value = 2026;
     const buffer2 = Buffer.from(await workbook2.xlsx.writeBuffer());
-    await expect(imports.confirm(OPERATOR, buffer2, [], key)).rejects.toThrow('幂等键已被其他请求使用');
+    await expect(imports.confirm(OPERATOR, buffer2, [], key)).rejects.toMatchObject({
+      entry: expect.objectContaining({ code: 'IDEMPOTENCY_KEY_REUSED' }),
+    });
 
     // 用例自清理（CLAUDE.md：测试后清理临时数据；动态项目名无法进 afterAll 固定名单，
     // 先删操作记录再删项目——M17 复核修复发现残留）
+    await prisma.client.$executeRaw`
+      DELETE FROM fin.operation_logs
+      WHERE operator_id = ${OPERATOR.id}
+        AND idempotency_key IN (${key}, ${`${key}-overwrite`})
+    `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.project_operations WHERE project_id IN (SELECT id FROM fin.projects WHERE name LIKE ${`${projectName}%`})
     `;

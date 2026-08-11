@@ -152,6 +152,9 @@ jobs:
       REDIS_URL: redis://localhost:6379
       INTERNAL_SERVICE_TOKEN: ci-internal-token-32-characters-!
       COOKIE_SIGNING_KEY: ci-cookie-signing-key-32-characters
+      # HTTP E2E：Secure Cookie 在 Playwright page.request 访问 127.0.0.1 时会被丢弃（localhost 例外），
+      # 导致 API 直连缺会话 Cookie → 401；与本地 .env.example 对齐关闭 Secure。
+      COOKIE_SECURE: 'false'
       PUBLIC_ORIGIN: http://127.0.0.1:5173
       DINGTALK_CORP_ID: ci
       DINGTALK_APP_KEY: ci
