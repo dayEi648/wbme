@@ -269,6 +269,10 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
     setTimeout(() => controller.abort(), 300);
     await expect(pending).rejects.toThrow();
     await assertNoPartialWrite();
+    // TEMP-DIAG（定位 CI 锁残留来源，验证后删除）
+    const t2Lock = await redis.get(`lock:fin-import:${operatorId}`);
+    process.stdout.write(`[diag] T2 end: fin-import lock = ${t2Lock ?? '(none)'}
+`);
   });
 
   it('HTTP 层：上传中断（请求体发送一半断开）→ 无任何写入', async () => {
@@ -286,9 +290,18 @@ describeDb('Excel 导入取消/超时（S7 复核：事务回滚、无部分写�
     // 稍等服务端处理窗口，再断言无写入
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
     await assertNoPartialWrite();
+    // TEMP-DIAG（定位 CI 锁残留来源，验证后删除）
+    const t3Lock = await redis.get(`lock:fin-import:${operatorId}`);
+    process.stdout.write(`[diag] T3 end: fin-import lock = ${t3Lock ?? '(none)'}
+`);
   });
 
   it('HTTP 层：响应关闭（完整发送后客户端断开）→ 取消传播、无任何写入', async () => {
+    // TEMP-DIAG（定位 CI 锁残留来源，验证后删除）
+    const diagLock = await redis.get(`lock:fin-import:${operatorId}`);
+    process.stdout.write(
+      `[diag] T4 start: fin-import lock = ${diagLock ?? '(none)'}${diagLock ? ` ttl=${await redis.ttl(`lock:fin-import:${operatorId}`)}` : ''}\n`,
+    );
     // 大文件保证发送完成后服务端仍在处理（解析/写入窗口），此时 destroy 触发 res close → abort
     const buffer = await buildCancelFile(800);
     const choices = await buildChoices(buffer);

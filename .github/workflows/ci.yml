@@ -150,7 +150,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wbme
       REDIS_URL: redis://localhost:6379
-      INTERNAL_SERVICE_TOKEN: ci-internal-token-32-characters
+      INTERNAL_SERVICE_TOKEN: ci-internal-token-32-characters-!
       COOKIE_SIGNING_KEY: ci-cookie-signing-key-32-characters
       PUBLIC_ORIGIN: http://127.0.0.1:5173
       DINGTALK_CORP_ID: ci
