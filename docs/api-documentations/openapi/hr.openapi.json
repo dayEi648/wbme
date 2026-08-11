@@ -3219,7 +3219,7 @@
             "description": ""
           }
         },
-        "summary": "按用户统计可见待审批数（门户角标）。",
+        "summary": "按用户统计待审批数（门户角标；仅显式功能授权口径，超管隐式全量不计入）。",
         "tags": [
           "InternalApproval"
         ]
