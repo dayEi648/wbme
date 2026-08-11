@@ -3,6 +3,7 @@ import { KeyOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DataTable, StatusTag } from '../../components/DataTable';
+import { HistoryNavButtons } from '../../components/HistoryNavButtons';
 import { catalogFunctionOptions } from '../../permission/catalog';
 import { ApiError, http } from '../../request/http';
 import { useFeedback } from '../../request/feedback';
@@ -30,6 +31,8 @@ interface MeData {
 export default function MePage() {
   const { pathname } = useLocation();
   const section = pathname.split('/')[2] ?? '';
+  /** 软刷新：重挂载当前子页面重新拉数。 */
+  const [refreshKey, setRefreshKey] = useState(0);
   const body = useMemo(() => {
     switch (section) {
       case 'position-applications':
@@ -40,7 +43,14 @@ export default function MePage() {
         return <MeHome />;
     }
   }, [section]);
-  return <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>{body}</div>;
+  return (
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
+      <div style={{ marginBottom: 8 }}>
+        <HistoryNavButtons onRefresh={() => setRefreshKey((value) => value + 1)} />
+      </div>
+      <div key={refreshKey}>{body}</div>
+    </div>
+  );
 }
 
 /** 个人中心主页：身份信息 / 资料修改 / 修改密码 / 岗位变更申请。 */
@@ -242,7 +252,7 @@ function PositionApplications() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Breadcrumb items={[{ title: '门户', href: '/portal' }, { title: '个人中心', href: '/me' }, { title: '我的岗位申请记录' }]} />
-      <DataTable title="我的岗位申请记录" service="platform" endpoint="/me/position-applications" pageKey="me-position-applications" columns={[{ key: 'requestId', title: 'ID', fixed: 'left' }, { key: 'applicationNo', title: '申请编号' }, { key: 'targetDepartmentName', title: '目标部门' }, { key: 'targetPositionName', title: '目标岗位' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'submittedAt', title: '提交时间' }]} actions={<Button onClick={() => navigate('/me')}>返回个人中心</Button>} />
+      <DataTable title="我的岗位申请记录" service="platform" endpoint="/me/position-applications" pageKey="me-position-applications" columns={[{ key: 'applicationNo', title: '申请编号' }, { key: 'targetDepartmentName', title: '目标部门' }, { key: 'targetPositionName', title: '目标岗位' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'submittedAt', title: '提交时间' }]} actions={<Button onClick={() => navigate('/me')}>返回个人中心</Button>} />
     </Space>
   );
 }
@@ -253,7 +263,7 @@ function OperationLogsPage() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Breadcrumb items={[{ title: '门户', href: '/portal' }, { title: '个人中心', href: '/me' }, { title: '我的操作日志' }]} />
-      <DataTable title="我的操作日志" service="platform" endpoint="/me/operation-logs" pageKey="me-operation-logs" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'createdAt', title: '时间' }, { key: 'system', title: '系统' }, { key: 'feature', title: '功能' }, { key: 'actionType', title: '操作' }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: [{ label: '基础平台', value: 'BASE' }, { label: '管理后台', value: 'BACKSTAGE' }, { label: '资产系统', value: 'ASSET' }, { label: '人事系统', value: 'HR' }, { label: '财务系统', value: 'FIN' }] }, { key: 'feature', title: '功能', type: 'enum', options: (filters) => catalogFunctionOptions(filters.find((filter) => filter.field === 'system')?.value) }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/me/operation-logs/export', filename: 'my-operation-logs.xlsx' }} actions={<Button onClick={() => navigate('/me')}>返回个人中心</Button>} />
+      <DataTable title="我的操作日志" service="platform" endpoint="/me/operation-logs" pageKey="me-operation-logs" columns={[{ key: 'createdAt', title: '时间' }, { key: 'system', title: '系统' }, { key: 'feature', title: '功能' }, { key: 'actionType', title: '操作' }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: [{ label: '基础平台', value: 'BASE' }, { label: '管理后台', value: 'BACKSTAGE' }, { label: '资产系统', value: 'ASSET' }, { label: '人事系统', value: 'HR' }, { label: '财务系统', value: 'FIN' }] }, { key: 'feature', title: '功能', type: 'enum', options: (filters) => catalogFunctionOptions(filters.find((filter) => filter.field === 'system')?.value) }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/me/operation-logs/export', filename: 'my-operation-logs.xlsx' }} actions={<Button onClick={() => navigate('/me')}>返回个人中心</Button>} />
     </Space>
   );
 }

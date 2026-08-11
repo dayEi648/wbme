@@ -156,7 +156,7 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
   const infoItems = (() => {
     if (!request) return [];
     const items: Array<{ label: string; children: React.ReactNode }> = [
-      { label: '申请单号', children: String(request.applicationNo ?? request.id ?? '—') },
+      { label: '申请单号', children: String(request.applicationNo ?? '—') },
       { label: '申请类型', children: requestTypeLabel(request.requestType) },
       { label: '申请人', children: String(request.applicantName ?? request.applicantId ?? '—') },
     ];
@@ -188,9 +188,6 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
     }
     if (request.remark) {
       items.push({ label: '整单备注', children: String(request.remark) });
-    }
-    if (request.refRequestId) {
-      items.push({ label: '关联申请', children: `代领申请 #${String(request.refRequestId)}` });
     }
     return items;
   })();
@@ -252,7 +249,6 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
       endpoint="/approval-requests"
       pageKey={pageKey}
       columns={[
-        { key: 'id', title: 'ID', fixed: 'left' },
         { key: 'requestType', title: '申请类型' },
         { key: 'applicantName', title: '申请人' },
         { key: 'status', title: '状态', render: (value) => <StatusTag value={value} /> },

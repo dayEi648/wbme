@@ -2,6 +2,7 @@ import { Badge, Button, Card, Drawer, Space, Tag, Tooltip, Typography } from 'an
 import { BellOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { HistoryNavButtons } from '../../components/HistoryNavButtons';
 import { ApiError, http } from '../../request/http';
 import { useFeedback } from '../../request/feedback';
 import { useSession } from '../../request/session';
@@ -32,6 +33,8 @@ export default function PortalPage() {
   const { logout } = useSession();
   const [portal, setPortal] = useState<PortalData | null>(null);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
+  /** 软刷新：递增后重新拉取门户数据（入口/角标/公告）。 */
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     void http
@@ -42,7 +45,7 @@ export default function PortalPage() {
           feedback.error(error);
         }
       });
-  }, [feedback]);
+  }, [feedback, refreshKey]);
 
   async function handleLogout() {
     await logout();
@@ -52,12 +55,15 @@ export default function PortalPage() {
   return (
     <div style={{ minHeight: '100vh', maxWidth: 960, margin: '0 auto', padding: 32 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-        <div>
-          <Typography.Title level={2} style={{ marginBottom: 0 }}>
-            {portal?.brand.name ?? 'WBME 企业管理平台'}
-          </Typography.Title>
-          <Typography.Text type="secondary">欢迎，{portal?.user?.name}</Typography.Text>
-        </div>
+        <Space size="middle" align="start">
+          <HistoryNavButtons onRefresh={() => setRefreshKey((value) => value + 1)} />
+          <div>
+            <Typography.Title level={2} style={{ marginBottom: 0 }}>
+              {portal?.brand.name ?? 'WBME 企业管理平台'}
+            </Typography.Title>
+            <Typography.Text type="secondary">欢迎，{portal?.user?.name}</Typography.Text>
+          </div>
+        </Space>
         <Space>
           <Button icon={<BellOutlined />} onClick={() => setAnnouncementOpen(true)}>
             系统公告
