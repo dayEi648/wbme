@@ -11,7 +11,22 @@ export function isPrismaUniqueViolation(error: unknown): boolean {
 }
 
 /**
+ * 提取 Prisma 唯一冲突涉及的列名（PostgreSQL 下 meta.target 为列名数组）。
+ *
+ * @param error P2002 错误
+ * @returns 冲突列名列表
+ */
+function uniqueTargetColumns(error: unknown): string[] {
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  if (Array.isArray(target)) {
+    return target.map(String);
+  }
+  return typeof target === 'string' ? [target] : [];
+}
+
+/**
  * 将条件唯一索引冲突映射为 PENDING_LIMIT_REACHED（主 PRD §3.2）。
+ * application_no 唯一冲突（申请单号生成碰撞，非待审批数量超限）原样抛出，交由调用方重试。
  * 非唯一冲突原样抛出。
  *
  * @param error 捕获的异常
@@ -21,7 +36,7 @@ export function mapPendingLimitError(error: unknown): never {
   if (error instanceof BusinessException) {
     throw error;
   }
-  if (isPrismaUniqueViolation(error)) {
+  if (isPrismaUniqueViolation(error) && !uniqueTargetColumns(error).includes('application_no')) {
     throw new BusinessException(approvalErrors.PENDING_LIMIT_REACHED);
   }
   throw error;

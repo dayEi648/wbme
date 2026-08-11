@@ -11,11 +11,21 @@ describe('pending-limit', () => {
 
   it('P2002 映射 PENDING_LIMIT_REACHED', () => {
     try {
-      mapPendingLimitError({ code: 'P2002' });
+      mapPendingLimitError({ code: 'P2002', meta: { target: ['applicant_id', 'request_type', 'status'] } });
       expect.fail('应抛错');
     } catch (error) {
       expect(error).toBeInstanceOf(BusinessException);
       expect((error as BusinessException).entry.code).toBe(approvalErrors.PENDING_LIMIT_REACHED.code);
+    }
+  });
+
+  it('application_no 唯一冲突（单号碰撞）原样抛出，不映射 PENDING_LIMIT_REACHED', () => {
+    const collision = { code: 'P2002', meta: { target: ['application_no'] } };
+    try {
+      mapPendingLimitError(collision);
+      expect.fail('应抛错');
+    } catch (error) {
+      expect(error).toBe(collision);
     }
   });
 
