@@ -7,7 +7,8 @@ import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { ResourceFormModal } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
-import { deactivatedUsersSource, permissionEmployeesSource, permissionGroupsSource, type GrantItem, type RemoteOptionSource } from '../../components/selectors';
+import { deactivatedUsersSource, permissionEmployeesSource, permissionGroupsSource, PermissionGrantDrawer, type GrantItem, type RemoteOptionSource } from '../../components/selectors';
+import { EllipsisLines } from '../../components/EllipsisLines';
 import { displayLabel, formatBeijingDateTime, formatDetailValue, formatMoney } from '../../components/display-format';
 import { catalogFunctionOptions } from '../../permission/catalog';
 import { useFeedback } from '../../request/feedback';
@@ -18,9 +19,9 @@ type RecordValue = Record<string, unknown>;
 
 const NAVIGATION: NavigationItem[] = [
   { key: 'users', label: '用户管理', path: '/backstage/users', permission: 'user_manage', group: '用户与权限' },
-  { key: 'permissions', label: '功能权限', path: '/backstage/permissions', permission: 'permission_manage', group: '用户与权限' },
+  { key: 'permissions', label: '人员权限', path: '/backstage/permissions', permission: 'permission_manage', group: '用户与权限' },
   { key: 'groups', label: '权限组', path: '/backstage/permission-groups', permission: 'permission_manage', group: '用户与权限' },
-  { key: 'approval', label: '审批中心', path: '/backstage/approval', permission: 'user_manage', group: '审批中心' },
+  { key: 'approval', label: '审批中心', path: '/backstage/approval', permission: 'user_manage' },
   { key: 'settings', label: '系统设置', path: '/backstage/settings', permission: 'system_settings', group: '内容与配置' },
   { key: 'announcements', label: '系统公告', path: '/backstage/announcements', permission: 'announcement_manage', group: '内容与配置' },
   { key: 'operations', label: '操作日志', path: '/backstage/operation-logs', permission: 'operation_log_view', group: '运维监控' },
@@ -30,18 +31,16 @@ const NAVIGATION: NavigationItem[] = [
   { key: 'release-logs', label: '更新日志', path: '/backstage/release-logs', permission: 'release_log_view', group: '运维监控' },
 ];
 
+/** 用户管理列表列（/users 载荷：无部门/授权字段；状态枚举中文化）。 */
 const USER_COLUMNS = [
-  { key: 'id', title: '用户 ID', fixed: 'left' as const },
   { key: 'name', title: '姓名' },
   { key: 'phoneMasked', title: '手机号' },
-  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
+  { key: 'status', title: '状态', render: (value: unknown) => USER_STATUS_LABELS[String(value ?? '')] ?? String(value ?? '—') },
   { key: 'isSuperAdmin', title: '超级管理员', render: (value: unknown) => (value === true ? '是' : '否') },
-  { key: 'departments', title: '部门' },
-  { key: 'grantsSummary', title: '授权摘要' },
+  { key: 'createdAt', title: '创建时间' },
 ];
 
 const LIST_COLUMNS = [
-  { key: 'id', title: 'ID', fixed: 'left' as const },
   { key: 'name', title: '名称' },
   { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
   { key: 'createdAt', title: '创建时间' },
@@ -93,7 +92,6 @@ const SECURITY_EVENT_TYPE_OPTIONS = [
 
 /** 用户详情字段中文名（含解锁状态，解锁显隐见 UserManagement）。 */
 const USER_DETAIL_LABELS: Readonly<Record<string, string>> = {
-  id: '用户 ID',
   name: '姓名',
   phoneMasked: '手机号',
   gender: '性别',
@@ -107,7 +105,6 @@ const USER_DETAIL_LABELS: Readonly<Record<string, string>> = {
 
 /** 恢复预览逐目标字段中文名。 */
 const RESTORE_ITEM_LABELS: Readonly<Record<string, string>> = {
-  userId: '用户 ID',
   name: '姓名',
   phoneMasked: '手机号',
   lifecycleVersion: '生命周期版本',
@@ -137,7 +134,6 @@ const DISK_STATUS_LABELS: Readonly<Record<string, string>> = { OK: '正常', WAR
 
 /** 错误日志详情字段中文名（嵌套对象常见键同表标签化；未命中键回退通用映射 displayLabel）。 */
 const ERROR_LOG_DETAIL_LABELS: Readonly<Record<string, string>> = {
-  id: '日志 ID',
   level: '级别',
   service: '服务',
   source: '来源',
@@ -152,7 +148,6 @@ const ERROR_LOG_DETAIL_LABELS: Readonly<Record<string, string>> = {
   lastRequestId: '最近请求 ID',
   sample: '错误样本（已脱敏）',
   status: '处置状态',
-  handledBy: '处理人 ID',
   handledAt: '处理时间',
   remark: '处置备注',
   message: '错误消息',
@@ -190,7 +185,7 @@ function restorePrecheckItems(precheck: RecordValue): Array<{ key: string; label
 
 /** 错误日志详情展示（枚举式中文标签；状态/级别中文化，时间键转北京时间，未知键回退通用映射）。 */
 function errorLogDetailItems(detail: RecordValue): Array<{ key: string; label: string; children: React.ReactNode }> {
-  return Object.entries(detail).map(([key, value]) => {
+  return Object.entries(detail).filter(([key]) => key !== 'id' && key !== 'handledBy').map(([key, value]) => {
     let text: unknown = value;
     if (key === 'status') text = ERROR_LOG_STATUS_LABELS[String(value ?? '')] ?? value;
     if (key === 'level') text = LOG_LEVEL_LABELS[String(value ?? '')] ?? value;
@@ -415,7 +410,7 @@ function UserManagement() {
       ]} submitText="生成恢复预览" />
       {restorePreview ? <Drawer title="恢复预览" open onClose={() => setRestorePreview(null)} width="min(92vw, 640px)">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {Array.isArray(restorePreview.items) ? restorePreview.items.map((item, index) => <Card key={index} size="small" title={isRecord(item) ? String(item.name ?? `#${String(item.userId ?? '')}`) : '用户'}>{isRecord(item) ? <RestorePreviewItem item={item} /> : String(item)}</Card>) : null}
+          {Array.isArray(restorePreview.items) ? restorePreview.items.map((item, index) => <Card key={index} size="small" title={isRecord(item) ? String(item.name ?? '—') : '用户'}>{isRecord(item) ? <RestorePreviewItem item={item} /> : String(item)}</Card>) : null}
           <Popconfirm title="确认恢复预览中全部可恢复用户？" onConfirm={() => void confirmRestore()}><Button type="primary">确认恢复</Button></Popconfirm>
         </Space>
       </Drawer> : null}
@@ -453,43 +448,16 @@ function RestorePreviewItem({ item }: { item: RecordValue }) {
   );
 }
 
+/** 人员权限页：姓名/部门/可进系统/可用功能 + 「修改权限」抽屉；批量授权沿用既有弹窗。 */
 function PermissionEmployees() {
   const feedback = useFeedback();
   const { user } = useSession();
   const hidePermissionManage = user?.isSuperAdmin !== true;
   const [selectedIds, setSelectedIds] = useState<Array<string | number>>([]);
   const [batchOpen, setBatchOpen] = useState(false);
-  const [targetId, setTargetId] = useState<number | null>(null);
-  const [grantDetail, setGrantDetail] = useState<RecordValue | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [target, setTarget] = useState<{ id: number; name: string } | null>(null);
   const [version, setVersion] = useState(0);
 
-  useEffect(() => {
-    if (!targetId) {
-      setGrantDetail(null);
-      return;
-    }
-    void http.get<RecordValue>(`/permission/employees/${targetId}/grants`, { active: true })
-      .then(setGrantDetail)
-      .catch((error) => feedback.error(error, '员工授权加载失败'));
-  }, [feedback, targetId]);
-
-  const save = async (values: RecordValue) => {
-    if (!targetId || !grantDetail || typeof grantDetail.permissionVersion !== 'number') return;
-    try {
-      const grants = normalizeGrants(values.grants);
-      await http.put(`/permission/employees/${targetId}/grants`, {
-        permissionVersion: grantDetail.permissionVersion,
-        grants,
-      });
-      feedback.success('员工授权已保存');
-      setEditing(false);
-      setVersion((value) => value + 1);
-      setGrantDetail(await http.get<RecordValue>(`/permission/employees/${targetId}/grants`, { active: true }));
-    } catch (error) {
-      feedback.error(error, '保存员工授权失败');
-    }
-  };
   const batchGrant = async (values: RecordValue) => {
     if (selectedIds.length === 0) return;
     try {
@@ -512,43 +480,36 @@ function PermissionEmployees() {
     }
   };
 
-  const editingGrants = Array.isArray(grantDetail?.grants)
-    ? (grantDetail.grants as Array<RecordValue>)
-      .filter((grant) => typeof grant.functionCode === 'string' && typeof grant.dataScope === 'string')
-      .map((grant) => ({ functionCode: String(grant.functionCode), dataScope: grant.dataScope as GrantItem['dataScope'] }))
-    : [];
-
   return <>
     <DataTable
       key={version}
-      title="员工功能权限"
+      title="人员权限"
       service="platform"
       endpoint="/permission/employees"
       pageKey="backstage-permission-employees"
-      columns={USER_COLUMNS}
+      columns={[
+        { key: 'name', title: '姓名', render: (value: unknown, row: RecordValue) => <Space size={4}><span>{String(value ?? '—')}</span>{row.isSuperAdmin === true ? <Tag color="gold">超管</Tag> : null}</Space> },
+        { key: 'departments', title: '部门', render: (value: unknown) => { const list = asStringList(value); return list.length > 0 ? list.join('、') : '—'; } },
+        { key: 'systems', title: '可进系统', render: (value: unknown, row: RecordValue) => (row.isSuperAdmin === true ? '全部系统' : <EllipsisLines items={asStringList(value)} lineChars={10} />) },
+        { key: 'grantsSummary', title: '可用功能', render: (value: unknown, row: RecordValue) => (row.isSuperAdmin === true ? '全部功能' : <EllipsisLines items={asStringList(value)} lineChars={15} />) },
+      ]}
       filterFields={[{ key: 'keyword', title: '姓名或手机号', type: 'text' }]}
-      onRowClick={(row) => setTargetId(Number(row.id))}
       onSelectionChange={setSelectedIds}
       actions={<Button disabled={selectedIds.length === 0} onClick={() => setBatchOpen(true)}>批量追加授权</Button>}
       batchAction={{ label: '批量撤销全部可管理授权', danger: true, confirmationDescription: '撤销后，已授予的功能将立即失效。', onExecute: async (ids) => { await http.post('/permission/revocations/batch', { userIds: ids.map(Number) }); } }}
+      rowActions={(row) => <Button size="small" type="primary" ghost onClick={() => setTarget({ id: Number(row.id), name: String(row.name ?? '') })}>修改权限</Button>}
     />
-    <Drawer title="员工授权" open={targetId !== null} onClose={() => setTargetId(null)} width="min(92vw, 640px)">
-      {grantDetail ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Card size="small" title="授权对象">{isRecord(grantDetail.target) ? Object.entries(grantDetail.target).map(([key, value]) => <div key={key}>{displayLabel(key)}：{String(value ?? '—')}</div>) : JSON.stringify(grantDetail.target ?? {})}</Card>
-        <Card size="small" title={`当前授权（版本 ${String(grantDetail.permissionVersion ?? '—')}）`}>
-          {Array.isArray(grantDetail.grants) && grantDetail.grants.length > 0 ? grantDetail.grants.map((grant, index) => <Typography.Paragraph key={index}>{isRecord(grant) ? `${String(grant.name ?? grant.functionCode)}（${String(grant.dataScope ?? '—')}）` : String(grant)}</Typography.Paragraph>) : <Typography.Text type="secondary">当前没有可见授权。</Typography.Text>}
-        </Card>
-        <Button type="primary" onClick={() => setEditing(true)}>修改权限</Button>
-      </Space> : <Typography.Text>正在加载...</Typography.Text>}
-    </Drawer>
-    <ResourceFormModal title="修改员工权限" open={editing} onCancel={() => setEditing(false)} onSubmit={save} initialValues={{ grants: editingGrants }} fields={[
-      { key: 'grants', label: '功能授权', type: 'permission-grants', permissionVariant: 'tree', required: true, width: 'full', hidePermissionManage },
-    ]} />
+    <PermissionGrantDrawer target={target} hidePermissionManage={hidePermissionManage} onClose={() => setTarget(null)} onSaved={() => setVersion((value) => value + 1)} />
     <ResourceFormModal title={`批量追加授权（${selectedIds.length} 人）`} open={batchOpen} onCancel={() => setBatchOpen(false)} onSubmit={batchGrant} initialValues={{ grants: [], groupIds: [] }} fields={[
       { key: 'grants', label: '直接授权', type: 'permission-grants', permissionVariant: 'tree', width: 'full', hidePermissionManage },
       { key: 'groupIds', label: '权限组', type: 'remote-multi-select', remote: permissionGroupsSource, placeholder: '选择一个或多个权限组展开追加', width: 'full' },
     ]} />
   </>;
+}
+
+/** 将接口返回的字符串数组字段规范为字符串列表（非数组/空项剔除）。 */
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter((item) => item.trim()) : [];
 }
 
 function PermissionGroups() {

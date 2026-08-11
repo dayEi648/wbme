@@ -108,7 +108,7 @@ export class GrantService {
    * 所属部门：经 hr.user_org 只读视图加载部门快照；视图不可用时为空数组。
    *
    * @param query 检索词 + 分页参数
-   * @returns data（员工摘要 + 有效授权摘要）与 pagination
+   * @returns data（员工摘要 + 有效授权摘要 + 授权涉及系统名列表）与 pagination
    */
   async searchEmployees(query: SearchEmployeesDto): Promise<{
     data: Array<{
@@ -119,6 +119,7 @@ export class GrantService {
       isSuperAdmin: boolean;
       departments: string[];
       grantsSummary: string[];
+      systems: string[];
     }>;
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
@@ -151,6 +152,16 @@ export class GrantService {
     const departmentsByUser = await this.loadDepartments(users.map((user) => user.id));
     const data = users.map((user) => {
       const grants = (grantsByUser.get(user.id) ?? []).filter((row) => catalog.has(row.functionCode));
+      // "可进系统"列：授权涉及的系统中文名，按目录系统顺序（system.sort = 目录数组下标）去重；
+      // 目录外授权行已过滤，不参与归纳
+      const systemMetaByCode = new Map<string, { name: string; sort: number }>();
+      for (const row of grants) {
+        const system = catalog.get(row.functionCode)?.system;
+        if (system && !systemMetaByCode.has(system.code)) {
+          systemMetaByCode.set(system.code, { name: system.name, sort: system.sort });
+        }
+      }
+      const systems = [...systemMetaByCode.values()].sort((a, b) => a.sort - b.sort).map((system) => system.name);
       return {
         id: user.id,
         name: user.name,
@@ -159,6 +170,7 @@ export class GrantService {
         isSuperAdmin: user.isSuperAdmin,
         departments: departmentsByUser.get(user.id) ?? [],
         grantsSummary: sortGrantRows(grants, catalog).map((row) => grantLabel(catalog, row.functionCode, row.dataScope)),
+        systems,
       };
     });
     return {

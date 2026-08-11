@@ -402,6 +402,7 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)('员工授权 CRUD（T3-2 版本/�
       isSuperAdmin: false,
       departments: [],
       grantsSummary: ['固定资产维护（部门）'],
+      systems: ['资产系统'],
     });
     expect(byName.data[0]?.phoneMasked).toContain('****');
 
@@ -412,6 +413,28 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)('员工授权 CRUD（T3-2 版本/�
     const all = await service.searchEmployees({ keyword: TEST_NAME_PREFIX, page: 1, pageSize: 100 });
     expect(all.data.map((item) => item.id)).toContain(found.id);
     expect(all.data.map((item) => item.id)).not.toContain(missed.id);
+  });
+
+  it('员工检索 systems：授权涉及系统按目录顺序去重，目录外授权不归纳，无授权为空数组', async () => {
+    const multi = await createUser({ name: `${TEST_NAME_PREFIX}多系统` });
+    await prisma.client.employeeGrant.createMany({
+      data: [
+        // 乱序写入 + 同系统多项授权：验证按目录系统顺序（管理后台 → 资产 → 财务）去重
+        { userId: multi.id, functionCode: 'finance_view', dataScope: 'COMPANY', grantedBy: superOp.id },
+        { userId: multi.id, functionCode: 'fixed_asset_maintain', dataScope: 'COMPANY', grantedBy: superOp.id },
+        { userId: multi.id, functionCode: 'my_assets', dataScope: 'SELF', grantedBy: superOp.id },
+        { userId: multi.id, functionCode: 'user_manage', dataScope: 'COMPANY', grantedBy: superOp.id },
+        // 目录外（已移除功能）历史授权行：不参与系统归纳
+        { userId: multi.id, functionCode: 'ghost_function', dataScope: 'COMPANY', grantedBy: superOp.id },
+      ],
+    });
+    const noGrants = await createUser({ name: `${TEST_NAME_PREFIX}无授权` });
+
+    const result = await service.searchEmployees({ keyword: TEST_NAME_PREFIX, page: 1, pageSize: 100 });
+    const multiItem = result.data.find((item) => item.id === multi.id);
+    expect(multiItem?.systems).toEqual(['管理后台', '资产系统', '财务系统']);
+    const noGrantsItem = result.data.find((item) => item.id === noGrants.id);
+    expect(noGrantsItem?.systems).toEqual([]);
   });
 
   it('查看目标员工当前授权：返回版本与目录过滤后的授权列表；不存在返回 404', async () => {
