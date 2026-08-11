@@ -59,7 +59,7 @@ describe('AssetPage 列契约（M20/M28 回归防护）', () => {
 
   it('库存二维码将条目 ID 预填到申领明细', () => {
     expect(buildScannedClaimInitialValues('42')).toEqual({
-      items: '[\n  {\n    "inventoryItemId": 42,\n    "qty": 1,\n    "purpose": ""\n  }\n]',
+      items: [{ inventoryItemId: 42, qty: 1, purpose: '' }],
     });
     expect(buildScannedClaimInitialValues('invalid')).toBeUndefined();
   });

@@ -1,5 +1,9 @@
 import react from '@vitejs/plugin-react';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+
+const webRoot = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * 前端工程配置（主 PRD §10.1）。
@@ -10,6 +14,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    fs: {
+      allow: [path.resolve(webRoot, '../..')],
+    },
     proxy: {
       // 独立业务服务：去除公开服务前缀后保留后端既有 /api/v1 契约。
       '/api/asset/v1': {

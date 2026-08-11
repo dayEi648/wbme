@@ -488,7 +488,7 @@ export class BorrowService {
   }
 }
 
-/** 借还记录查询条件（SQL 片段；只接受白名单参数） */
+/** 借还记录查询条件（SQL 片段；只接受白名单参数；外层 FROM 必须为不带别名的 asset.borrow_records——EXISTS 子查询经 borrow_records.xxx 显式关联外层，未限定的列名会错误绑定到子查询表） */
 export function buildBorrowWhereSql(options: {
   userId?: number;
   recipientId?: number;
@@ -504,13 +504,18 @@ export function buildBorrowWhereSql(options: {
     clauses.push(`record_type = '${options.recordType}'`);
   }
   if (options.userId !== undefined) {
-    clauses.push(`user_id = ${options.userId}`);
+    // userId 语义（borrow.dto.ts）：PERSONAL = 借用人（user_id）；
+    // AGENT 记录 user_id 恒为 null，发起人存审批头 proxy_id（代交人）/applicant_id
+    clauses.push(`(user_id = ${options.userId} OR (record_type = 'AGENT' AND EXISTS (
+      SELECT 1 FROM asset.approval_requests ar
+      WHERE ar.id = borrow_records.request_id AND (ar.proxy_id = ${options.userId} OR ar.applicant_id = ${options.userId})
+    )))`);
   }
   if (options.recipientId !== undefined) {
     // 受领人筛选仅对 AGENT 记录生效（个人记录无受领人）：匹配代领申请的受领人名单
     clauses.push(`record_type = 'AGENT' AND EXISTS (
       SELECT 1 FROM asset.agent_recipients arp
-      WHERE arp.request_id = request_id AND arp.user_id = ${options.recipientId}
+      WHERE arp.request_id = borrow_records.request_id AND arp.user_id = ${options.recipientId}
     )`);
   }
   if (options.departmentId !== undefined) {
@@ -540,7 +545,7 @@ export function buildBorrowWhereSql(options: {
       OR (record_type = 'AGENT' AND (
         EXISTS (
           SELECT 1 FROM asset.approval_requests ar
-          WHERE ar.id = request_id AND ar.applicant_department_snapshot IS NOT NULL
+          WHERE ar.id = borrow_records.request_id AND ar.applicant_department_snapshot IS NOT NULL
             AND EXISTS (
               SELECT 1 FROM jsonb_array_elements(
                 CASE WHEN jsonb_typeof(ar.applicant_department_snapshot) = 'array' THEN ar.applicant_department_snapshot
@@ -550,7 +555,7 @@ export function buildBorrowWhereSql(options: {
         )
         OR EXISTS (
           SELECT 1 FROM asset.agent_recipients arp
-          WHERE arp.request_id = request_id
+          WHERE arp.request_id = borrow_records.request_id
             AND EXISTS (
               SELECT 1 FROM jsonb_array_elements(
                 CASE WHEN jsonb_typeof(arp.department_snapshot) = 'array' THEN arp.department_snapshot

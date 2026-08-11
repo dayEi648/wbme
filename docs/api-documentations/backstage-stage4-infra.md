@@ -86,6 +86,7 @@
 | `system` | 所属系统 |
 | `feature` | 功能编码 |
 | `operatorId` | 操作人 id |
+| `departmentId` | 部门 id（含下级部门，按操作者操作时部门快照 `operatorDepartments` 与 `hr.department_closure` 闭包交集过滤） |
 | `actionType` | `CREATE` / `UPDATE` / `DELETE` / `EXPORT` |
 | `from` / `to` | 时间范围 |
 
@@ -97,6 +98,14 @@
 
 - `COMPANY`：全公司可见
 - `DEPARTMENT`：按 `operator_departments` 与 `hr.department_closure` 闭包交集过滤
+
+### GET `/operation-logs/department-options`
+
+部门筛选树选项（扁平 `parentId` 列表，前端组装树）。经 `hr.departments_view` 只读视图读取（直接父级由 `hr.department_closure` 按深度差推导），hr 容器停止不影响查询页加载。
+
+**响应**：`{ data: [{ id, name, parentId, status }] }`
+
+**数据范围**：`COMPANY` 返回全部部门；`DEPARTMENT` 裁剪为本人部门闭包及其祖先链（保证树可组装）。
 
 ### GET `/me/operation-logs`
 

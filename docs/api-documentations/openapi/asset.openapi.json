@@ -1077,7 +1077,6 @@
                   "BACKUP_UNVERIFIED",
                   "BATCH_CORRECTION_FORBIDDEN",
                   "BORROW_ALREADY_SETTLED",
-                  "CATEGORY_REFERENCED",
                   "CELL_FIELD_NOT_ALLOWED",
                   "CONFLICT",
                   "CONSUMABLE_DISABLED",
@@ -1085,7 +1084,6 @@
                   "DATA_REVISION_STALE",
                   "DEPARTMENT_HAS_CHILDREN",
                   "DEPENDENCY_UNAVAILABLE",
-                  "DICT_REFERENCED",
                   "DICT_SEMANTIC_LOCKED",
                   "DINGTALK_ALREADY_BOUND",
                   "DINGTALK_CONFIG_MISSING",
@@ -1955,6 +1953,20 @@
         ]
       }
     },
+    "/api/v1/agent-requests/recipient-options": {
+      "get": {
+        "operationId": "AgentClaimController_recipientOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AgentClaim"
+        ]
+      }
+    },
     "/api/v1/agent-settlements": {
       "post": {
         "operationId": "AgentSettlementController_submit",
@@ -2039,6 +2051,29 @@
                 "CANCELLED"
               ],
               "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AgentSettlement"
+        ]
+      }
+    },
+    "/api/v1/agent-settlements/open-borrow-records": {
+      "get": {
+        "operationId": "AgentSettlementController_openBorrowRecords",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refRequestId",
+            "required": true,
+            "schema": {
+              "type": "number"
             }
           }
         ],
@@ -3863,6 +3898,119 @@
         ]
       }
     },
+    "/api/v1/consumables/stock-in-options": {
+      "get": {
+        "operationId": "ConsumableController_stockInOptions",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "分类 id",
+            "in": "query",
+            "name": "categoryId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种类型",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "DISPOSABLE",
+                "REUSABLE"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（名称模糊）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "description": "仅显示有可用库存的品种（申领目录）",
+            "in": "query",
+            "name": "hasAvailableStock",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Consumable"
+        ]
+      }
+    },
     "/api/v1/dict-items": {
       "get": {
         "operationId": "DictController_list",
@@ -4054,6 +4202,184 @@
         ]
       }
     },
+    "/api/v1/dict-items/stock-change-options": {
+      "get": {
+        "operationId": "DictController_stockChangeOptions",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "字典类型过滤",
+            "in": "query",
+            "name": "dictType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "UNIT",
+                "CHANGE_TYPE",
+                "SUPPLIER",
+                "BRAND",
+                "SPEC",
+                "ASSET_SPEC",
+                "ASSET_MODEL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态过滤",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/dict-items/stock-in-options": {
+      "get": {
+        "operationId": "DictController_stockInOptions",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "字典类型过滤",
+            "in": "query",
+            "name": "dictType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "UNIT",
+                "CHANGE_TYPE",
+                "SUPPLIER",
+                "BRAND",
+                "SPEC",
+                "ASSET_SPEC",
+                "ASSET_MODEL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态过滤",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
     "/api/v1/disposals": {
       "get": {
         "operationId": "DisposalController_list",
@@ -4126,6 +4452,16 @@
                 "AGENT"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "代领申请 id（仅待处置 AGENT 选择器按清单级联时使用）",
+            "in": "query",
+            "name": "agentRequestId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
             }
           },
           {
@@ -4337,6 +4673,354 @@
     "/api/v1/inventory/items": {
       "get": {
         "operationId": "InventoryController_listItems",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "库存条目 id（详情取单条）",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库位 id",
+            "in": "query",
+            "name": "warehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "规格（精确）",
+            "in": "query",
+            "name": "spec",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "仅显示低库存品种（可用 < 安全库存）",
+            "in": "query",
+            "name": "lowStockOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "申领目录：仅启用且有可用库存的条目",
+            "in": "query",
+            "name": "availableOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/items/agent-claim-options": {
+      "get": {
+        "operationId": "InventoryController_agentClaimOptions",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "库存条目 id（详情取单条）",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库位 id",
+            "in": "query",
+            "name": "warehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "规格（精确）",
+            "in": "query",
+            "name": "spec",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "仅显示低库存品种（可用 < 安全库存）",
+            "in": "query",
+            "name": "lowStockOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "申领目录：仅启用且有可用库存的条目",
+            "in": "query",
+            "name": "availableOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/items/claim-options": {
+      "get": {
+        "operationId": "InventoryController_claimOptions",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "库存条目 id（详情取单条）",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "品种 id",
+            "in": "query",
+            "name": "consumableId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "库位 id",
+            "in": "query",
+            "name": "warehouseId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "规格（精确）",
+            "in": "query",
+            "name": "spec",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "仅显示低库存品种（可用 < 安全库存）",
+            "in": "query",
+            "name": "lowStockOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "申领目录：仅启用且有可用库存的条目",
+            "in": "query",
+            "name": "availableOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/items/stock-change-options": {
+      "get": {
+        "operationId": "InventoryController_stockChangeOptions",
         "parameters": [
           {
             "description": "页码（从 1 开始）",
@@ -5845,6 +6529,77 @@
             "name": "ids",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Warehouse"
+        ]
+      }
+    },
+    "/api/v1/warehouses/stock-in-tree": {
+      "get": {
+        "operationId": "WarehouseController_stockInTree",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "状态过滤",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ACTIVE",
+                "DISABLED"
+              ],
               "type": "string"
             }
           }

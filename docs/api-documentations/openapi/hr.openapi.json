@@ -193,7 +193,6 @@
                   "BACKUP_UNVERIFIED",
                   "BATCH_CORRECTION_FORBIDDEN",
                   "BORROW_ALREADY_SETTLED",
-                  "CATEGORY_REFERENCED",
                   "CELL_FIELD_NOT_ALLOWED",
                   "CONFLICT",
                   "CONSUMABLE_DISABLED",
@@ -201,7 +200,6 @@
                   "DATA_REVISION_STALE",
                   "DEPARTMENT_HAS_CHILDREN",
                   "DEPENDENCY_UNAVAILABLE",
-                  "DICT_REFERENCED",
                   "DICT_SEMANTIC_LOCKED",
                   "DINGTALK_ALREADY_BOUND",
                   "DINGTALK_CONFIG_MISSING",
@@ -1371,6 +1369,21 @@
         ]
       }
     },
+    "/api/v1/departments/asset-options": {
+      "get": {
+        "operationId": "DepartmentController_assetOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "固定资产维护可选部门树，按固定资产维护的数据范围裁剪，只返回表单所需字段。",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
     "/api/v1/departments/delete": {
       "delete": {
         "operationId": "DepartmentController_deleteBatch",
@@ -1422,6 +1435,21 @@
           }
         },
         "summary": "删除前引用确认（在职员工数/资产数/待审批数/职称规则引用数）",
+        "tags": [
+          "Department"
+        ]
+      }
+    },
+    "/api/v1/departments/leader-options": {
+      "get": {
+        "operationId": "DepartmentController_leaderOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "部门负责人选择器（仅在职员工的最小展示字段）。",
         "tags": [
           "Department"
         ]
@@ -1660,7 +1688,38 @@
             "description": ""
           }
         },
-        "summary": "批量硬删除字典项（未被引用；任一目标不存在/被引用整批不变更）",
+        "summary": "批量硬删除字典项（主 PRD §2.6 确认式删除；任一目标不存在整批不变更）",
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/dicts/delete-preview": {
+      "get": {
+        "operationId": "DictController_deletePreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "删除前引用预览（逐目标返回当前业务引用数；引用不阻断删除，确认后物理删除）",
         "tags": [
           "Dict"
         ]
@@ -1956,6 +2015,30 @@
         },
         "tags": [
           "TablePrefs"
+        ]
+      }
+    },
+    "/api/v1/org/asset-options": {
+      "get": {
+        "operationId": "OrgController_assetOptions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "固定资产维护可选在职员工；部门维护者只能读取其授权闭包中的员工。",
+        "tags": [
+          "Org"
         ]
       }
     },
@@ -2292,6 +2375,21 @@
           }
         },
         "summary": "日期类型查询（hr PRD §3：提交前展示日期类型、时长与补交提示；统一经后端节假日适配器，不让前端直连第三方）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/employee-options": {
+      "get": {
+        "operationId": "OvertimeController_employeeOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "加班表单可选员工，按本人/代交权限和部门闭包裁剪。",
         "tags": [
           "Overtime"
         ]

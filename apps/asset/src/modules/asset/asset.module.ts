@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
-import { InternalRestModule } from '@wbme/server';
+import { InternalRestModule, type InternalAuthRejection } from '@wbme/server';
+import { PrismaService } from '../../prisma.service';
+import { recordInternalTokenFailure } from '@wbme/logging';
 import { AssetController } from './asset.controller';
 import { AssetService } from './asset.service';
 import { InternalDepartmentController } from './internal-department.controller';
@@ -9,10 +11,19 @@ import { InternalDepartmentController } from './internal-department.controller';
  *
  * 内部路由（InternalDepartmentController 挂 InternalAuthGuard）需要
  * INTERNAL_AUTH_OPTIONS 在模块上下文可见：与 ApprovalModule 相同方式
- * forRoot 提供（M12；兄弟模块的 provider 不横向传播，缺失会导致 DI 启动失败）。
+ * forRootAsync 提供（M12；兄弟模块的 provider 不横向传播，缺失会导致 DI 启动失败）。
+ * onReject 将令牌校验失败写入 backstage.security_logs（INTERNAL_TOKEN_FAILED）。
  */
 @Module({
-  imports: [InternalRestModule.forRoot({ token: process.env.INTERNAL_SERVICE_TOKEN ?? '' })],
+  imports: [
+    InternalRestModule.forRootAsync({
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => ({
+        token: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+        onReject: (rejection: InternalAuthRejection) => recordInternalTokenFailure(prisma.client, rejection),
+      }),
+    }),
+  ],
   controllers: [AssetController, InternalDepartmentController],
   providers: [AssetService],
   exports: [AssetService],

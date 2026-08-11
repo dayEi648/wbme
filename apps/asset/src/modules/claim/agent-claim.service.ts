@@ -311,6 +311,26 @@ export class AgentClaimService {
     return result;
   }
 
+  /**
+   * 查询当前代交权限范围内可选的在职受领人。
+   *
+   * @param operator 当前代交申请人
+   * @returns 可选员工的 id 与姓名
+   * @throws RESOURCE_NOT_FOUND 未持有代交申领权限
+   */
+  async listEligibleRecipients(operator: AssetOperationLogOperator): Promise<Array<{ id: number; name: string }>> {
+    const allowedIds = await this.resolveEligibleRecipientIds(operator.id);
+    if (allowedIds.size === 0) return [];
+    const rows = await this.prisma.client.$queryRaw<Array<{ id: number; name: string }>>`
+      SELECT user_id AS id, name
+      FROM backstage.user_accounts
+      WHERE user_id = ANY(${[...allowedIds] as number[]})
+        AND status = 'ACTIVE' AND deleted_at IS NULL
+      ORDER BY name ASC, user_id ASC
+    `;
+    return rows;
+  }
+
   /** 分页查询（含受领人名单） */
   private async paginate(where: Prisma.ApprovalRequestWhereInput, query: ConsumableRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
     const tableQuery = buildAssetApprovalRequestTableQuery(query);
@@ -352,27 +372,7 @@ export class AgentClaimService {
     if (recipientIds.includes(operator.id)) {
       throw new BusinessException(inventoryErrors.RECIPIENT_INVALID, { reason: '不能为自己代领' });
     }
-    // 数据范围：DEPARTMENT 闭包内 / COMPANY（或超管 dataScope=null）全部在职
-    const access = await getFunctionAccess(this.prisma.client, operator.id, PROXY_APPLY_FUNCTION_CODE);
-    let allowedIds = new Set<number>();
-    if (access.dataScope === 'DEPARTMENT') {
-      const closure = await this.closures.closureOfUser(operator.id);
-      // 在职过滤（与 COMPANY 档一致——PRD §7「在职受领人」；
-      // 注销不删除 user_departments，须显式 JOIN 账号状态）
-      const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number }>>`
-        SELECT DISTINCT uo.user_id
-        FROM hr.user_org uo
-        INNER JOIN backstage.user_accounts ua ON ua.user_id = uo.user_id
-          AND ua.status = 'ACTIVE' AND ua.deleted_at IS NULL
-        WHERE uo.department_id = ANY(${[...closure] as number[]})
-      `;
-      allowedIds = new Set(rows.map((row) => row.user_id));
-    } else if (access.dataScope === null || access.dataScope === 'COMPANY') {
-      const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number }>>`
-        SELECT user_id FROM backstage.user_accounts WHERE status = 'ACTIVE' AND deleted_at IS NULL
-      `;
-      allowedIds = new Set(rows.map((row) => row.user_id));
-    }
+    const allowedIds = await this.resolveEligibleRecipientIds(operator.id);
     const recipients: Array<{ userId: number; userName: string; departmentSnapshot: Array<{ id: number; name: string }> }> = [];
     for (const recipientId of recipientIds) {
       if (!allowedIds.has(recipientId)) {
@@ -391,5 +391,41 @@ export class AgentClaimService {
       recipients.push({ userId: recipientId, userName: name, departmentSnapshot: departments });
     }
     return recipients;
+  }
+
+  /**
+   * 解析代交受领人可选范围。部门档要求员工的全部归属部门均在操作者闭包内，
+   * 防止多部门员工通过任一命中部门泄露或跨范围代领。
+   *
+   * @param operatorId 当前代交申请人 id
+   * @returns 在职且可被选择的员工 id 集合
+   */
+  private async resolveEligibleRecipientIds(operatorId: number): Promise<Set<number>> {
+    const access = await getFunctionAccess(this.prisma.client, operatorId, PROXY_APPLY_FUNCTION_CODE);
+    if (access.dataScope === 'DEPARTMENT') {
+      const closure = await this.closures.closureOfUser(operatorId);
+      if (closure.size === 0) return new Set<number>();
+      const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number }>>`
+        SELECT ua.user_id
+        FROM backstage.user_accounts ua
+        WHERE ua.status = 'ACTIVE' AND ua.deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM hr.user_org uo
+            WHERE uo.user_id = ua.user_id AND uo.department_id = ANY(${[...closure] as number[]})
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM hr.user_org uo
+            WHERE uo.user_id = ua.user_id AND uo.department_id <> ALL(${[...closure] as number[]})
+          )
+      `;
+      return new Set(rows.map((row) => row.user_id));
+    }
+    if (access.dataScope === null || access.dataScope === 'COMPANY') {
+      const rows = await this.prisma.client.$queryRaw<Array<{ user_id: number }>>`
+        SELECT user_id FROM backstage.user_accounts WHERE status = 'ACTIVE' AND deleted_at IS NULL
+      `;
+      return new Set(rows.map((row) => row.user_id));
+    }
+    return new Set<number>();
   }
 }

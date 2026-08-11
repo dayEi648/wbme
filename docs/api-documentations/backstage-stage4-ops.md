@@ -54,7 +54,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/operation-logs/export` | `operation_log_view` | xlsx 流式导出 |
+| POST | `/operation-logs/export` | `operation_log_view` | xlsx 流式导出（筛选参数与列表一致，含 `departmentId`） |
 
 互斥键：`lock:export:{userId}`；超时 120s；超行数整次拒绝 `ROW_LIMIT_EXCEEDED`。
 

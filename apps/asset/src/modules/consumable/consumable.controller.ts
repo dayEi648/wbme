@@ -7,6 +7,7 @@ import {
   ConsumableQueryDto,
   ConsumableUpdateDto,
   INVENTORY_MANAGE_FUNCTION_CODE,
+  STOCK_IN_APPLY_FUNCTION_CODE,
 } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
@@ -34,6 +35,20 @@ export class ConsumableController {
       query.hasAvailableStock ? CONSUMABLE_APPLY_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE,
     );
     const result = await this.consumables.list(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  /**
+   * 入库申请可选品种（只返回启用品种，读取权限不等同于库存管理）。
+   *
+   * @param userId 当前用户
+   * @param query 分页及受控筛选条件
+   * @returns 分页品种列表
+   */
+  @Get('stock-in-options')
+  async stockInOptions(@CurrentUser() userId: number, @Query() query: ConsumableQueryDto): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, STOCK_IN_APPLY_FUNCTION_CODE);
+    const result = await this.consumables.list({ ...query, status: 'ACTIVE', hasAvailableStock: undefined });
     return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 

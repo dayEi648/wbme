@@ -1,4 +1,4 @@
-import { Button, Card, Descriptions, Drawer, Empty, Image, Modal, Pagination, Popconfirm, Space, Spin, Table, Tabs, Tag, Typography } from 'antd';
+import { Button, Card, Descriptions, Drawer, Empty, Form, Image, Modal, Pagination, Popconfirm, Select, Space, Spin, Table, Tabs, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -6,7 +6,32 @@ import { AppShell, type NavigationItem } from '../../components/AppShell';
 import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { ResourcePage } from '../../components/ResourcePage';
-import { ResourceFormModal } from '../../components/ResourceFormModal';
+import { ResourceFormModal, type FormField } from '../../components/ResourceFormModal';
+import {
+  assetCategoryTreeSource,
+  assetMaintainDepartmentsSource,
+  assetMaintainEmployeesSource,
+  warehouseTreeSource,
+  stockInWarehouseTreeSource,
+  consumablesSource,
+  stockInConsumablesSource,
+  inventoryItemsSource,
+  claimInventoryItemsSource,
+  agentClaimInventoryItemsSource,
+  stockChangeInventoryItemsSource,
+  assetsSource,
+  assetDictSource,
+  stockInDictSource,
+  stockChangeTypeSource,
+  myAgentRequestsSource,
+  ownAgentOpenBorrowRecordsSource,
+  pendingPersonalDisposalRecordsSource,
+  pendingAgentDisposalRequestsSource,
+  pendingAgentDisposalRecordsSource,
+  agentRecipientsSource,
+  departmentTreeSource,
+  RemoteSelect,
+} from '../../components/selectors';
 import { SettingsEditor } from '../../components/SettingsEditor';
 import { SystemHome } from '../../components/SystemHome';
 import { formatBeijingDateTime } from '../../components/display-format';
@@ -119,6 +144,89 @@ export const DISPOSAL_RECORDS_COLUMNS = [
 const ENABLED_STATUS_OPTIONS = [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }];
 const APPROVAL_STATUS_OPTIONS = [{ label: '待审批', value: 'PENDING' }, { label: '已批准', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }, { label: '已取消', value: 'CANCELLED' }];
 const ASSET_USAGE_STATUS_OPTIONS = [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }, { label: '待维修', value: 'PENDING_REPAIR' }, { label: '维修中', value: 'REPAIRING' }, { label: '已报废', value: 'SCRAPPED' }];
+const CONSUMABLE_TYPE_OPTIONS = [{ label: '一次性用品', value: 'DISPOSABLE' }, { label: '借还用品', value: 'REUSABLE' }];
+const QUOTA_CYCLE_OPTIONS = [{ label: '月', value: 'MONTH' }, { label: '季度', value: 'QUARTER' }, { label: '年', value: 'YEAR' }];
+const RETURN_WRITE_OFF_METHOD_OPTIONS = [{ label: '归还', value: 'RETURN' }, { label: '核销', value: 'WRITE_OFF' }];
+const WRITE_OFF_TYPE_OPTIONS = [{ label: '遗失', value: 'LOST' }, { label: '损坏', value: 'DAMAGED' }];
+const DISPOSAL_TYPE_OPTIONS = [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }];
+
+const STOCK_IN_ITEM_COLUMNS: FormField[] = [
+  { key: 'consumableId', label: '品种', type: 'remote-select', remote: stockInConsumablesSource, required: true },
+  { key: 'supplierId', label: '供应商', type: 'remote-select', remote: stockInDictSource('SUPPLIER') },
+  { key: 'brandId', label: '品牌', type: 'remote-select', remote: stockInDictSource('BRAND') },
+  { key: 'spec', label: '规格', type: 'text', required: true, maxLength: 100 },
+  { key: 'warehouseId', label: '库位', type: 'tree-select', remote: stockInWarehouseTreeSource, required: true },
+  { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' },
+  { key: 'unitPrice', label: '单价', type: 'number', width: 'narrow' },
+];
+
+const STOCK_CHANGE_ITEM_COLUMNS: FormField[] = [
+  { key: 'inventoryItemId', label: '库存条目', type: 'remote-select', remote: stockChangeInventoryItemsSource, required: true },
+  { key: 'changeTypeId', label: '变更类型', type: 'remote-select', remote: stockChangeTypeSource, required: true },
+  { key: 'reason', label: '变更原因', type: 'textarea', required: true, maxLength: 500 },
+  { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' },
+];
+
+const CLAIM_ITEM_COLUMNS: FormField[] = [
+  { key: 'inventoryItemId', label: '库存条目', type: 'remote-select', remote: claimInventoryItemsSource, required: true },
+  { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' },
+  { key: 'purpose', label: '用途', type: 'text', required: true, maxLength: 200 },
+];
+
+const AGENT_CLAIM_ITEM_COLUMNS: FormField[] = [
+  { key: 'inventoryItemId', label: '库存条目', type: 'remote-select', remote: agentClaimInventoryItemsSource, required: true },
+  { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' },
+  { key: 'purpose', label: '用途', type: 'text', maxLength: 200 },
+];
+
+const AGENT_SETTLEMENT_ITEM_COLUMNS: FormField[] = [
+  { key: 'borrowRecordId', label: '借还记录', type: 'remote-select', remote: ownAgentOpenBorrowRecordsSource, remoteContextFrom: 'refRequestId', required: true },
+  { key: 'method', label: '结清方式', type: 'select', required: true, options: RETURN_WRITE_OFF_METHOD_OPTIONS },
+  { key: 'writeOffType', label: '核销类型', type: 'select', options: WRITE_OFF_TYPE_OPTIONS, visibleWhen: { field: 'method', equals: 'WRITE_OFF' }, requiredWhen: { field: 'method', equals: 'WRITE_OFF' } },
+  { key: 'reason', label: '原因', type: 'textarea', maxLength: 500 },
+  { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' },
+];
+
+const PERSONAL_DISPOSAL_ITEM_COLUMNS: FormField[] = [
+  { key: 'borrowRecordId', label: '个人借还记录', type: 'remote-select', remote: pendingPersonalDisposalRecordsSource, required: true },
+  { key: 'writeOffType', label: '核销类型', type: 'select', options: WRITE_OFF_TYPE_OPTIONS, visibleWhen: { field: 'disposalType', equals: 'WRITE_OFF' }, requiredWhen: { field: 'disposalType', equals: 'WRITE_OFF' } },
+  { key: 'reason', label: '原因或备注', type: 'textarea', maxLength: 500 },
+  { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' },
+];
+
+const AGENT_DISPOSAL_ITEM_COLUMNS: FormField[] = [
+  { key: 'borrowRecordId', label: '代领借还记录', type: 'remote-select', remote: pendingAgentDisposalRecordsSource, remoteContextFrom: 'agentRequestId', required: true },
+  { key: 'method', label: '结清方式', type: 'select', required: true, options: RETURN_WRITE_OFF_METHOD_OPTIONS },
+  { key: 'writeOffType', label: '核销类型', type: 'select', options: WRITE_OFF_TYPE_OPTIONS, visibleWhen: { field: 'method', equals: 'WRITE_OFF' }, requiredWhen: { field: 'method', equals: 'WRITE_OFF' } },
+  { key: 'reason', label: '原因', type: 'textarea', maxLength: 500 },
+  { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' },
+];
+
+const CONSUMABLE_CREATE_FIELDS: FormField[] = [
+  { key: 'name', label: '名称', required: true, maxLength: 50, group: '基本信息' },
+  { key: 'type', label: '品种类型', type: 'select', required: true, options: CONSUMABLE_TYPE_OPTIONS, group: '基本信息' },
+  { key: 'unitId', label: '单位', type: 'remote-select', remote: assetDictSource('UNIT'), group: '基本信息' },
+  { key: 'categoryId', label: '分类', type: 'tree-select', remote: assetCategoryTreeSource, group: '基本信息' },
+  { key: 'quotaCycle', label: '配额周期', type: 'select', options: QUOTA_CYCLE_OPTIONS, group: '一次性用品配额' },
+  { key: 'quotaLimit', label: '数量上限', type: 'number', group: '一次性用品配额', width: 'narrow' },
+  { key: 'returnDays', label: '借还期限（天）', type: 'number', group: '借还用品限制', width: 'narrow' },
+  { key: 'maxHolding', label: '同时持有上限', type: 'number', group: '借还用品限制', width: 'narrow' },
+  { key: 'referencePrice', label: '参考单价', type: 'number', group: '库存参数', width: 'narrow' },
+  { key: 'safetyStock', label: '安全库存', type: 'number', group: '库存参数', width: 'narrow' },
+];
+
+const CONSUMABLE_EDIT_FIELDS: FormField[] = [
+  { key: 'name', label: '名称', required: true, maxLength: 50, group: '基本信息' },
+  { key: 'type', label: '品种类型', type: 'select', required: true, options: CONSUMABLE_TYPE_OPTIONS, group: '基本信息' },
+  { key: 'categoryId', label: '分类', type: 'tree-select', remote: assetCategoryTreeSource, group: '基本信息' },
+  { key: 'quotaCycle', label: '配额周期', type: 'select', options: QUOTA_CYCLE_OPTIONS, group: '一次性用品配额' },
+  { key: 'quotaLimit', label: '数量上限', type: 'number', group: '一次性用品配额', width: 'narrow' },
+  { key: 'returnDays', label: '借还期限（天）', type: 'number', group: '借还用品限制', width: 'narrow' },
+  { key: 'maxHolding', label: '同时持有上限', type: 'number', group: '借还用品限制', width: 'narrow' },
+  { key: 'referencePrice', label: '参考单价', type: 'number', group: '库存参数', width: 'narrow' },
+  { key: 'safetyStock', label: '安全库存', type: 'number', required: true, group: '库存参数', width: 'narrow' },
+  { key: 'status', label: '状态', type: 'select', required: true, options: ENABLED_STATUS_OPTIONS, group: '状态', width: 'narrow' },
+];
 
 const ASSET_STATUS_LABELS: Readonly<Record<string, string>> = {
   IDLE: '闲置', IN_USE: '使用中', PENDING_REPAIR: '待维修', REPAIRING: '维修中', SCRAPPED: '已报废',
@@ -138,9 +246,9 @@ export default function AssetPage() {
       case 'repairs':
         return <RepairManagement />;
       case 'consumables':
-        return <ResourcePage title="消耗品配置" service="asset" endpoint="/consumables" pageKey="asset-consumables" columns={[...COMMON_COLUMNS, { key: 'unitName', title: '单位' }, { key: 'categoryName', title: '分类' }]} filterFields={[{ key: 'keyword', title: '关键字', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: ENABLED_STATUS_OPTIONS }]} create={{ title: '新建消耗品', endpoint: '/consumables', fields: [{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'type', label: '品种类型', type: 'select', required: true, options: [{ label: '一次性用品', value: 'DISPOSABLE' }, { label: '借还用品', value: 'REUSABLE' }] }, { key: 'unitId', label: '单位 ID', type: 'number' }, { key: 'categoryId', label: '分类 ID', type: 'number' }, { key: 'quotaCycle', label: '一次性用品周期', type: 'select', options: [{ label: '月', value: 'MONTH' }, { label: '季度', value: 'QUARTER' }, { label: '年', value: 'YEAR' }] }, { key: 'quotaLimit', label: '一次性用品数量上限', type: 'number' }, { key: 'returnDays', label: '借还期限（天）', type: 'number' }, { key: 'maxHolding', label: '借还同时持有上限', type: 'number' }, { key: 'referencePrice', label: '参考单价', type: 'number' }, { key: 'safetyStock', label: '安全库存', type: 'number' }] }} edit={{ title: '编辑消耗品', fields: [{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'type', label: '品种类型', type: 'select', required: true, options: [{ label: '一次性用品', value: 'DISPOSABLE' }, { label: '借还用品', value: 'REUSABLE' }] }, { key: 'categoryId', label: '分类 ID', type: 'number' }, { key: 'quotaCycle', label: '一次性用品周期', type: 'select', options: [{ label: '月', value: 'MONTH' }, { label: '季度', value: 'QUARTER' }, { label: '年', value: 'YEAR' }] }, { key: 'quotaLimit', label: '一次性用品数量上限', type: 'number' }, { key: 'returnDays', label: '借还期限（天）', type: 'number' }, { key: 'maxHolding', label: '借还同时持有上限', type: 'number' }, { key: 'referencePrice', label: '参考单价', type: 'number' }, { key: 'safetyStock', label: '安全库存', type: 'number', required: true }, { key: 'status', label: '状态', type: 'select', required: true, options: ENABLED_STATUS_OPTIONS }] }} batchDelete={{ endpoint: '/consumables/batch', bodyKey: 'ids' }} />;
+        return <ResourcePage title="消耗品配置" service="asset" endpoint="/consumables" pageKey="asset-consumables" columns={[...COMMON_COLUMNS, { key: 'unitName', title: '单位' }, { key: 'categoryName', title: '分类' }]} filterFields={[{ key: 'keyword', title: '关键字', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: ENABLED_STATUS_OPTIONS }]} create={{ title: '新建消耗品', endpoint: '/consumables', fields: CONSUMABLE_CREATE_FIELDS }} edit={{ title: '编辑消耗品', fields: CONSUMABLE_EDIT_FIELDS }} batchDelete={{ endpoint: '/consumables/batch', bodyKey: 'ids' }} />;
       case 'warehouses':
-        return <ResourcePage title="库位管理" service="asset" endpoint="/warehouses/tree" pageKey="asset-warehouses" columns={[...COMMON_COLUMNS, { key: 'parentName', title: '上级库位' }, { key: 'sort', title: '排序' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }]} create={{ title: '新建库位', endpoint: '/warehouses', fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位 ID', type: 'number' }, { key: 'sort', label: '排序', type: 'number' }] }} edit={{ title: '编辑库位', endpoint: (id) => `/warehouses/${id}`, fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位 ID', type: 'number' }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/warehouses/batch', bodyKey: 'ids', previewEndpoint: '/warehouses/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `现存库存条目 ${String(item.inventoryItemCount ?? 0)} 个；未结清借还 ${String(item.borrowCount ?? 0)} 条；待审批引用 ${String(item.pendingCount ?? 0)} 处` }) }} />;
+        return <ResourcePage title="库位管理" service="asset" endpoint="/warehouses/tree" pageKey="asset-warehouses" columns={[...COMMON_COLUMNS, { key: 'parentName', title: '上级库位' }, { key: 'sort', title: '排序' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }]} create={{ title: '新建库位', endpoint: '/warehouses', fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位', type: 'tree-select', remote: warehouseTreeSource }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑库位', endpoint: (id) => `/warehouses/${id}`, fields: [{ key: 'name', label: '库位名称', required: true, maxLength: 50 }, { key: 'parentId', label: '上级库位', type: 'tree-select', remote: warehouseTreeSource }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/warehouses/batch', bodyKey: 'ids', previewEndpoint: '/warehouses/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `现存库存条目 ${String(item.inventoryItemCount ?? 0)} 个；未结清借还 ${String(item.borrowCount ?? 0)} 条；待审批引用 ${String(item.pendingCount ?? 0)} 处` }) }} />;
       case 'inventory':
         return <InventoryItems />;
       case 'inventory-batches':
@@ -148,13 +256,13 @@ export default function AssetPage() {
       case 'stock-flows':
         return <StockFlows />;
       case 'transfers':
-        return <ResourcePage title="库存调拨" service="asset" endpoint="/asset/inventory-transfers" pageKey="asset-inventory-transfers" columns={[...COMMON_COLUMNS, { key: 'sourceLocationName', title: '来源库位' }, { key: 'targetLocationName', title: '目标库位' }, { key: 'qty', title: '数量' }]} create={{ title: '发起调拨', fields: [{ key: 'fromInventoryItemId', label: '来源库存 ID', type: 'number', required: true }, { key: 'toWarehouseId', label: '目标库位 ID', type: 'number', required: true }, { key: 'qty', label: '数量', type: 'number', required: true }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }] }} />;
+        return <ResourcePage title="库存调拨" service="asset" endpoint="/asset/inventory-transfers" pageKey="asset-inventory-transfers" columns={[...COMMON_COLUMNS, { key: 'sourceLocationName', title: '来源库位' }, { key: 'targetLocationName', title: '目标库位' }, { key: 'qty', title: '数量' }]} create={{ title: '发起调拨', fields: [{ key: 'fromInventoryItemId', label: '来源库存条目', type: 'remote-select', remote: inventoryItemsSource, required: true, width: 'wide' }, { key: 'toWarehouseId', label: '目标库位', type: 'tree-select', remote: warehouseTreeSource, required: true }, { key: 'qty', label: '数量', type: 'number', required: true, width: 'narrow' }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 200 }] }} />;
       case 'stock-in':
-        return <ResourcePage title="入库申请" service="asset" endpoint="/stock-in-requests/mine" pageKey="asset-stock-in" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建入库申请', endpoint: '/stock-in-requests', fields: [{ key: 'items', label: '入库明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+        return <ResourcePage title="入库申请" service="asset" endpoint="/stock-in-requests/mine" pageKey="asset-stock-in" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建入库申请', endpoint: '/stock-in-requests', fields: [{ key: 'items', label: '入库明细', type: 'detail-list', required: true, detailColumns: STOCK_IN_ITEM_COLUMNS, detailMinRows: 1 }, { key: 'remark', label: '备注', type: 'textarea', maxLength: 500 }] }} />;
       case 'stock-in-history':
         return <ResourcePage title="入库申请历史" service="asset" endpoint="/stock-in-requests" pageKey="asset-stock-in-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'stock-change':
-        return <ResourcePage title="库存变更申请" service="asset" endpoint="/stock-change-requests/mine" pageKey="asset-stock-change" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建库存变更申请', endpoint: '/stock-change-requests', fields: [{ key: 'items', label: '变更明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items) }) }} />;
+        return <ResourcePage title="库存变更申请" service="asset" endpoint="/stock-change-requests/mine" pageKey="asset-stock-change" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '申请人' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '新建库存变更申请', endpoint: '/stock-change-requests', fields: [{ key: 'items', label: '变更明细', type: 'detail-list', required: true, detailColumns: STOCK_CHANGE_ITEM_COLUMNS, detailMinRows: 1 }] }} />;
       case 'stock-change-history':
         return <ResourcePage title="库存变更历史" service="asset" endpoint="/stock-change-requests" pageKey="asset-stock-change-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'claims':
@@ -162,9 +270,9 @@ export default function AssetPage() {
       case 'claim-history':
         return <ResourcePage title="申领历史" service="asset" endpoint="/consumable-requests" pageKey="asset-claim-history" columns={[...REQUEST_COLUMNS, nameColWithDeactivatedFlag('applicantName', '申请人', 'applicantDeactivated')]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }, { key: 'applicantName', title: '发起人姓名', type: 'text' }]} />;
       case 'agent-claims':
-        return <ResourcePage title="代领申请" service="asset" endpoint="/agent-requests/mine" pageKey="asset-agent-claims" columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '代领人' }, { key: 'recipientCount', title: '受领人数' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领申请', endpoint: '/agent-requests', fields: [{ key: 'items', label: '物品明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }, { key: 'recipientIds', label: '受领人 ID（JSON 数组）', type: 'textarea', required: true, maxLength: 2000 }], transform: (values) => ({ ...values, items: parseJsonArray(values.items), recipientIds: parseJsonArray(values.recipientIds) }) }} />;
+        return <AgentClaims />;
       case 'agent-settlements':
-        return <ResourcePage title="代领整单结清" service="asset" endpoint="/agent-settlements/mine" pageKey="asset-agent-settlements" columns={[...REQUEST_COLUMNS, { key: 'applicationNo', title: '申请编号' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领整单结清', endpoint: '/agent-settlements', fields: [{ key: 'refRequestId', label: '代领申请 ID', type: 'number', required: true }, { key: 'items', label: '结清明细（JSON）', type: 'textarea', required: true, maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }], transform: (values) => ({ refRequestId: values.refRequestId, items: parseJsonArray(values.items) }) }} />;
+        return <ResourcePage title="代领整单结清" service="asset" endpoint="/agent-settlements/mine" pageKey="asset-agent-settlements" columns={[...REQUEST_COLUMNS, { key: 'applicationNo', title: '申请编号' }]} filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]} create={{ title: '提交代领整单结清', endpoint: '/agent-settlements', fields: [{ key: 'refRequestId', label: '代领申请', type: 'remote-select', remote: myAgentRequestsSource, required: true, width: 'wide' }, { key: 'items', label: '结清明细', type: 'detail-list', required: true, detailColumns: AGENT_SETTLEMENT_ITEM_COLUMNS, detailMinRows: 1, remoteContextFrom: 'refRequestId', resetWhenDependencyChanges: true }] }} />;
       case 'borrow':
         return <MyBorrow />;
       case 'agent-shared':
@@ -172,9 +280,9 @@ export default function AssetPage() {
       case 'borrow-history':
         return <ResourcePage title="借还历史" service="asset" endpoint="/borrow-records" pageKey="asset-borrow-history" columns={BORROW_HISTORY_COLUMNS} filterFields={[{ key: 'keyword', title: '物品/借用人关键字', type: 'text' }]} />;
       case 'disposals-pending':
-        return <ResourcePage title="待处置" service="asset" endpoint="/disposals?tab=PENDING" pageKey="asset-disposals" columns={DISPOSAL_PENDING_COLUMNS} create={{ title: '执行直接处置', endpoint: '/disposals', fields: [{ key: 'disposalType', label: '处置类型', type: 'select', required: true, options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }, { key: 'items', label: '个人借还明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"RETURN","qty":1}]' }, { key: 'agentRequestId', label: '代领申请 ID（仅整单结清）', type: 'number' }, { key: 'agentItems', label: '代领结清明细（JSON）', type: 'textarea', maxLength: 10000, placeholder: '[{"borrowRecordId":1,"method":"WRITE_OFF","writeOffType":"LOST","reason":"遗失","qty":1}]' }], transform: disposalPayload }} />;
+        return <ResourcePage title="待处置" service="asset" endpoint="/disposals?tab=PENDING" pageKey="asset-disposals" columns={DISPOSAL_PENDING_COLUMNS} create={{ title: '执行直接处置', endpoint: '/disposals', fields: [{ key: 'disposalType', label: '处置类型', type: 'select', required: true, options: DISPOSAL_TYPE_OPTIONS }, { key: 'items', label: '个人借还明细', type: 'detail-list', detailColumns: PERSONAL_DISPOSAL_ITEM_COLUMNS, detailMinRows: 1, visibleWhen: { field: 'disposalType', equals: ['RETURN', 'WRITE_OFF'] } }, { key: 'agentRequestId', label: '代领申请', type: 'remote-select', remote: pendingAgentDisposalRequestsSource, required: true, width: 'wide', visibleWhen: { field: 'disposalType', equals: 'AGENT_SETTLE' } }, { key: 'agentItems', label: '代领结清明细', type: 'detail-list', detailColumns: AGENT_DISPOSAL_ITEM_COLUMNS, detailMinRows: 1, remoteContextFrom: 'agentRequestId', resetWhenDependencyChanges: true, visibleWhen: { field: 'disposalType', equals: 'AGENT_SETTLE' } }], transform: disposalPayload }} />;
       case 'disposals-records':
-        return <ResourcePage title="处置记录" service="asset" endpoint="/disposals?tab=RECORDS" pageKey="asset-disposal-records" columns={DISPOSAL_RECORDS_COLUMNS} filterFields={[{ key: 'disposalType', title: '处置方式', type: 'enum', options: [{ label: '个人借还归还', value: 'RETURN' }, { label: '个人借还核销', value: 'WRITE_OFF' }, { label: '代领整单结清', value: 'AGENT_SETTLE' }] }]} />;
+        return <ResourcePage title="处置记录" service="asset" endpoint="/disposals?tab=RECORDS" pageKey="asset-disposal-records" columns={DISPOSAL_RECORDS_COLUMNS} filterFields={[{ key: 'disposalType', title: '处置方式', type: 'enum', options: DISPOSAL_TYPE_OPTIONS }]} />;
       case 'qr-codes':
         return <QrCodeManagement />;
       case 'approval':
@@ -192,7 +300,13 @@ export default function AssetPage() {
 function MyAssets() {
   const [searchParams] = useSearchParams();
   const scannedAssetId = searchParams.get('assetId');
-  const [detailId, setDetailId] = useState<number | null>(scannedAssetId ? Number(scannedAssetId) : null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  // 扫码直达：组件不卸载时再次扫码仅 query 变化，需监听 assetId 同步打开详情抽屉。
+  useEffect(() => {
+    if (scannedAssetId) {
+      setDetailId(Number(scannedAssetId));
+    }
+  }, [scannedAssetId]);
   return <>
     <DataTable title="我的资产" service="asset" endpoint="/assets/mine" pageKey="asset-my-assets" columns={ASSET_COLUMNS} filterFields={[{ key: 'scope', title: '范围', type: 'enum', options: [{ label: '负责', value: 'OWNED' }, { label: '使用', value: 'USED' }, { label: '全部', value: 'ALL' }] }]} onRowClick={(row) => setDetailId(Number(row.id))} />
     <AssetDetailDrawer assetId={detailId} onClose={() => setDetailId(null)} />
@@ -285,7 +399,13 @@ function FixedAssets() {
   const scannedAssetId = searchParams.get('assetId');
   const [version, setVersion] = useState(0);
   const [scheduleId, setScheduleId] = useState<number | null>(null);
-  const [detailId, setDetailId] = useState<number | null>(scannedAssetId ? Number(scannedAssetId) : null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  // 扫码直达：组件不卸载时再次扫码仅 query 变化，需监听 assetId 同步打开详情抽屉。
+  useEffect(() => {
+    if (scannedAssetId) {
+      setDetailId(Number(scannedAssetId));
+    }
+  }, [scannedAssetId]);
   const schedule = async (values: RecordValue) => {
     if (!scheduleId) return;
     try {
@@ -317,36 +437,36 @@ function FixedAssets() {
       filterFields={[
         { key: 'keyword', title: '关键字', type: 'text' },
         { key: 'usageStatus', title: '状态', type: 'enum', options: ASSET_USAGE_STATUS_OPTIONS },
-        { key: 'departmentId', title: '部门 ID', type: 'number' },
+        { key: 'departmentId', title: '所属部门', type: 'tree', remote: departmentTreeSource },
       ]}
       create={canMaintain ? {
         title: '新建固定资产',
         fields: [
-          { key: 'name', label: '资产名称', required: true, maxLength: 100 },
-          { key: 'categoryId', label: '分类 ID', type: 'number' },
-          { key: 'specModel', label: '规格型号', maxLength: 100 },
-          { key: 'amount', label: '金额', type: 'number', required: true },
-          { key: 'purchaseAt', label: '入库时间', type: 'date' },
-          { key: 'ownership', label: '资产归属', type: 'select', required: true, options: [{ label: '公司', value: 'COMPANY' }, { label: '合作方', value: 'PARTNER' }] },
-          { key: 'ownerName', label: '合作方名称', maxLength: 100 },
-          { key: 'departmentId', label: '所属部门 ID', type: 'number' },
-          { key: 'responsibleUserId', label: '责任人 ID', type: 'number' },
-          { key: 'currentUserId', label: '使用者 ID', type: 'number' },
+          { key: 'name', label: '资产名称', required: true, maxLength: 100, group: '基本信息' },
+          { key: 'categoryId', label: '分类', type: 'tree-select', remote: assetCategoryTreeSource, group: '基本信息' },
+          { key: 'specModel', label: '规格型号', maxLength: 100, group: '基本信息' },
+          { key: 'amount', label: '金额', type: 'number', required: true, width: 'narrow', group: '基本信息' },
+          { key: 'purchaseAt', label: '入库时间', type: 'date', group: '基本信息' },
+          { key: 'ownership', label: '资产归属', type: 'select', required: true, options: [{ label: '公司', value: 'COMPANY' }, { label: '合作方', value: 'PARTNER' }], width: 'narrow', group: '归属与责任人' },
+          { key: 'ownerName', label: '合作方名称', maxLength: 100, group: '归属与责任人' },
+          { key: 'departmentId', label: '所属部门', type: 'tree-select', remote: assetMaintainDepartmentsSource, group: '归属与责任人' },
+          { key: 'responsibleUserId', label: '责任人', type: 'remote-select', remote: assetMaintainEmployeesSource, dependsOn: 'departmentId', group: '归属与责任人' },
+          { key: 'currentUserId', label: '使用者', type: 'remote-select', remote: assetMaintainEmployeesSource, dependsOn: 'departmentId', group: '归属与责任人' },
           { key: 'remark', label: '备注', type: 'textarea', maxLength: 500 },
         ],
       } : undefined}
       edit={canMaintain ? {
         title: '编辑固定资产',
         fields: [
-          { key: 'name', label: '资产名称', required: true, maxLength: 100 },
-          { key: 'categoryId', label: '分类 ID', type: 'number' },
-          { key: 'specModel', label: '规格型号', maxLength: 100 },
-          { key: 'amount', label: '金额', type: 'number', required: true },
-          { key: 'purchaseAt', label: '入库时间', type: 'date' },
-          { key: 'ownership', label: '资产归属', type: 'select', required: true, options: [{ label: '公司', value: 'COMPANY' }, { label: '合作方', value: 'PARTNER' }] },
-          { key: 'ownerName', label: '合作方名称', maxLength: 100 },
-          { key: 'currentUserId', label: '使用者 ID', type: 'number' },
-          { key: 'usageStatus', label: '使用状态', type: 'select', required: true, options: [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }] },
+          { key: 'name', label: '资产名称', required: true, maxLength: 100, group: '基本信息' },
+          { key: 'categoryId', label: '分类', type: 'tree-select', remote: assetCategoryTreeSource, group: '基本信息' },
+          { key: 'specModel', label: '规格型号', maxLength: 100, group: '基本信息' },
+          { key: 'amount', label: '金额', type: 'number', required: true, width: 'narrow', group: '基本信息' },
+          { key: 'purchaseAt', label: '入库时间', type: 'date', group: '基本信息' },
+          { key: 'ownership', label: '资产归属', type: 'select', required: true, options: [{ label: '公司', value: 'COMPANY' }, { label: '合作方', value: 'PARTNER' }], width: 'narrow', group: '归属与责任人' },
+          { key: 'ownerName', label: '合作方名称', maxLength: 100, group: '归属与责任人' },
+          { key: 'currentUserId', label: '使用者', type: 'remote-select', remote: assetMaintainEmployeesSource, group: '归属与责任人' },
+          { key: 'usageStatus', label: '使用状态', type: 'select', required: true, options: [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }], width: 'narrow', group: '归属与责任人' },
           { key: 'remark', label: '备注', type: 'textarea', maxLength: 500 },
         ],
       } : undefined}
@@ -364,7 +484,7 @@ function FixedAssets() {
         </Space>
       ) : (row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>详情</Button>}
     />
-    <ResourceFormModal title="资产调度" open={scheduleId !== null} onCancel={() => setScheduleId(null)} onSubmit={schedule} fields={[{ key: 'toDepartmentId', label: '目标部门 ID', type: 'number', required: true }, { key: 'toUserId', label: '目标责任人 ID', type: 'number', required: true }, { key: 'remark', label: '调度备注', type: 'textarea', maxLength: 200 }]} />
+    <ResourceFormModal title="资产调度" open={scheduleId !== null} onCancel={() => setScheduleId(null)} onSubmit={schedule} fields={[{ key: 'toDepartmentId', label: '目标部门', type: 'tree-select', remote: assetMaintainDepartmentsSource, required: true }, { key: 'toUserId', label: '目标责任人', type: 'remote-select', remote: assetMaintainEmployeesSource, dependsOn: 'toDepartmentId', required: true }, { key: 'remark', label: '调度备注', type: 'textarea', maxLength: 200 }]} />
     <AssetDetailDrawer assetId={detailId} onClose={() => setDetailId(null)} />
   </>;
 }
@@ -373,7 +493,7 @@ function FixedAssets() {
 function InventoryItems() {
   const [detailId, setDetailId] = useState<number | null>(null);
   return <>
-    <DataTable title="库存条目" service="asset" endpoint="/inventory/items" pageKey="asset-inventory" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'warehouseName', title: '库位' }, { key: 'availableQty', title: '可用数量' }, { key: 'bookQty', title: '账面数量' }, { key: 'reservedQty', title: '占用数量' }, { key: 'lowStock', title: '低库存', render: (value: unknown) => <StatusTag value={value ? 'PENDING' : 'NORMAL'} /> }]} filterFields={[{ key: 'consumableId', title: '品种 ID', type: 'number' }, { key: 'warehouseId', title: '库位 ID', type: 'number' }]} onRowClick={(row) => setDetailId(Number(row.id))} />
+    <DataTable title="库存条目" service="asset" endpoint="/inventory/items" pageKey="asset-inventory" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'warehouseName', title: '库位' }, { key: 'availableQty', title: '可用数量' }, { key: 'bookQty', title: '账面数量' }, { key: 'reservedQty', title: '占用数量' }, { key: 'lowStock', title: '低库存', render: (value: unknown) => <StatusTag value={value ? 'PENDING' : 'NORMAL'} /> }]} filterFields={[{ key: 'consumableId', title: '品种', type: 'remote', remote: consumablesSource }, { key: 'warehouseId', title: '库位', type: 'tree', remote: warehouseTreeSource }]} onRowClick={(row) => setDetailId(Number(row.id))} />
     <InventoryItemDrawer itemId={detailId} onClose={() => setDetailId(null)} />
   </>;
 }
@@ -449,8 +569,8 @@ function InventoryBatches() {
   };
   const endpoint = itemId ? `/inventory/batches?inventoryItemId=${itemId}` : '/inventory/batches';
   return <>
-    <DataTable key={`batches-${version}`} title="库存批次" service="asset" endpoint={endpoint} pageKey="asset-inventory-batches" columns={[{ key: 'id', title: '批次 ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'spec', title: '规格' }, { key: 'warehouseName', title: '库位' }, { key: 'remainingQty', title: '剩余数量' }, { key: 'supplierName', title: '供应商' }, { key: 'unitPrice', title: '单价' }, { key: 'receivedAt', title: '入库时间' }]} filterFields={[{ key: 'inventoryItemId', title: '库存条目 ID', type: 'number' }, { key: 'consumableId', title: '品种 ID', type: 'number' }, { key: 'warehouseId', title: '库位 ID', type: 'number' }]} rowActions={(row) => <Button size="small" onClick={() => setBatchId(Number(row.id))}>纠正批次</Button>} />
-    <ResourceFormModal title="纠正库存批次" open={batchId !== null} onCancel={() => setBatchId(null)} onSubmit={correctBatch} fields={[{ key: 'reason', label: '纠正原因', type: 'textarea', required: true, maxLength: 500 }, { key: 'supplierId', label: '供应商 ID', type: 'number' }, { key: 'brandId', label: '品牌 ID', type: 'number' }, { key: 'unitPrice', label: '单价（元）', type: 'number' }, { key: 'spec', label: '规格', maxLength: 100 }, { key: 'warehouseId', label: '目标库位 ID', type: 'number' }, { key: 'remark', label: '批次备注', type: 'textarea', maxLength: 500 }]} />
+    <DataTable key={`batches-${version}`} title="库存批次" service="asset" endpoint={endpoint} pageKey="asset-inventory-batches" columns={[{ key: 'id', title: '批次 ID', fixed: 'left' }, { key: 'consumableName', title: '品种' }, { key: 'spec', title: '规格' }, { key: 'warehouseName', title: '库位' }, { key: 'remainingQty', title: '剩余数量' }, { key: 'supplierName', title: '供应商' }, { key: 'unitPrice', title: '单价' }, { key: 'receivedAt', title: '入库时间' }]} filterFields={[{ key: 'inventoryItemId', title: '库存条目', type: 'remote', remote: inventoryItemsSource }, { key: 'consumableId', title: '品种', type: 'remote', remote: consumablesSource }, { key: 'warehouseId', title: '库位', type: 'tree', remote: warehouseTreeSource }]} rowActions={(row) => <Button size="small" onClick={() => setBatchId(Number(row.id))}>纠正批次</Button>} />
+    <ResourceFormModal title="纠正库存批次" open={batchId !== null} onCancel={() => setBatchId(null)} onSubmit={correctBatch} fields={[{ key: 'reason', label: '纠正原因', type: 'textarea', required: true, maxLength: 500 }, { key: 'supplierId', label: '供应商', type: 'remote-select', remote: assetDictSource('SUPPLIER') }, { key: 'brandId', label: '品牌', type: 'remote-select', remote: assetDictSource('BRAND') }, { key: 'unitPrice', label: '单价（元）', type: 'number', width: 'narrow' }, { key: 'spec', label: '规格', maxLength: 100, width: 'wide' }, { key: 'warehouseId', label: '目标库位', type: 'tree-select', remote: warehouseTreeSource }, { key: 'remark', label: '批次备注', type: 'textarea', maxLength: 500 }]} />
   </>;
 }
 
@@ -470,7 +590,7 @@ function StockFlows() {
         { key: 'createdAt', title: '发生时间' },
       ]}
       filterFields={[
-        { key: 'consumableId', title: '品种 ID', type: 'number' },
+        { key: 'consumableId', title: '品种', type: 'remote', remote: consumablesSource },
         { key: 'flowType', title: '流水类型', type: 'enum', options: [{ label: '入库', value: 'STOCK_IN' }, { label: '领用', value: 'ISSUE' }, { label: '扣减', value: 'DEDUCTION' }, { label: '归还', value: 'RETURN' }, { label: '调出', value: 'TRANSFER_OUT' }, { label: '调入', value: 'TRANSFER_IN' }, { label: '纠正', value: 'CORRECTION' }] },
       ]}
       exportConfig={{ allEndpoint: '/inventory/stock-flows/export', filename: 'stock-flows.xlsx' }}
@@ -504,8 +624,8 @@ function RepairManagement() {
     }
   };
   return <>
-    <ResourcePage key={version} title="维修管理" service="asset" endpoint="/repair-orders" pageKey="asset-repairs" columns={[...COMMON_COLUMNS, { key: 'assetName', title: '资产' }, { key: 'status', title: '维修状态', render: (value: unknown) => <StatusTag value={value} /> }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待维修', value: 'PENDING' }, { label: '维修中', value: 'REPAIRING' }, { label: '已取消', value: 'CANCELLED' }, { label: '已完成', value: 'COMPLETED' }] }, { key: 'assetId', title: '资产 ID', type: 'number' }]} create={{ title: '登记维修', endpoint: '/repair-orders', fields: [{ key: 'assetId', label: '资产 ID', type: 'number', required: true }, { key: 'faultDescription', label: '故障/维修事项', type: 'textarea', required: true, maxLength: 1000 }] }} rowActions={(row) => <Space size="small">{row.status === 'PENDING' ? <><Popconfirm title="确认开始维修？" onConfirm={() => void run(Number(row.id), 'start')}><Button size="small">开始</Button></Popconfirm><Popconfirm title="确认取消维修登记？" onConfirm={() => void run(Number(row.id), 'cancel')}><Button size="small" danger>取消</Button></Popconfirm></> : null}{row.status === 'REPAIRING' ? <Button size="small" type="primary" onClick={() => setCompleteId(Number(row.id))}>完成维修</Button> : null}</Space>} />
-    <ResourceFormModal title="完成维修" open={completeId !== null} onCancel={() => setCompleteId(null)} onSubmit={complete} fields={[{ key: 'result', label: '维修结果', type: 'textarea', required: true, maxLength: 1000 }, { key: 'actualCost', label: '实际费用', type: 'number', required: true }, { key: 'postStatus', label: '恢复资产状态', type: 'select', required: true, options: [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }] }]} />
+    <ResourcePage key={version} title="维修管理" service="asset" endpoint="/repair-orders" pageKey="asset-repairs" columns={[...COMMON_COLUMNS, { key: 'assetName', title: '资产' }, { key: 'status', title: '维修状态', render: (value: unknown) => <StatusTag value={value} /> }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待维修', value: 'PENDING' }, { label: '维修中', value: 'REPAIRING' }, { label: '已取消', value: 'CANCELLED' }, { label: '已完成', value: 'COMPLETED' }] }, { key: 'assetId', title: '固定资产', type: 'remote', remote: assetsSource }]} create={{ title: '登记维修', endpoint: '/repair-orders', fields: [{ key: 'assetId', label: '固定资产', type: 'remote-select', remote: assetsSource, required: true, width: 'wide' }, { key: 'faultDescription', label: '故障/维修事项', type: 'textarea', required: true, maxLength: 1000 }] }} rowActions={(row) => <Space size="small">{row.status === 'PENDING' ? <><Popconfirm title="确认开始维修？" onConfirm={() => void run(Number(row.id), 'start')}><Button size="small">开始</Button></Popconfirm><Popconfirm title="确认取消维修登记？" onConfirm={() => void run(Number(row.id), 'cancel')}><Button size="small" danger>取消</Button></Popconfirm></> : null}{row.status === 'REPAIRING' ? <Button size="small" type="primary" onClick={() => setCompleteId(Number(row.id))}>完成维修</Button> : null}</Space>} />
+    <ResourceFormModal title="完成维修" open={completeId !== null} onCancel={() => setCompleteId(null)} onSubmit={complete} fields={[{ key: 'result', label: '维修结果', type: 'textarea', required: true, maxLength: 1000 }, { key: 'actualCost', label: '实际费用', type: 'number', required: true, width: 'narrow' }, { key: 'postStatus', label: '恢复资产状态', type: 'select', required: true, options: [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }], width: 'narrow' }]} />
   </>;
 }
 
@@ -539,8 +659,8 @@ function MyBorrow() {
   };
   return <>
     <DataTable key={version} title="我的借还" service="asset" endpoint="/my-borrow" pageKey="asset-my-borrow" columns={[{ key: 'id', title: '记录 ID', fixed: 'left' }, { key: 'consumableName', title: '资产/物品' }, { key: 'qty', title: '借出数量' }, { key: 'dueAt', title: '到期时间' }, { key: 'returnedQty', title: '已归还' }, { key: 'writtenOffQty', title: '已核销' }]} filterFields={[{ key: 'settlementStatus', title: '结清状态', type: 'enum', options: [{ label: '未结清', value: 'OPEN' }, { label: '已结清', value: 'SETTLED' }] }]} rowActions={(row) => { const settled = row.settlementStatus === 'SETTLED'; return <Space size="small"><Button size="small" disabled={settled} onClick={() => setReturnId(Number(row.id))}>归还</Button><Button size="small" danger disabled={settled} onClick={() => setWriteOffId(Number(row.id))}>核销</Button></Space>; }} />
-    <ResourceFormModal title="提交归还申请" open={returnId !== null} onCancel={() => setReturnId(null)} onSubmit={submitReturn} fields={[{ key: 'qty', label: '归还数量', type: 'number', required: true }, { key: 'reason', label: '归还备注', type: 'textarea', maxLength: 200 }]} />
-    <ResourceFormModal title="提交核销申请" open={writeOffId !== null} onCancel={() => setWriteOffId(null)} onSubmit={submitWriteOff} fields={[{ key: 'qty', label: '核销数量', type: 'number', required: true }, { key: 'writeOffType', label: '核销类型', type: 'select', required: true, options: [{ label: '遗失', value: 'LOST' }, { label: '损坏', value: 'DAMAGED' }] }, { key: 'reason', label: '核销原因', type: 'textarea', required: true, maxLength: 500 }]} />
+    <ResourceFormModal title="提交归还申请" open={returnId !== null} onCancel={() => setReturnId(null)} onSubmit={submitReturn} fields={[{ key: 'qty', label: '归还数量', type: 'number', required: true, width: 'narrow' }, { key: 'reason', label: '归还备注', type: 'textarea', maxLength: 200 }]} />
+    <ResourceFormModal title="提交核销申请" open={writeOffId !== null} onCancel={() => setWriteOffId(null)} onSubmit={submitWriteOff} fields={[{ key: 'qty', label: '核销数量', type: 'number', required: true, width: 'narrow' }, { key: 'writeOffType', label: '核销类型', type: 'select', required: true, options: [{ label: '遗失', value: 'LOST' }, { label: '损坏', value: 'DAMAGED' }], width: 'narrow' }, { key: 'reason', label: '核销原因', type: 'textarea', required: true, maxLength: 500 }]} />
   </>;
 }
 
@@ -634,7 +754,16 @@ function QrCodeManagement() {
         </>
       )}
     </Space>
-    <ResourceFormModal title="生成二维码" open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={async (values) => { await http.post('/qr-codes', values, { service: 'asset' }); feedback.success('二维码已生成'); setCreateOpen(false); setVersion((value) => value + 1); }} fields={[{ key: 'targetType', label: '目标类型', type: 'select', required: true, options: [{ label: '固定资产', value: 'ASSET' }, { label: '库存条目', value: 'INVENTORY_ITEM' }, { label: '申领目录', value: 'SCAN_CATALOG' }] }, { key: 'targetId', label: '目标 ID', type: 'number' }]} submitText="生成" />
+    <QrCreateModal
+      open={createOpen}
+      onCancel={() => setCreateOpen(false)}
+      onSubmit={async (values) => {
+        await http.post('/qr-codes', values, { service: 'asset' });
+        feedback.success('二维码已生成');
+        setCreateOpen(false);
+        setVersion((value) => value + 1);
+      }}
+    />
     <Modal title="二维码" open={preview !== null} onCancel={() => setPreview(null)} footer={<Button onClick={() => setPreview(null)}>关闭</Button>}>
       {preview && typeof preview.publicId === 'string' ? <Space direction="vertical" size="middle" style={{ width: '100%', alignItems: 'center' }}>
         <Typography.Text strong>{String(preview.targetName ?? '—')}</Typography.Text>
@@ -643,6 +772,70 @@ function QrCodeManagement() {
       </Space> : null}
     </Modal>
   </>;
+}
+
+/**
+ * 生成二维码表单：按目标类型切换资产/库存选择器；申领目录无需目标。
+ */
+function QrCreateModal({
+  open,
+  onCancel,
+  onSubmit,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onSubmit: (values: RecordValue) => Promise<void>;
+}) {
+  const [form] = Form.useForm<RecordValue>();
+  const [submitting, setSubmitting] = useState(false);
+  const targetType = Form.useWatch('targetType', form) as string | undefined;
+  useEffect(() => {
+    if (open) {
+      form.setFieldsValue({ targetType: 'ASSET', targetId: undefined });
+    } else {
+      form.resetFields();
+    }
+  }, [form, open]);
+  return (
+    <Modal title="生成二维码" open={open} onCancel={onCancel} footer={null} destroyOnHidden width={420}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(values) => {
+          setSubmitting(true);
+          void onSubmit({
+            targetType: values.targetType,
+            ...(values.targetType === 'SCAN_CATALOG' ? {} : { targetId: values.targetId }),
+          }).finally(() => setSubmitting(false));
+        }}
+      >
+        <Form.Item name="targetType" label="目标类型" rules={[{ required: true, message: '请选择目标类型' }]}>
+          <Select
+            options={[
+              { label: '固定资产', value: 'ASSET' },
+              { label: '库存条目', value: 'INVENTORY_ITEM' },
+              { label: '申领目录', value: 'SCAN_CATALOG' },
+            ]}
+            onChange={() => form.setFieldValue('targetId', undefined)}
+          />
+        </Form.Item>
+        {targetType === 'ASSET' ? (
+          <Form.Item name="targetId" label="目标资产" rules={[{ required: true, message: '请选择目标资产' }]}>
+            <RemoteSelect source={assetsSource} placeholder="搜索资产名称" />
+          </Form.Item>
+        ) : null}
+        {targetType === 'INVENTORY_ITEM' ? (
+          <Form.Item name="targetId" label="目标库存条目" rules={[{ required: true, message: '请选择库存条目' }]}>
+            <RemoteSelect source={inventoryItemsSource} placeholder="搜索品种或库位" />
+          </Form.Item>
+        ) : null}
+        <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button onClick={onCancel}>取消</Button>
+          <Button type="primary" htmlType="submit" loading={submitting}>生成</Button>
+        </Space>
+      </Form>
+    </Modal>
+  );
 }
 
 /** 打印二维码：从 canvas 提取图片并打开打印窗口（asset PRD §11 重新展示和打印同一张有效二维码）。 */
@@ -662,12 +855,36 @@ function PrintQrButton({ value, label }: { value: string; label: string }) {
  * 将扫码 URL 的库存条目参数转换为申领表单默认值。
  *
  * @param rawInventoryItemId URL 查询参数中的库存条目 ID
- * @returns 合法 ID 的申领明细默认值；非法值返回 undefined
+ * @returns 合法条目的申领明细默认值（对象数组）；非法值返回 undefined
  */
-export function buildScannedClaimInitialValues(rawInventoryItemId: string | null): Record<string, string> | undefined {
+export function buildScannedClaimInitialValues(rawInventoryItemId: string | null): Record<string, unknown> | undefined {
   const inventoryItemId = Number(rawInventoryItemId);
   if (!Number.isSafeInteger(inventoryItemId) || inventoryItemId <= 0) return undefined;
-  return { items: JSON.stringify([{ inventoryItemId, qty: 1, purpose: '' }], null, 2) };
+  return { items: [{ inventoryItemId, qty: 1, purpose: '' }] };
+}
+
+/** 代领申请：受领人排除本人。 */
+function AgentClaims() {
+  const { user } = useSession();
+  const excludeSelf = user?.id != null ? [user.id] : undefined;
+  return (
+    <ResourcePage
+      title="代领申请"
+      service="asset"
+      endpoint="/agent-requests/mine"
+      pageKey="asset-agent-claims"
+      columns={[...REQUEST_COLUMNS, { key: 'applicantName', title: '代领人' }, { key: 'recipientCount', title: '受领人数' }]}
+      filterFields={[{ key: 'status', title: '审批状态', type: 'enum', options: APPROVAL_STATUS_OPTIONS }]}
+      create={{
+        title: '提交代领申请',
+        endpoint: '/agent-requests',
+        fields: [
+          { key: 'items', label: '物品明细', type: 'detail-list', required: true, detailColumns: AGENT_CLAIM_ITEM_COLUMNS, detailMinRows: 1 },
+          { key: 'recipientIds', label: '受领人', type: 'remote-multi-select', remote: agentRecipientsSource, required: true, excludeValues: excludeSelf },
+        ],
+      }}
+    />
+  );
 }
 
 /** 扫码进入的消耗品申领页：库存二维码会预填对应库存条目，避免目标在跳转时丢失。 */
@@ -690,9 +907,8 @@ function ClaimRequests() {
     create={{
       title: '提交申领',
       endpoint: '/consumable-requests',
-      fields: [{ key: 'items', label: '申领明细（JSON）', type: 'textarea', required: true, maxLength: 10000 }],
+      fields: [{ key: 'items', label: '申领明细', type: 'detail-list', required: true, detailColumns: CLAIM_ITEM_COLUMNS, detailMinRows: 1 }],
       initialValues,
-      transform: (values) => ({ ...values, items: parseJsonArray(values.items) }),
     }}
   />;
 }
@@ -716,22 +932,10 @@ function AssetConfig() {
         }
         throw new Error('未知的资产设置键');
       }} /> },
-      { key: 'categories', label: '资产分类', children: <ResourcePage title="资产分类" service="asset" endpoint="/categories" pageKey="asset-categories" columns={COMMON_COLUMNS} create={{ title: '新建分类', endpoint: '/categories', fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'parentId', label: '父分类 ID', type: 'number', required: true }] }} edit={{ title: '编辑资产分类', endpoint: (id) => `/categories/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/categories/batch', bodyKey: 'ids', previewEndpoint: '/categories/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `现存资产 ${String(item.assetCount ?? 0)} 个；消耗品品种 ${String(item.consumableCount ?? 0)} 个` }) }} /> },
-      { key: 'dicts', label: '业务字典', children: <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={[...COMMON_COLUMNS, { key: 'dictType', title: '类型' }]} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids', previewEndpoint: '/dict-items/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `业务引用 ${String(item.referencedCount ?? 0)} 处` }) }} /> },
+      { key: 'categories', label: '资产分类', children: <ResourcePage title="资产分类" service="asset" endpoint="/categories" pageKey="asset-categories" columns={COMMON_COLUMNS} create={{ title: '新建分类', endpoint: '/categories', fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'parentId', label: '父分类', type: 'tree-select', remote: assetCategoryTreeSource, required: true }] }} edit={{ title: '编辑资产分类', endpoint: (id) => `/categories/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/categories/batch', bodyKey: 'ids', previewEndpoint: '/categories/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `现存资产 ${String(item.assetCount ?? 0)} 个；消耗品品种 ${String(item.consumableCount ?? 0)} 个` }) }} /> },
+      { key: 'dicts', label: '业务字典', children: <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={[...COMMON_COLUMNS, { key: 'dictType', title: '类型' }]} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids', previewEndpoint: '/dict-items/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `业务引用 ${String(item.referencedCount ?? 0)} 处` }) }} /> },
     ]} />
   </Card>;
-}
-
-function parseJsonArray(value: unknown): unknown[] {
-  if (value === undefined || value === null || value === '') return [];
-  if (typeof value !== 'string') throw new Error('明细必须是 JSON 数组');
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) throw new Error('明细必须是 JSON 数组');
-    return parsed;
-  } catch {
-    throw new Error('明细 JSON 格式不正确');
-  }
 }
 
 /** 组装注销借还直接处置请求；每次点击生成新幂等键，网络重试由请求层调用方复用。 */
@@ -740,9 +944,12 @@ function disposalPayload(values: RecordValue): RecordValue {
   const payload: RecordValue = { disposalType, idempotencyKey: crypto.randomUUID() };
   if (disposalType === 'AGENT_SETTLE') {
     payload.agentRequestId = values.agentRequestId;
-    payload.agentItems = parseJsonArray(values.agentItems);
-  } else {
-    payload.items = parseJsonArray(values.items);
+    if (Array.isArray(values.agentItems)) payload.agentItems = values.agentItems;
+  } else if (Array.isArray(values.items)) {
+    payload.items = values.items.map((item) => ({
+      ...(item as RecordValue),
+      method: disposalType,
+    }));
   }
   return payload;
 }

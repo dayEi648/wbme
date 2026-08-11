@@ -410,11 +410,11 @@ export class AssetApprovalService {
   }
 
   /**
-   * 详情；范围外/不存在 → 404。
+   * 详情 + 申请对象明细；范围外/不存在 → 404。
    *
    * @param userId 当前用户
    * @param id 审批头 id
-   * @returns 详情
+   * @returns 详情（detail 为按申请类型的申请对象列表，含名称快照；主 PRD §3.2）
    */
   async getDetail(userId: number, id: number): Promise<{
     request: AssetApprovalListItem & {
@@ -424,6 +424,7 @@ export class AssetApprovalService {
       cancelledAt: Date | null;
       remark: string | null;
     };
+    detail: unknown;
     actions: Array<{
       id: number;
       action: string;
@@ -436,7 +437,15 @@ export class AssetApprovalService {
   }> {
     const head = await this.prisma.client.approvalRequest.findUnique({
       where: { id },
-      include: { actions: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        actions: { orderBy: { createdAt: 'asc' } },
+        stockInItems: { orderBy: { id: 'asc' } },
+        stockChangeItems: { orderBy: { id: 'asc' } },
+        consumableRequestItems: { orderBy: { id: 'asc' } },
+        agentRecipients: { orderBy: { id: 'asc' } },
+        borrowActionItems: { orderBy: { id: 'asc' }, include: { borrowRecord: true } },
+        agentSettlementItems: { orderBy: { id: 'asc' }, include: { borrowRecord: true } },
+      },
     });
     if (!head) {
       throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
@@ -453,6 +462,7 @@ export class AssetApprovalService {
         cancelledAt: head.cancelledAt,
         remark: head.remark,
       },
+      detail: resolveAssetDetail(head),
       actions: head.actions.map((action) => ({
         id: action.id,
         action: action.action,
@@ -894,5 +904,47 @@ export class AssetApprovalService {
       opinion: row.opinion,
       refRequestId: row.refRequestId,
     };
+  }
+}
+
+/** 详情查询加载的明细关系（与 getDetail include 一致） */
+interface ApprovalHeadWithDetails {
+  requestType: string;
+  stockInItems: unknown[];
+  stockChangeItems: unknown[];
+  consumableRequestItems: unknown[];
+  agentRecipients: unknown[];
+  borrowActionItems: unknown[];
+  agentSettlementItems: unknown[];
+}
+
+/**
+ * 申请对象明细（主 PRD §3.2 审批详情；名称快照而非裸 ID）。
+ *
+ * - STOCK_IN → 入库明细；STOCK_CHANGE → 库存变更明细；
+ * - CONSUMABLE_REQUEST → 申领明细；AGENT_REQUEST → 申领明细 + 受领人名单；
+ * - RETURN / WRITE_OFF → 借还明细（含借还记录快照）；AGENT_SETTLEMENT → 代领结清明细。
+ *
+ * @param head 含明细关系的审批头
+ * @returns 按申请类型的申请对象结构
+ */
+function resolveAssetDetail(head: ApprovalHeadWithDetails): unknown {
+  switch (head.requestType) {
+    case 'STOCK_IN':
+      return head.stockInItems;
+    case 'STOCK_CHANGE':
+      return head.stockChangeItems;
+    case 'CONSUMABLE_REQUEST':
+      return head.consumableRequestItems;
+    case 'AGENT_REQUEST':
+      // 代领申请对象 = 共享申领清单 + 受领人名单
+      return { items: head.consumableRequestItems, recipients: head.agentRecipients };
+    case 'RETURN':
+    case 'WRITE_OFF':
+      return head.borrowActionItems;
+    case 'AGENT_SETTLEMENT':
+      return head.agentSettlementItems;
+    default:
+      return null;
   }
 }

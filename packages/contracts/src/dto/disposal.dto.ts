@@ -127,6 +127,13 @@ export class DisposalQueryDto extends PaginationQueryDto {
   @IsIn(['PERSONAL', 'AGENT'])
   recordType?: 'PERSONAL' | 'AGENT';
 
+  @ApiProperty({ description: '代领申请 id（仅待处置 AGENT 选择器按清单级联时使用）', required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  agentRequestId?: number;
+
   @ApiProperty({ description: '处理方式', required: false, enum: ['RETURN', 'WRITE_OFF', 'AGENT_SETTLE'] })
   @IsOptional()
   @IsIn(['RETURN', 'WRITE_OFF', 'AGENT_SETTLE'])

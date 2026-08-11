@@ -121,6 +121,16 @@
   「历史记录」视图；待审批项通过 `POST /approval-requests/{id}/cancel` 由申请人/代交人取消
   （幂等键重试返回原结果）。
 - 审批详情返回 `request.remark`（入库/库存变更申请提交时填写的整单备注）。
+- 审批详情 `GET /approval-requests/{id}` 返回 `detail` 申请对象列表（名称快照而非裸 ID；主 PRD §3.2）：
+
+  | requestType | detail 结构 |
+  | --- | --- |
+  | `STOCK_IN` | 入库明细数组（consumableName/spec/warehouseName/qty/unitPrice/supplierName/brandName/receivedAt） |
+  | `STOCK_CHANGE` | 库存变更明细数组（consumableName/spec/warehouseName/qty/changeTypeName/reason/changedAt） |
+  | `CONSUMABLE_REQUEST` | 申领明细数组（consumableName/spec/warehouseName/qty/purpose） |
+  | `AGENT_REQUEST` | `{ items: 申领明细数组, recipients: 受领人名单（userId/userName） }` |
+  | `RETURN` / `WRITE_OFF` | 借还明细数组（qty/writeOffType/reason + `borrowRecord` 借还记录快照：consumableName/spec/warehouseName/userName 等） |
+  | `AGENT_SETTLEMENT` | 代领结清明细数组（qty/method/writeOffType/reason + `borrowRecord` 快照） |
 - 「注销员工借还处置」非审批类型（`GET/POST /disposals`），见 asset.md，不在本中心待办
 
 ### 内部接口

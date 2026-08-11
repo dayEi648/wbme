@@ -145,6 +145,10 @@ export class DisposalService {
       query.recordType === undefined
         ? Prisma.empty
         : Prisma.sql`AND br.record_type = ${query.recordType}`;
+    const agentRequestSql =
+      query.agentRequestId === undefined
+        ? Prisma.empty
+        : Prisma.sql`AND br.agent_request_id = ${query.agentRequestId}`;
     const whereSql = Prisma.sql`(br.qty - br.returned_qty - br.written_off_qty) > 0
       AND (
         (br.record_type = 'PERSONAL' AND ua.status = 'DEACTIVATED')
@@ -153,7 +157,7 @@ export class DisposalService {
           INNER JOIN backstage.user_accounts ua2 ON ua2.user_id = ar.applicant_id
           WHERE ar.id = br.agent_request_id AND ua2.status = 'DEACTIVATED'
         ))
-      ) ${scopeSql} ${recordTypeSql}`;
+      ) ${scopeSql} ${recordTypeSql} ${agentRequestSql}`;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [totalRow, rows] = await Promise.all([

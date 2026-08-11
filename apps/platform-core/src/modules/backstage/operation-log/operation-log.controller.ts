@@ -4,7 +4,7 @@ import { OPERATION_LOG_VIEW_FUNCTION_CODE, PaginationQueryDto } from '@wbme/cont
 import { CurrentUser, EXPORT_TIMEOUT_MS, RateLimit, RateLimitGuard, RequestTimeout } from '@wbme/server';
 import type { Response } from 'express';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
 import { OperationLogService } from './operation-log.service';
 
@@ -27,6 +27,13 @@ class OperationLogQueryDto extends PaginationQueryDto {
   @Type(() => Number)
   @IsInt()
   operatorId?: number;
+
+  @ApiProperty({ description: '部门 id（含下级部门，按操作者操作时部门快照过滤）', required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  departmentId?: number;
 
   @ApiProperty({ description: '动作类型', required: false, enum: ['CREATE', 'UPDATE', 'DELETE', 'EXPORT'] })
   @IsOptional()
@@ -61,6 +68,7 @@ export class OperationLogController {
       system: query.system,
       feature: query.feature,
       operatorId: query.operatorId,
+      departmentId: query.departmentId,
       actionType: query.actionType,
       from: query.from,
       to: query.to,
@@ -69,6 +77,17 @@ export class OperationLogController {
       page: query.page,
       pageSize: query.pageSize,
     });
+  }
+
+  /**
+   * 部门筛选树选项（主 PRD §3.3 筛选清单「部门」）。
+   *
+   * 经 hr 只读视图读取，hr 容器停止不影响既有日志查询页加载选项；
+   * DEPARTMENT 档仅返回其部门闭包及祖先链（保证树可组装）。
+   */
+  @Get('department-options')
+  departmentOptions(): Promise<unknown> {
+    return this.operationLog.departmentOptions();
   }
 
   /** 导出操作日志（xlsx 流） */
@@ -85,6 +104,7 @@ export class OperationLogController {
       system: query.system,
       feature: query.feature,
       operatorId: query.operatorId,
+      departmentId: query.departmentId,
       actionType: query.actionType,
       from: query.from,
       to: query.to,

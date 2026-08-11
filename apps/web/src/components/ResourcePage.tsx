@@ -222,7 +222,7 @@ export function ResourcePage({
         columns={columns}
         filterFields={filterFields}
         exportConfig={exportConfig}
-        actions={<>{create ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建</Button> : null}{actions}</>}
+        actions={<>{create ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>{create.title}</Button> : null}{actions}</>}
         onRowClick={setDetailRow}
         onRowsLoaded={setRows}
         rowActions={edit || batchDelete || rowActions ? renderRowActions : undefined}
@@ -234,7 +234,7 @@ export function ResourcePage({
           onExecute: requestDeletePreview,
         } : undefined}
       />
-      {create ? <ResourceFormModal title={`新建${title}`} open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={submitCreate} fields={create.fields} initialValues={create.initialValues} /> : null}
+      {create ? <ResourceFormModal title={create.title} open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={submitCreate} fields={create.fields} initialValues={create.initialValues} /> : null}
       {edit ? <ResourceFormModal title={edit.title} open={editingRow !== null} onCancel={() => setEditingRow(null)} onSubmit={submitEdit} fields={edit.fields} initialValues={editingRow ?? {}} /> : null}
       <Modal title={`${title}详情`} open={detailRow !== null} onCancel={() => setDetailRow(null)} footer={<Button onClick={() => setDetailRow(null)}>关闭</Button>} width={720}>
         <Descriptions bordered column={1} items={detailItems} />

@@ -15,7 +15,6 @@
 | --- | --- | --- |
 | `PROJECT_KEY_CONFLICT` | 409 | 项目业务键（规范化名称 + 年度）冲突，含软删除占键（进入已删除视图恢复或改名） |
 | `DATA_REVISION_STALE` | 409 | 项目 dataRevision 前置条件失败（Excel 覆盖防预览后变化） |
-| `DICT_REFERENCED` | 409 | 字典项被历史项目引用，批量删除整批拒绝（可停用后新建替代项） |
 | `DICT_SEMANTIC_LOCKED` | 409 | 项目进度金额语义被引用后不可修改（停用并新建选项） |
 | `UNCLASSIFIED_NAME_CONFLICT` | 400 | 业务分类不得使用系统虚拟分组保留名“未分类” |
 | `CELL_FIELD_NOT_ALLOWED` | 400 | 单元格即时保存提交了多个业务字段或未注册字段 |
@@ -44,10 +43,10 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/projects` | 项目列表（名称/甲方/年度/地区/业务分类/进度筛选 + 分页；`view=deleted` 查已删除视图，仅供批量恢复；行含三类明细与自动字段） |
+| `GET` | `/projects` | 项目列表（名称/甲方/年度/地区/业务分类/进度筛选 + 分页；`view=deleted` 查已删除视图，仅供批量恢复；行 = 项目字段与自动计算字段展平的扁平结构，供列表直接渲染；三类明细不进列表） |
 | `POST` | `/projects` | 新建项目（幂等；字典引用保存 ID+名称快照；金额 ≥ 0 两位小数；`PROJECT_KEY_CONFLICT` 冲突） |
 | `GET` | `/projects/{id}` | 详情（完整合同资料 + 三类明细 + 自动字段与利润数据入口；已删除 404） |
-| `PUT` | `/projects/{id}` | 编辑（名称/年度允许随时修改，保存时校验新业务键；未提交 `subcontractors` 保留原值，显式 `[]` 清空；提交前后无实际差异不产生项目操作记录） |
+| `PUT` | `/projects/{id}` | 编辑（名称/年度允许随时修改，保存时校验新业务键；未提交 `subcontractors`/`completenessDocs` 保留原值，显式 `[]` 清空；提交前后无实际差异不产生项目操作记录） |
 | `PUT` | `/projects/deleted/restore` | 已删除项目批量恢复（幂等；1～100 个；全有或全无；保留原 ID/业务键/数据与操作历史；任一不存在或未删除整批回滚并返回失败明细） |
 | `DELETE` | `/projects/batch` | 批量软删除（幂等；全有或全无；任一不存在或已删除整批回滚并返回失败明细；已删除项目不进入正常列表/筛选/统计/导出） |
 
@@ -69,7 +68,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/profit/projects` | 分析列表（筛选分页 + 每行自动字段：累计开票/收款、剩余未开票/未收款、累计分包付款、暂定保通权益、毛利率） |
+| `GET` | `/profit/projects` | 分析列表（名称/甲方/年度/地区/业务分类/进度筛选 + 分页；行 = 项目字段与自动计算字段展平的扁平结构，自动字段键名：`totalInvoiced` 累计开票、`totalReceived` 累计收款、`remainingUninvoiced` 剩余未开票、`remainingUnreceived` 剩余未收款、`totalSubcontractPaid` 累计分包付款、`equity` 暂定保通权益、`grossMargin` 毛利率） |
 | `GET` | `/profit/totals` | 总计汇总（当前筛选范围全部项目，不受当前页分页影响；毛利率按汇总后再除，收款为零 null） |
 | `PUT` | `/profit/cells` | 单元格即时保存（一次一个白名单字段 + 幂等键；只写目标字段——不同字段并发互不覆盖、同字段以最后提交为准；响应返回重算自动字段与 `dataRevision`，修订号仅用于响应排序不作保存前置；无实际差异不产生操作记录） |
 
@@ -132,7 +131,8 @@
 | `GET` | `/finance-dict-items` | 字典列表（dictType/status 筛选 + 分页；sort/id 升序） |
 | `POST` | `/finance-dict-items` | 新增字典项（幂等；同类型同名唯一；PROGRESS 必填金额语义；业务分类不得叫“未分类”） |
 | `PUT` | `/finance-dict-items/{id}` | 更新字典项（名称/语义/排序/启停；PROGRESS 语义被引用后不可修改 `DICT_SEMANTIC_LOCKED`） |
-| `DELETE` | `/finance-dict-items/batch` | 批量硬删除（幂等；任一被项目引用整批拒绝 `DICT_REFERENCED`；停用项历史项目仍按快照展示） |
+| `GET` | `/finance-dict-items/delete-preview?ids=` | 删除前引用预览（主 PRD §2.6；逐目标返回被工程合同的引用数——地区/进度/业务分类按 id 列、资料齐全度按 `completeness_docs` JSONB 数组统计；引用不阻断删除） |
+| `DELETE` | `/finance-dict-items/batch` | 批量硬删除（幂等；主 PRD §2.6 确认式删除：前端展示引用明细并确认后物理删除，引用不阻断；停用项/已删项历史项目仍按删除前名称快照展示） |
 | `GET` | `/finance-settings` | 财务配置读取（F-7；MVP 无固定运行参数，返回空列表，机制保留） |
 | `PUT` | `/finance-settings` | 更新财务配置（只接受已注册键，当前为空集，任意键拒绝） |
 

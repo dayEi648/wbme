@@ -21,14 +21,13 @@
             "type": "number"
           },
           "name": {
-            "description": "字典项名称快照",
+            "description": "字典项名称快照（可选；服务端落库时以字典表名称为准）",
             "maxLength": 100,
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "name"
+          "id"
         ],
         "type": "object"
       },
@@ -54,7 +53,6 @@
                   "BACKUP_UNVERIFIED",
                   "BATCH_CORRECTION_FORBIDDEN",
                   "BORROW_ALREADY_SETTLED",
-                  "CATEGORY_REFERENCED",
                   "CELL_FIELD_NOT_ALLOWED",
                   "CONFLICT",
                   "CONSUMABLE_DISABLED",
@@ -62,7 +60,6 @@
                   "DATA_REVISION_STALE",
                   "DEPARTMENT_HAS_CHILDREN",
                   "DEPENDENCY_UNAVAILABLE",
-                  "DICT_REFERENCED",
                   "DICT_SEMANTIC_LOCKED",
                   "DINGTALK_ALREADY_BOUND",
                   "DINGTALK_CONFIG_MISSING",
@@ -853,6 +850,29 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dict"
+        ]
+      }
+    },
+    "/api/v1/finance-dict-items/delete-preview": {
+      "get": {
+        "operationId": "DictController_deletePreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""

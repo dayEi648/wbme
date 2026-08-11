@@ -28,6 +28,11 @@ export {
 } from './security-log';
 
 export {
+  recordInternalTokenFailure,
+  type InternalTokenRejection,
+} from './internal-token-log';
+
+export {
   formatOperationSummary,
   type OperationActionType,
   type OperationSummaryInput,

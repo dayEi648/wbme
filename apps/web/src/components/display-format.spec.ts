@@ -11,6 +11,11 @@ describe('展示格式化', () => {
     expect(formatMoney('12345678901234567890.50')).toBe('12,345,678,901,234,567,890.50');
   });
 
+  it('布尔值以中文是否展示', () => {
+    expect(formatDisplayValue(true)).toBe('是');
+    expect(formatDisplayValue(false)).toBe('否');
+  });
+
   it('详情嵌套对象使用中文字段名并格式化内部值', () => {
     expect(formatDetailValue({ updatedAt: '2026-08-10T01:23:00.000Z', contractAmount: '10000.00' })).toEqual({
       更新时间: '2026-08-10 09:23',

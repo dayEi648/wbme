@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
+import { BusinessException, frameworkErrors, OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
 import { buildTableSqlQuery, getGrantedFunction, getRequestContext, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
@@ -29,6 +29,8 @@ export interface OperationLogQuery {
   system?: string;
   feature?: string;
   operatorId?: number;
+  /** 部门筛选（含下级部门，按操作者操作时部门快照过滤，主 PRD §3.3） */
+  departmentId?: number;
   actionType?: string;
   from?: Date;
   to?: Date;
@@ -36,6 +38,12 @@ export interface OperationLogQuery {
   sorts?: string;
   page: number;
   pageSize: number;
+}
+
+/** 结构化筛选中剥离出来的部门条件（operator_departments 快照闭包过滤，非视图列） */
+interface DepartmentFilterCondition {
+  operator: string;
+  value: string;
 }
 
 interface OperationLogRow {
@@ -78,8 +86,8 @@ export class OperationLogService {
     data: OperationLogListItem[];
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
-    const { whereSql, params } = await this.buildWhereClause(query, false);
-    const tableQuery = buildTableSqlQuery(query, OPERATION_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const { whereSql, params, filters } = await this.buildWhereClause(query, false);
+    const tableQuery = buildTableSqlQuery({ ...query, filters }, OPERATION_LOG_TABLE_FIELDS, { parameterOffset: params.length });
     const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
     const effectiveParams = [...params, ...tableQuery.params];
     const offset = (query.page - 1) * query.pageSize;
@@ -138,8 +146,8 @@ export class OperationLogService {
   async export(userId: number, query: Omit<OperationLogQuery, 'page' | 'pageSize'>, res: Response): Promise<void> {
     const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
     const exportQuery = { ...query, page: 1, pageSize: 1 };
-    const { whereSql, params } = await this.buildWhereClause(exportQuery, false);
-    const tableQuery = buildTableSqlQuery(exportQuery, OPERATION_LOG_TABLE_FIELDS, { parameterOffset: params.length });
+    const { whereSql, params, filters } = await this.buildWhereClause(exportQuery, false);
+    const tableQuery = buildTableSqlQuery({ ...exportQuery, filters }, OPERATION_LOG_TABLE_FIELDS, { parameterOffset: params.length });
     const effectiveWhereSql = appendWhereClause(whereSql, tableQuery.whereSql);
     const effectiveParams = [...params, ...tableQuery.params];
     await runExport<OperationLogRow>({
@@ -202,7 +210,7 @@ export class OperationLogService {
   private async buildWhereClause(
     query: OperationLogQuery,
     mineOnly: boolean,
-  ): Promise<{ whereSql: string; params: unknown[] }> {
+  ): Promise<{ whereSql: string; params: unknown[]; filters?: string }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     const add = (sql: string, value: unknown) => {
@@ -227,6 +235,14 @@ export class OperationLogService {
     if (query.to) {
       add('created_at <= ?', query.to);
     }
+    // departmentId 非视图列：从具名参数与结构化筛选负载中汇集后统一按部门快照闭包过滤
+    const { departmentConditions, filters } = extractDepartmentConditions(query.filters);
+    if (query.departmentId !== undefined) {
+      departmentConditions.push({ operator: 'EQUALS', value: String(query.departmentId) });
+    }
+    for (const condition of departmentConditions) {
+      await this.addDepartmentCondition(condition, conditions, params);
+    }
     if (!mineOnly) {
       const scopeFilter = await this.buildDataScopeFilter(params);
       if (scopeFilter) {
@@ -234,7 +250,117 @@ export class OperationLogService {
       }
     }
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    return { whereSql, params };
+    return { whereSql, params, filters };
+  }
+
+  /**
+   * 部门筛选（主 PRD §3.3）：所选部门经 hr.department_closure 展开为含全部下级的闭包，
+   * 与日志 operator_departments JSON 快照求交集——与 DEPARTMENT 数据范围同一口径。
+   *
+   * @param condition 部门条件（仅支持 EQUALS/NOT_EQUALS）
+   * @param conditions 累积的 WHERE 条件
+   * @param params 累积的参数化值
+   * @throws BusinessException 操作符或部门值不合法时抛出校验错误
+   */
+  private async addDepartmentCondition(
+    condition: DepartmentFilterCondition,
+    conditions: string[],
+    params: unknown[],
+  ): Promise<void> {
+    if (condition.operator !== 'EQUALS' && condition.operator !== 'NOT_EQUALS') {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+        fields: [{ field: 'filters', reason: `字段 departmentId 不支持 ${condition.operator} 操作符` }],
+      });
+    }
+    if (!/^\d+$/.test(condition.value)) {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+        fields: [{ field: 'filters', reason: '部门筛选值必须为正整数' }],
+      });
+    }
+    const rows = await this.prisma.client.$queryRaw<Array<{ descendant_id: number }>>`
+      SELECT descendant_id
+      FROM hr.department_closure
+      WHERE ancestor_id = ${Number(condition.value)}
+    `;
+    const closureIds = rows.map((row) => row.descendant_id);
+    if (closureIds.length === 0) {
+      // 部门不存在（已物理删除）：等于条件恒空集，不等条件恒全集
+      conditions.push(condition.operator === 'EQUALS' ? '1 = 0' : '1 = 1');
+      return;
+    }
+    params.push(closureIds);
+    const existsSql = `EXISTS (
+        SELECT 1 FROM jsonb_array_elements(operator_departments) od
+        WHERE (od->>'id')::int = ANY($${params.length}::int[])
+      )`;
+    conditions.push(condition.operator === 'EQUALS' ? existsSql : `NOT ${existsSql}`);
+  }
+
+  /**
+   * 部门筛选树选项（扁平 parentId 列表，供前端组装部门树）。
+   *
+   * 部门名称经 hr.departments_view 只读视图读取（视图无 parent_id，
+   * 直接父级由 hr.department_closure 按「深度差 1 的祖先」推导）；
+   * DEPARTMENT 档裁剪为本人部门闭包及其祖先链（保证树可组装），其余档返回全部部门。
+   */
+  async departmentOptions(): Promise<{
+    data: Array<{ id: number; name: string; parentId: number | null; status: string }>;
+  }> {
+    const scopedIds = await this.visibleDepartmentIds();
+    const rows = await this.prisma.client.$queryRawUnsafe<Array<{
+      id: number;
+      name: string;
+      status: string;
+      parent_id: number | null;
+    }>>(
+      `
+      WITH depth AS (
+        SELECT descendant_id AS id, COUNT(*)::int AS depth
+        FROM hr.department_closure
+        GROUP BY descendant_id
+      ),
+      parent AS (
+        SELECT d.id, c.ancestor_id AS parent_id
+        FROM depth d
+        INNER JOIN hr.department_closure c ON c.descendant_id = d.id
+        INNER JOIN depth pd ON pd.id = c.ancestor_id AND pd.depth = d.depth - 1
+      )
+      SELECT v.id, v.name, v.status, p.parent_id
+      FROM hr.departments_view v
+      INNER JOIN depth d ON d.id = v.id
+      LEFT JOIN parent p ON p.id = v.id
+      ${scopedIds ? 'WHERE v.id = ANY($1::int[])' : ''}
+      ORDER BY v.id
+      `,
+      ...(scopedIds ? [scopedIds] : []),
+    );
+    return {
+      data: rows.map((row) => ({ id: row.id, name: row.name, parentId: row.parent_id, status: row.status })),
+    };
+  }
+
+  /** DEPARTMENT 档可见部门 id（本人部门闭包 ∪ 祖先链）；其它档返回 null 表示不裁剪。 */
+  private async visibleDepartmentIds(): Promise<number[] | null> {
+    const granted = getGrantedFunction();
+    if (!granted || granted.dataScope !== 'DEPARTMENT') {
+      return null;
+    }
+    const context = getRequestContext();
+    if (!context?.userId) {
+      return [];
+    }
+    const rows = await this.prisma.client.$queryRaw<Array<{ id: number }>>`
+      SELECT DISTINCT c.ancestor_id AS id
+      FROM hr.department_closure c
+      INNER JOIN hr.user_org uo ON uo.department_id = c.descendant_id
+      WHERE uo.user_id = ${context.userId}
+      UNION
+      SELECT DISTINCT c.descendant_id AS id
+      FROM hr.department_closure c
+      INNER JOIN hr.user_org uo ON uo.department_id = c.ancestor_id
+      WHERE uo.user_id = ${context.userId}
+    `;
+    return rows.map((row) => row.id);
   }
 
   /**
@@ -290,6 +416,68 @@ const OPERATION_LOG_TABLE_FIELDS = {
 function appendWhereClause(existing: string, structured?: string): string {
   if (!structured) return existing;
   return existing ? `${existing} AND ${structured}` : `WHERE ${structured}`;
+}
+
+/**
+ * 从结构化筛选负载中剥离 departmentId 条件（该字段不是视图列，改由部门快照闭包过滤），
+ * 其余条件保持原负载结构留待 buildTableSqlQuery 白名单编译。
+ *
+ * @param raw 原始 filters 查询参数
+ * @returns 剥离出的部门条件与净化后的 filters 负载；负载无法解析时原样保留，由编译器统一报校验错误
+ */
+function extractDepartmentConditions(raw: string | undefined): {
+  departmentConditions: DepartmentFilterCondition[];
+  filters?: string;
+} {
+  if (!raw) {
+    return { departmentConditions: [] };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { departmentConditions: [], filters: raw };
+  }
+  if (!isRecord(parsed)) {
+    return { departmentConditions: [], filters: raw };
+  }
+  const departmentConditions: DepartmentFilterCondition[] = [];
+  const split = (conditions: unknown[]): unknown[] =>
+    conditions.filter((condition) => {
+      if (isRecord(condition) && condition.field === 'departmentId') {
+        departmentConditions.push({
+          operator: String(condition.operator ?? ''),
+          value: String(condition.value ?? ''),
+        });
+        return false;
+      }
+      return true;
+    });
+  if (Array.isArray(parsed.conditions)) {
+    const rest = split(parsed.conditions);
+    return {
+      departmentConditions,
+      filters: rest.length > 0 ? JSON.stringify({ ...parsed, conditions: rest }) : undefined,
+    };
+  }
+  if (Array.isArray(parsed.groups)) {
+    const groups = parsed.groups
+      .map((group) =>
+        isRecord(group) && Array.isArray(group.conditions)
+          ? { ...group, conditions: split(group.conditions) }
+          : group,
+      )
+      .filter((group) => !isRecord(group) || !Array.isArray(group.conditions) || group.conditions.length > 0);
+    return {
+      departmentConditions,
+      filters: groups.length > 0 ? JSON.stringify({ ...parsed, groups }) : undefined,
+    };
+  }
+  return { departmentConditions: [], filters: raw };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function mapRow(row: OperationLogRow): OperationLogListItem {

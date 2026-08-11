@@ -160,6 +160,36 @@ export class AgentSettlementService {
     return this.paginate(where, query);
   }
 
+  /**
+   * 查询本人指定代领申请仍未结清的共享借还记录。
+   *
+   * @param operator 当前代交申请人
+   * @param refRequestId 本人代领申请 id
+   * @returns 可用于整单结清的记录
+   * @throws RESOURCE_NOT_FOUND 申请不属于当前用户或不存在
+   */
+  async listOpenBorrowRecords(
+    operator: AssetOperationLogOperator,
+    refRequestId: number,
+  ): Promise<Array<{ id: number; consumableName: string; spec: string; warehouseName: string; qty: number }>> {
+    const request = await this.prisma.client.approvalRequest.findUnique({
+      where: { id: refRequestId },
+      select: { id: true, requestType: true, applicantId: true },
+    });
+    if (!request || request.requestType !== 'AGENT_REQUEST' || request.applicantId !== operator.id) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    return this.prisma.client.$queryRaw<Array<{ id: number; consumableName: string; spec: string; warehouseName: string; qty: number }>>`
+      SELECT id, consumable_name AS "consumableName", spec, warehouse_name AS "warehouseName",
+        (qty - returned_qty - written_off_qty) AS qty
+      FROM asset.borrow_records
+      WHERE record_type = 'AGENT'
+        AND agent_request_id = ${refRequestId}
+        AND (qty - returned_qty - written_off_qty) > 0
+      ORDER BY id ASC
+    `;
+  }
+
   /** 分页查询 */
   private async paginate(where: Prisma.ApprovalRequestWhereInput, query: AgentSettlementQueryDto): Promise<{ items: unknown[]; total: number }> {
     const tableQuery = buildAssetApprovalRequestTableQuery(query);

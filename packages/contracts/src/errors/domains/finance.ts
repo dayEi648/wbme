@@ -82,15 +82,6 @@ export const financeErrors = {
     httpStatus: 409,
     message: '项目已被删除，请进入已删除项目视图恢复或改名',
   },
-  /** 字典项被历史项目引用，批量删除整批拒绝（fin PRD §6） */
-  DICT_REFERENCED: {
-    code: 'DICT_REFERENCED',
-    type: 'CONFLICT',
-    domain: 'FINANCE',
-    httpStatus: 409,
-    message: '字典项已被项目引用，不能删除（可停用后新建替代项）',
-    detailsFields: ['referenced'],
-  },
   /** 项目进度金额语义被引用后不可修改（fin PRD §6） */
   DICT_SEMANTIC_LOCKED: {
     code: 'DICT_SEMANTIC_LOCKED',

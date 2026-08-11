@@ -66,25 +66,26 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     // 清理失败运行残留（先子表后主表；按测试名称与 ID 段）
     await prisma.client.$executeRaw`
       DELETE FROM fin.project_operations
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程', '字典删除引用项目') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.invoices
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程', '字典删除引用项目') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.receipts
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程', '字典删除引用项目') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.subcontract_payments
-      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999})
+      WHERE project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程', '字典删除引用项目') OR id BETWEEN ${BASE} AND ${BASE + 999})
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.projects
-      WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程') OR id BETWEEN ${BASE} AND ${BASE + 999}
+      WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '城铁惠山站区工程', '城铁 惠山站区工程', '字典删除引用项目') OR id BETWEEN ${BASE} AND ${BASE + 999}
     `;
-    // 字典种子
+    // 字典种子（先清确认式删除用例的临时字典项，防失败运行残留导致同名冲突）
+    await prisma.client.$executeRaw`DELETE FROM fin.finance_dict_items WHERE name = '删除预览临时地区'`;
     await prisma.client.$executeRaw`
       INSERT INTO fin.finance_dict_items (id, dict_type, name, semantic, sort, status, created_at, updated_at)
       VALUES
@@ -106,28 +107,28 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
 
   afterAll(async () => {
     // 清理测试数据（项目 → 明细 → 字典；按 id 与名称双路径清理，防失败运行残留）
-    const testProjectIds = [projectA, projectB, projectDel];
+    const testProjectIds = [projectA, projectB, projectDel, BASE + 52];
     await prisma.client.$executeRaw`
       DELETE FROM fin.project_operations WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '字典删除引用项目'))
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.invoices WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '字典删除引用项目'))
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.receipts WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '字典删除引用项目'))
     `;
     await prisma.client.$executeRaw`
       DELETE FROM fin.subcontract_payments WHERE project_id = ANY(${testProjectIds})
-        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目'))
+        OR project_id IN (SELECT id FROM fin.projects WHERE name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '字典删除引用项目'))
     `;
     await prisma.client.$executeRaw`
-      DELETE FROM fin.projects WHERE id = ANY(${testProjectIds}) OR name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目')
+      DELETE FROM fin.projects WHERE id = ANY(${testProjectIds}) OR name IN ('待删除项目', '全新项目名称', '导入软删项目', '冲突项目甲', '无元数据项目', '字典删除引用项目')
     `;
     await prisma.client.$executeRaw`
-      DELETE FROM fin.finance_dict_items WHERE id IN (${regionId}, ${progressTentativeId}, ${progressAuditedId}, ${categoryId}, ${completenessId})
+      DELETE FROM fin.finance_dict_items WHERE id IN (${regionId}, ${progressTentativeId}, ${progressAuditedId}, ${categoryId}, ${completenessId}) OR name = '删除预览临时地区'
     `;
     await prisma.client.$executeRaw`DELETE FROM fin.operation_logs WHERE operator_id = ${OPERATOR.id}`;
     await pool.onModuleDestroy();
@@ -248,14 +249,33 @@ describeDb('fin 集成（项目/明细/利润/字典/导入导出）', () => {
     expect(row?.year).toBe(2024);
   });
 
-  it('字典：进度语义被引用后不可修改；被引用项删除整批拒绝；未分类保留名拒绝', async () => {
+  it('字典：进度语义被引用后不可修改；删除预览逐目标返回引用数；确认后物理删除（§2.6 引用不阻断）；未分类保留名拒绝', async () => {
     await expect(
       dicts.update(OPERATOR, progressTentativeId, { name: '已开工未竣工', semantic: 'AUDITED', sort: 0, status: 'ACTIVE' }),
     ).rejects.toMatchObject({ entry: { code: 'DICT_SEMANTIC_LOCKED' } });
 
-    await expect(
-      dicts.batchDelete(OPERATOR, [regionId]),
-    ).rejects.toMatchObject({ entry: { code: 'DICT_REFERENCED' } });
+    // 删除预览：逐目标返回被工程合同引用数（regionId 被 projectA 引用；progressAuditedId 无引用）
+    const preview = await dicts.deletePreview([regionId, progressAuditedId]);
+    expect(preview.items).toEqual([
+      { id: regionId, dictType: 'REGION', referencedCount: 1 },
+      { id: progressAuditedId, dictType: 'PROGRESS', referencedCount: 0 },
+    ]);
+
+    // 无引用项：确认后物理删除
+    const deleted = await dicts.batchDelete(OPERATOR, [progressAuditedId]);
+    expect(deleted.deleted).toBe(1);
+    expect(await prisma.client.financeDictItem.findUnique({ where: { id: progressAuditedId } })).toBeNull();
+
+    // 被引用项：引用不阻断删除（前端确认引用明细后物理删除），历史项目按删除前名称快照保留
+    const tempDict = await dicts.create(OPERATOR, { dictType: 'REGION', name: '删除预览临时地区', sort: 0 });
+    const tempProject = await projects.create(OPERATOR, { name: '字典删除引用项目', year: 2023, regionId: tempDict.id });
+    await prisma.client.$executeRaw`UPDATE fin.projects SET id = ${BASE + 52} WHERE id = ${tempProject.id}`;
+    const referencedPreview = await dicts.deletePreview([tempDict.id]);
+    expect(referencedPreview.items).toEqual([{ id: tempDict.id, dictType: 'REGION', referencedCount: 1 }]);
+    const forceDeleted = await dicts.batchDelete(OPERATOR, [tempDict.id]);
+    expect(forceDeleted.deleted).toBe(1);
+    const snapshotRow = await prisma.client.project.findUnique({ where: { id: BASE + 52 } });
+    expect(snapshotRow?.regionName).toBe('删除预览临时地区');
 
     await expect(
       dicts.create(OPERATOR, { dictType: 'BIZ_CATEGORY', name: '未分类', sort: 0 }),

@@ -17,8 +17,6 @@
 | `ASSET_REFERENCED` | 422 | 资产仍在使用或有业务关联，不允许删除 |
 | `ASSIGNEE_DEPARTMENT_MISMATCH` | 422 | 调度目标责任人必须属于目标所属部门 |
 | `ASSET_TRANSFER_NO_CHANGE` | 422 | 部门与责任人均未变化，无需调度 |
-| `CATEGORY_REFERENCED` | 422 | 分类仍被资产/品种引用，不允许删除 |
-| `DICT_REFERENCED` | 422 | 字典项仍被业务数据引用，不允许删除 |
 | `ASSET_IMAGE_INVALID` | 400 | 主图对象标识无效 |
 | `QR_INVALID` | 404 | 二维码无效或已停用（解析失败统一 404 不泄露目标详情） |
 | `QR_REVOKED` | 422 | 二维码已作废，无法恢复 |
@@ -31,7 +29,6 @@
 | `BATCH_CORRECTION_FORBIDDEN` | 422 | 批次存在后续流水或待审批占用，规格不可纠正 |
 | `CONSUMABLE_DISABLED` | 422 | 品种已停用 |
 | `LOCATION_HAS_CHILDREN` | 422 | 存在未删除的子库位，请先处理 |
-| `LOCATION_REFERENCED` | 422 | 库位仍存在库存或业务引用，不允许删除 |
 | `LOCATION_INVALID_TARGET` | 422 | 目标库位不存在、已停用或与来源库位相同 |
 | `BORROW_ALREADY_SETTLED` | 422 | 借还记录已结清 |
 | `SETTLEMENT_COVERAGE_INCOMPLETE` | 422 | 结清清单必须覆盖全部未结清数量 |
@@ -194,7 +191,7 @@ TRANSFER_OUT / TRANSFER_IN 成对流水，全部来源减少量之和 = 全部�
 | `GET` | `/my-borrow` | 我的借还（结清状态/逾期筛选 + 分页；含本人作为受领人的代领共享清单只读视图，不计个人持有） |
 | `POST` | `/borrow-returns` | 发起归还申请（幂等；行=借还记录+数量+备注；待确认数量仍计入持有量） |
 | `POST` | `/borrow-write-offs` | 发起核销申请（幂等；行=借还记录+数量+遗失/损坏类型+原因必填；从持有量结清不回库） |
-| `GET` | `/borrow-records` | 借还历史（记录类型/借用人/代交人/受领人/部门/结清状态/逾期/关键字筛选；DEPARTMENT 按借出时部门快照/发起人/受领人快照闭包过滤） |
+| `GET` | `/borrow-records` | 借还历史（记录类型/借用人/代交人/受领人/部门/结清状态/逾期/关键字筛选；userId 语义：PERSONAL=借用人 `user_id`，AGENT=发起人（审批头 `proxy_id`/`applicant_id`）；recipientId 匹配代领受领人名单；DEPARTMENT 按借出时部门快照/发起人/受领人快照闭包过滤） |
 
 代领一次性整单结清（权限：`proxy_apply`，发起人操作）：
 

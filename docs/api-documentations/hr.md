@@ -127,7 +127,8 @@ DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批
 | `GET` | `/dicts` | 字典列表（dictType/status 筛选 + 分页） |
 | `POST` | `/dicts` | 新增字典项（幂等；同类型同名唯一） |
 | `PUT` | `/dicts/{id}` | 更新字典项（名称/排序/启停） |
-| `DELETE` | `/dicts/delete` | 批量硬删除（幂等；任一被业务引用整批拒绝——MVP 无引用表，机制保留） |
+| `GET` | `/dicts/delete-preview` | 删除前引用预览（`?ids=` 逗号分隔；逐目标返回当前业务引用数，引用不阻断删除——当前无业务表引用 hr_dicts，恒为 0；任一目标不存在 `RESOURCE_NOT_FOUND`） |
+| `DELETE` | `/dicts/delete` | 批量硬删除（幂等；主 PRD §2.6 确认式删除——引用预览确认后事务内物理删除，不整批拒绝；任一目标不存在整批不变更） |
 
 设置键：`overtime.advance.days`（提前申请窗口，默认 30）、`overtime.backfill.days`（补交窗口，默认 7）。
 

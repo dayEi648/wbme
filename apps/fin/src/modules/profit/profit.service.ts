@@ -16,9 +16,8 @@ import { buildProjectTableQuery } from '../../shared/project-table-query';
 import { calcProjectAutoFields, type ProjectCalcResult } from '../../shared/project-calc';
 import {
   formatCalendarDate,
-  loadProjectsWithDetails,
+  loadProjectListRows,
   type FieldValue,
-  type ProjectWithDetails,
   writeProjectChange,
 } from '../project/project.service';
 
@@ -129,9 +128,9 @@ export class ProfitService {
    * 利润分析列表（筛选分页 + 每行自动字段）。
    *
    * @param query 筛选参数
-   * @returns items + total（行结构同工程合同列表）
+   * @returns items + total（行结构同工程合同列表：项目字段与自动字段展平）
    */
-  async list(query: ProjectQueryDto): Promise<{ items: ProjectWithDetails[]; total: number }> {
+  async list(query: ProjectQueryDto): Promise<{ items: Array<Project & ProjectCalcResult>; total: number }> {
     const where: Prisma.ProjectWhereInput = { deletedAt: null };
     if (query.name) {
       where.businessKey = { contains: normalizeProjectName(query.name) };
@@ -166,7 +165,7 @@ export class ProfitService {
         take: pageSize,
       }),
     ]);
-    return { total, items: await loadProjectsWithDetails(this.prisma, rows) };
+    return { total, items: await loadProjectListRows(this.prisma, rows) };
   }
 
   /**

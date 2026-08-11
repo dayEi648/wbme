@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import {
   CONSUMABLE_APPLY_FUNCTION_CODE,
   INVENTORY_MANAGE_FUNCTION_CODE,
+  PROXY_APPLY_FUNCTION_CODE,
+  STOCK_CHANGE_APPLY_FUNCTION_CODE,
   BatchCorrectionDto,
   BatchQueryDto,
   createPaginationResponse,
@@ -37,6 +39,48 @@ export class InventoryController {
       query.availableOnly ? CONSUMABLE_APPLY_FUNCTION_CODE : INVENTORY_MANAGE_FUNCTION_CODE,
     );
     const result = await this.inventory.listItems(query);
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  /**
+   * 普通申领可选库存条目（仅在启用品种且有可用量时返回）。
+   *
+   * @param userId 当前用户
+   * @param query 分页和受控库存筛选
+   * @returns 分页库存条目
+   */
+  @Get('items/claim-options')
+  async claimOptions(@CurrentUser() userId: number, @Query() query: InventoryItemQueryDto): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPLY_FUNCTION_CODE);
+    const result = await this.inventory.listItems({ ...query, availableOnly: true });
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  /**
+   * 代交申领可选库存条目（权限独立于普通申领）。
+   *
+   * @param userId 当前用户
+   * @param query 分页和受控库存筛选
+   * @returns 分页库存条目
+   */
+  @Get('items/agent-claim-options')
+  async agentClaimOptions(@CurrentUser() userId: number, @Query() query: InventoryItemQueryDto): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, PROXY_APPLY_FUNCTION_CODE);
+    const result = await this.inventory.listItems({ ...query, availableOnly: true });
+    return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  /**
+   * 库存变更可选库存条目（仅显示当前仍有可扣减数量的条目）。
+   *
+   * @param userId 当前用户
+   * @param query 分页和受控库存筛选
+   * @returns 分页库存条目
+   */
+  @Get('items/stock-change-options')
+  async stockChangeOptions(@CurrentUser() userId: number, @Query() query: InventoryItemQueryDto): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, STOCK_CHANGE_APPLY_FUNCTION_CODE);
+    const result = await this.inventory.listItems({ ...query, availableOnly: true });
     return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 

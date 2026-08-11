@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import {
   INVENTORY_MANAGE_FUNCTION_CODE,
+  STOCK_IN_APPLY_FUNCTION_CODE,
   createPaginationResponse,
   WarehouseBatchDeleteDto,
   WarehouseCreateDto,
@@ -32,6 +33,22 @@ export class WarehouseController {
     if (query.status) {
       result.items = result.items.filter((node: { status: string }) => node.status === query.status);
     }
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    return createPaginationResponse(result.items.slice((page - 1) * pageSize, page * pageSize), result.items.length, page, pageSize);
+  }
+
+  /**
+   * 入库申请可选库位树（只读引用；不放开库存管理权限）。
+   *
+   * @param userId 当前用户
+   * @param query 分页参数
+   * @returns 分页树根节点
+   */
+  @Get('stock-in-tree')
+  async stockInTree(@CurrentUser() userId: number, @Query() query: WarehouseQueryDto): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, STOCK_IN_APPLY_FUNCTION_CODE);
+    const result = await this.warehouses.tree();
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     return createPaginationResponse(result.items.slice((page - 1) * pageSize, page * pageSize), result.items.length, page, pageSize);

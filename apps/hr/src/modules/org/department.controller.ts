@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
-import { createPaginationResponse, DEPARTMENT_MANAGE_FUNCTION_CODE, DepartmentCreateDto, DepartmentDeleteDto, DepartmentMoveDto, DepartmentUpdateDto, ORG_STRUCTURE_FUNCTION_CODE, PaginationQueryDto } from '@wbme/contracts';
+import { createPaginationResponse, DEPARTMENT_MANAGE_FUNCTION_CODE, DepartmentCreateDto, DepartmentDeleteDto, DepartmentMoveDto, DepartmentUpdateDto, FIXED_ASSET_MAINTAIN_FUNCTION_CODE, ORG_STRUCTURE_FUNCTION_CODE, PaginationQueryDto, POSITION_MANAGE_FUNCTION_CODE, TITLE_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess, getFunctionAccess } from '../../shared/cross-schema-auth';
 import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
+import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { DepartmentService } from './department.service';
 
 /**
@@ -16,6 +17,7 @@ export class DepartmentController {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     private readonly departments: DepartmentService,
+    private readonly closures: DepartmentClosureService,
   ) {}
 
   /** 部门树（组织架构与部门管理功能任一可见；含负责人与状态） */
@@ -26,6 +28,42 @@ export class DepartmentController {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     return createPaginationResponse(result.slice((page - 1) * pageSize, page * pageSize), result.length, page, pageSize);
+  }
+
+  /**
+   * 固定资产维护可选部门树，按固定资产维护的数据范围裁剪，只返回表单所需字段。
+   *
+   * @param userId 当前用户
+   * @returns 扁平部门树节点
+   */
+  @Get('asset-options')
+  async assetOptions(@CurrentUser() userId: number): Promise<{ data: unknown[] }> {
+    const access = await assertFunctionAccess(this.prisma.client, userId, FIXED_ASSET_MAINTAIN_FUNCTION_CODE);
+    const items = await this.departments.listTree() as Array<{ id: number }>;
+    if (access.dataScope === 'DEPARTMENT') {
+      const closure = await this.closures.closureOfUser(userId);
+      return { data: items.filter((item) => closure.has(item.id)) };
+    }
+    if (access.dataScope === 'SELF') return { data: [] };
+    return { data: items };
+  }
+
+  /**
+   * 部门负责人选择器（仅在职员工的最小展示字段）。
+   *
+   * @param userId 当前用户
+   * @returns 员工选项
+   */
+  @Get('leader-options')
+  async leaderOptions(@CurrentUser() userId: number): Promise<{ data: Array<{ id: number; name: string }> }> {
+    await this.assertDepartmentManage(userId);
+    const rows = await this.prisma.client.$queryRaw<Array<{ id: number; name: string }>>`
+      SELECT user_id AS id, name
+      FROM backstage.user_accounts
+      WHERE status = 'ACTIVE' AND deleted_at IS NULL
+      ORDER BY name ASC, user_id ASC
+    `;
+    return { data: rows };
   }
 
   /** 创建部门（幂等；停用部门不能作为新建下级目标；可设置多名负责人） */
@@ -92,11 +130,11 @@ export class DepartmentController {
     await assertFunctionAccess(this.prisma.client, userId, DEPARTMENT_MANAGE_FUNCTION_CODE);
   }
 
-  /** 组织架构或部门管理任一功能即可查看部门树（hr PRD §5 功能入口规则） */
+  /** 需要引用部门树的组织、部门、岗位或职称管理功能均可读取；写操作仍仅部门管理。 */
   private async assertEitherAccess(userId: number): Promise<void> {
-    const departmentAccess = await getFunctionAccess(this.prisma.client, userId, DEPARTMENT_MANAGE_FUNCTION_CODE);
-    if (departmentAccess.registered && departmentAccess.allowed && departmentAccess.systemOpen) {
-      return;
+    for (const functionCode of [DEPARTMENT_MANAGE_FUNCTION_CODE, POSITION_MANAGE_FUNCTION_CODE, TITLE_MANAGE_FUNCTION_CODE]) {
+      const access = await getFunctionAccess(this.prisma.client, userId, functionCode);
+      if (access.registered && access.allowed && access.systemOpen) return;
     }
     await assertFunctionAccess(this.prisma.client, userId, ORG_STRUCTURE_FUNCTION_CODE);
   }

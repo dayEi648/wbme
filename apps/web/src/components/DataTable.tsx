@@ -25,6 +25,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFeedback } from '../request/feedback';
 import { download, http, type ApiService } from '../request/http';
 import { formatDisplayValue, isMoneyField } from './display-format';
+import { RemoteSelect } from './selectors/RemoteSelect';
+import { TreeRemoteSelect } from './selectors/TreeRemoteSelect';
+import type { RemoteOptionSource } from './selectors/remote-options';
 
 type RecordValue = Record<string, unknown>;
 
@@ -43,8 +46,11 @@ export interface DataColumn {
 export interface FilterField {
   key: string;
   title: string;
-  type?: 'text' | 'enum' | 'number' | 'date';
-  options?: Array<{ label: string; value: string }>;
+  type?: 'text' | 'enum' | 'number' | 'date' | 'remote' | 'tree';
+  /** 固定选项，或按当前筛选条件动态生成（如「功能」选项随已选「系统」联动，主 PRD §3.3）。 */
+  options?: Array<{ label: string; value: string }> | ((filters: FilterCondition[]) => Array<{ label: string; value: string }>);
+  /** 按名称可搜索的远程字典/实体下拉（主 PRD §10.2）。 */
+  remote?: RemoteOptionSource;
 }
 
 export interface FilterCondition {
@@ -133,6 +139,8 @@ const DEFAULT_OPERATOR_BY_TYPE: Readonly<Record<NonNullable<FilterField['type']>
   enum: 'EQUALS',
   number: 'EQUALS',
   date: 'EQUALS',
+  remote: 'EQUALS',
+  tree: 'EQUALS',
 };
 
 export const OPERATOR_OPTIONS: Readonly<Record<NonNullable<FilterField['type']>, Array<{ label: string; value: string }>>> = {
@@ -159,6 +167,14 @@ export const OPERATOR_OPTIONS: Readonly<Record<NonNullable<FilterField['type']>,
     { label: '早于', value: 'BEFORE' },
     { label: '晚于', value: 'AFTER' },
     { label: '区间', value: 'BETWEEN' },
+  ],
+  remote: [
+    { label: '等于', value: 'EQUALS' },
+    { label: '不等于', value: 'NOT_EQUALS' },
+  ],
+  tree: [
+    { label: '等于', value: 'EQUALS' },
+    { label: '不等于', value: 'NOT_EQUALS' },
   ],
 };
 
@@ -336,8 +352,8 @@ export function DataTable({
   );
   const quickFilterFields = useMemo(
     () => filterFields
-      .filter((field) => field.type === 'enum' || /(?:keyword|name|status|state|month)/i.test(field.key))
-      .slice(0, 4),
+      .filter((field) => field.type === 'enum' || field.type === 'remote' || field.type === 'tree' || /(?:keyword|name|status|state|month)/i.test(field.key))
+      .slice(0, 6),
     [filterFields],
   );
   const quickFilterKeys = useMemo(() => new Set(quickFilterFields.map((field) => field.key)), [quickFilterFields]);
@@ -491,6 +507,10 @@ export function DataTable({
     });
   };
 
+  /** 解析枚举筛选选项：函数形式按当前筛选条件动态生成（主 PRD §3.3 功能随系统联动）。 */
+  const resolveFieldOptions = (field: FilterField): Array<{ label: string; value: string }> | undefined =>
+    typeof field.options === 'function' ? field.options(filters) : field.options;
+
   const addFilterGroup = () => {
     const field = filterFields[0];
     if (!field) return;
@@ -632,7 +652,21 @@ export function DataTable({
       <Select showSearch optionFilterProp="label" value={filter.field} options={filterFields.map((item) => ({ label: item.title, value: item.key }))} onChange={changeField} />
       <Select value={filter.operator} options={OPERATOR_OPTIONS[type]} onChange={(value) => update({ operator: value, valueEnd: value === 'BETWEEN' ? filter.valueEnd ?? '' : undefined })} />
       {field?.type === 'enum' ? (
-        <Select showSearch optionFilterProp="label" value={filter.value || undefined} options={field.options} onChange={(value) => update({ value })} />
+        <Select showSearch optionFilterProp="label" value={filter.value || undefined} options={field ? resolveFieldOptions(field) : undefined} onChange={(value) => update({ value })} />
+      ) : field?.type === 'remote' && field.remote ? (
+        <RemoteSelect
+          source={field.remote}
+          value={filter.value ? Number(filter.value) || filter.value : null}
+          onChange={(value) => update({ value: value == null ? '' : String(value) })}
+          style={{ minWidth: 180 }}
+        />
+      ) : field?.type === 'tree' && field.remote ? (
+        <TreeRemoteSelect
+          source={field.remote}
+          value={filter.value ? Number(filter.value) || filter.value : null}
+          onChange={(value) => update({ value: value == null ? '' : String(value) })}
+          style={{ minWidth: 180 }}
+        />
       ) : filter.operator === 'BETWEEN' && field?.type === 'date' ? (
         <Space.Compact block>
           <Input type="date" value={filter.value} onChange={(event) => update({ value: event.target.value })} />
@@ -847,7 +881,23 @@ export function DataTable({
                   return <div key={field.key}>
                     <Typography.Text type="secondary">{field.title}</Typography.Text>
                     {field.type === 'enum' ? (
-                      <Select allowClear showSearch optionFilterProp="label" value={value || undefined} options={field.options} style={{ width: '100%', marginTop: 4 }} onChange={(nextValue: string | undefined) => updateQuickFilter(field, nextValue)} />
+                      <Select allowClear showSearch optionFilterProp="label" value={value || undefined} options={resolveFieldOptions(field)} style={{ width: '100%', marginTop: 4 }} onChange={(nextValue: string | undefined) => updateQuickFilter(field, nextValue)} />
+                    ) : field.type === 'remote' && field.remote ? (
+                      <div style={{ marginTop: 4 }}>
+                        <RemoteSelect
+                          source={field.remote}
+                          value={value ? Number(value) || value : null}
+                          onChange={(nextValue) => updateQuickFilter(field, nextValue == null ? undefined : String(nextValue))}
+                        />
+                      </div>
+                    ) : field.type === 'tree' && field.remote ? (
+                      <div style={{ marginTop: 4 }}>
+                        <TreeRemoteSelect
+                          source={field.remote}
+                          value={value ? Number(value) || value : null}
+                          onChange={(nextValue) => updateQuickFilter(field, nextValue == null ? undefined : String(nextValue))}
+                        />
+                      </div>
                     ) : (
                       <Input type={field.type === 'date' ? 'date' : 'text'} value={value} style={{ marginTop: 4 }} onChange={(event) => updateQuickFilter(field, event.target.value)} />
                     )}

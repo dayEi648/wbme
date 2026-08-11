@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { AgentSettlementCreateDto, AgentSettlementQueryDto, createPaginationResponse, PROXY_APPLY_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
@@ -32,5 +32,22 @@ export class AgentSettlementController {
     const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
     const result = await this.settlements.listMine(operator, query);
     return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  /**
+   * 本人代领申请的未结清记录，供结清明细级联选择。
+   *
+   * @param userId 当前用户
+   * @param refRequestId 本人代领申请 id
+   * @returns 可结清借还记录
+   */
+  @Get('open-borrow-records')
+  async openBorrowRecords(
+    @CurrentUser() userId: number,
+    @Query('refRequestId', ParseIntPipe) refRequestId: number,
+  ): Promise<{ data: Array<{ id: number; consumableName: string; spec: string; warehouseName: string; qty: number }> }> {
+    await assertFunctionAccess(this.prisma.client, userId, PROXY_APPLY_FUNCTION_CODE);
+    const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
+    return { data: await this.settlements.listOpenBorrowRecords(operator, refRequestId) };
   }
 }

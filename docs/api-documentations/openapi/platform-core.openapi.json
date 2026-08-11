@@ -358,7 +358,6 @@
                   "BACKUP_UNVERIFIED",
                   "BATCH_CORRECTION_FORBIDDEN",
                   "BORROW_ALREADY_SETTLED",
-                  "CATEGORY_REFERENCED",
                   "CELL_FIELD_NOT_ALLOWED",
                   "CONFLICT",
                   "CONSUMABLE_DISABLED",
@@ -366,7 +365,6 @@
                   "DATA_REVISION_STALE",
                   "DEPARTMENT_HAS_CHILDREN",
                   "DEPENDENCY_UNAVAILABLE",
-                  "DICT_REFERENCED",
                   "DICT_SEMANTIC_LOCKED",
                   "DINGTALK_ALREADY_BOUND",
                   "DINGTALK_CONFIG_MISSING",
@@ -2820,6 +2818,16 @@
             }
           },
           {
+            "description": "部门 id（含下级部门，按操作者操作时部门快照过滤）",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
             "description": "动作类型",
             "in": "query",
             "name": "actionType",
@@ -2868,6 +2876,28 @@
           }
         },
         "summary": "分页查询全员操作日志",
+        "tags": [
+          "操作日志"
+        ]
+      }
+    },
+    "/api/v1/operation-logs/department-options": {
+      "get": {
+        "operationId": "OperationLogController_departmentOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "部门筛选树选项（主 PRD §3.3 筛选清单「部门」）。\n\n经 hr 只读视图读取，hr 容器停止不影响既有日志查询页加载选项；\nDEPARTMENT 档仅返回其部门闭包及祖先链（保证树可组装）。",
         "tags": [
           "操作日志"
         ]
@@ -2944,6 +2974,16 @@
             "description": "操作者用户 id",
             "in": "query",
             "name": "operatorId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "部门 id（含下级部门，按操作者操作时部门快照过滤）",
+            "in": "query",
+            "name": "departmentId",
             "required": false,
             "schema": {
               "minimum": 1,

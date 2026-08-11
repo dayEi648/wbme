@@ -45,11 +45,26 @@ export class DictController {
     return this.dict.update(operator, id, dto);
   }
 
-  /** 批量硬删除（任一被项目引用则整批拒绝；地区为跨系统唯一维护点） */
+  /** 删除前引用预览（逐目标被工程合同引用数；引用不阻断删除，确认后物理删除） */
+  @Get('delete-preview')
+  async deletePreview(@CurrentUser() userId: number, @Query('ids') idsRaw: string): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, FINANCE_CONFIG_FUNCTION_CODE);
+    return this.dict.deletePreview(this.parseIds(idsRaw));
+  }
+
+  /** 批量硬删除（主 PRD §2.6 确认式删除；地区为跨系统唯一维护点） */
   @Delete('batch')
   async batchDelete(@CurrentUser() userId: number, @Body() dto: FinDictItemBatchDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, FINANCE_CONFIG_FUNCTION_CODE);
     const operator = await loadFinOperationLogOperator(this.prisma.client, userId);
     return this.dict.batchDelete(operator, dto.ids, dto.idempotencyKey);
+  }
+
+  /** query 逗号分隔 ids → number[] */
+  private parseIds(idsRaw: string): number[] {
+    return idsRaw
+      .split(',')
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 1);
   }
 }

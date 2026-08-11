@@ -43,6 +43,19 @@ export class AgentClaimController {
     return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
   }
 
+  /**
+   * 当前操作者可代交的在职受领人，仅返回表单选择所需的最小字段。
+   *
+   * @param userId 当前用户
+   * @returns 受领人选项
+   */
+  @Get('recipient-options')
+  async recipientOptions(@CurrentUser() userId: number): Promise<{ data: Array<{ id: number; name: string }> }> {
+    await assertFunctionAccess(this.prisma.client, userId, PROXY_APPLY_FUNCTION_CODE);
+    const operator = await loadAssetOperationLogOperator(this.prisma.client, userId);
+    return { data: await this.agentClaims.listEligibleRecipients(operator) };
+  }
+
   /** 范围代交申领历史（「消耗品申领历史记录」部门/公司档） */
   @Get()
   async listHistory(@CurrentUser() userId: number, @Query() query: ConsumableRequestQueryDto): Promise<unknown> {

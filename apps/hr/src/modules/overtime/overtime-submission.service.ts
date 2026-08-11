@@ -148,6 +148,49 @@ export class OvertimeSubmissionService {
     });
   }
 
+  /**
+   * 查询加班表单可选员工。仅持本人加班权限时只返回操作者；代交权限按其数据范围裁剪。
+   *
+   * @param operator 当前提交人
+   * @returns 在职员工选择项
+   * @throws RESOURCE_NOT_FOUND 未持有任何加班提交功能
+   */
+  async listEligibleEmployees(operator: HrOperationLogOperator): Promise<Array<{ id: number; name: string }>> {
+    const applyAccess = await getFunctionAccess(this.prisma.client, operator.id, OVERTIME_APPLY_FUNCTION_CODE);
+    const proxyAccess = await getFunctionAccess(this.prisma.client, operator.id, PROXY_OVERTIME_FUNCTION_CODE);
+    const hasApply = applyAccess.registered && applyAccess.systemOpen && applyAccess.allowed;
+    const canProxy = proxyAccess.registered && proxyAccess.systemOpen && proxyAccess.allowed && proxyAccess.dataScope !== 'SELF';
+    if (!hasApply && !canProxy) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    if (!canProxy) return [{ id: operator.id, name: operator.name }];
+    if (proxyAccess.dataScope === 'DEPARTMENT') {
+      const closure = await this.closure.closureOfUser(operator.id);
+      if (closure.size === 0) return [];
+      const rows = await this.prisma.client.$queryRaw<Array<{ id: number; name: string }>>`
+        SELECT ua.user_id AS id, ua.name
+        FROM backstage.user_accounts ua
+        WHERE ua.status = 'ACTIVE' AND ua.deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM hr.user_org uo
+            WHERE uo.user_id = ua.user_id AND uo.department_id = ANY(${[...closure] as number[]})
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM hr.user_org uo
+            WHERE uo.user_id = ua.user_id AND uo.department_id <> ALL(${[...closure] as number[]})
+          )
+        ORDER BY ua.name ASC, ua.user_id ASC
+      `;
+      return rows;
+    }
+    return this.prisma.client.$queryRaw<Array<{ id: number; name: string }>>`
+      SELECT user_id AS id, name
+      FROM backstage.user_accounts
+      WHERE status = 'ACTIVE' AND deleted_at IS NULL
+      ORDER BY name ASC, user_id ASC
+    `;
+  }
+
   /** 逐人校验（事务外只读；返回失败原因数组，空数组 = 全部通过） */
   private async validateBatch(
     operator: HrOperationLogOperator,

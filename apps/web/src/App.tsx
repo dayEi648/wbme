@@ -45,7 +45,7 @@ export default function App() {
         }
       />
       <Route
-        path="/me"
+        path="/me/*"
         element={
           <RequireAuth>
             <MePage />

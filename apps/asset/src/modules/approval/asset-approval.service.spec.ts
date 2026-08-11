@@ -243,4 +243,46 @@ describeDb('asset 审批头（T5-3）', () => {
     });
     expect(approveActionCount).toBe(1);
   });
+
+  it('详情返回申请对象明细（STOCK_IN 入库明细；AGENT_REQUEST 申领明细 + 受领人名单，名称快照）', async () => {
+    const applicantId = BASE_APPLICANT + 28;
+    const { requestId: stockInRequestId } = await service.submitTestHeader({
+      requestType: 'STOCK_IN',
+      applicantId,
+      applicantName: '入库明细申请人',
+    });
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.stock_in_items (request_id, consumable_id, consumable_name, spec, warehouse_id, warehouse_name, warehouse_path, qty, received_at, created_at)
+      VALUES (${stockInRequestId}, 1, '测试入库品种快照', '标准', 1, '测试库位', '测试库位', 3, NOW(), NOW())
+    `;
+    const { requestId: agentRequestId } = await service.submitTestHeader({
+      requestType: 'AGENT_REQUEST',
+      applicantId,
+      applicantName: '代交明细申请人',
+      proxyId: applicantId,
+      proxyName: '代交明细申请人',
+    });
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.consumable_request_items (request_id, inventory_item_id, consumable_name, spec, warehouse_name, warehouse_path, qty, purpose, created_at)
+      VALUES (${agentRequestId}, 1, '测试申领品种快照', '标准', '测试库位', '测试库位', 2, '测试用途', NOW())
+    `;
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.agent_recipients (request_id, user_id, user_name, department_snapshot, created_at)
+      VALUES (${agentRequestId}, ${processorId}, '受领人快照', '[]'::jsonb, NOW())
+    `;
+    try {
+      const stockInDetail = await service.getDetail(processorId, stockInRequestId);
+      expect(stockInDetail.detail).toEqual([expect.objectContaining({ consumableName: '测试入库品种快照', qty: 3 })]);
+
+      const agentDetail = await service.getDetail(processorId, agentRequestId);
+      expect(agentDetail.detail).toMatchObject({
+        items: [expect.objectContaining({ consumableName: '测试申领品种快照', qty: 2 })],
+        recipients: [expect.objectContaining({ userName: '受领人快照' })],
+      });
+    } finally {
+      await prisma.client.$executeRaw`DELETE FROM asset.stock_in_items WHERE request_id = ${stockInRequestId}`;
+      await prisma.client.$executeRaw`DELETE FROM asset.consumable_request_items WHERE request_id = ${agentRequestId}`;
+      await prisma.client.$executeRaw`DELETE FROM asset.agent_recipients WHERE request_id = ${agentRequestId}`;
+    }
+  });
 });

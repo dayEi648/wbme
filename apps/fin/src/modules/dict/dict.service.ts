@@ -21,7 +21,8 @@ import { countProjectRefs } from '../project/project.service';
  * 类型：项目进度（PROGRESS，每个选项必须带金额语义 TENTATIVE/AUDITED，被引用后不可修改）、
  * 资料齐全度（COMPLETENESS）、业务分类（BIZ_CATEGORY，不得与系统虚拟分组“未分类”重名）、
  * 地区（REGION，跨系统地区选项统一在财务系统维护）。
- * 选项可新增/编辑/排序/启停；批量硬删除，任一被历史项目引用则整批拒绝。
+ * 选项可新增/编辑/排序/启停；批量硬删除按主 PRD §2.6 确认式删除：删除预览逐目标返回
+ * 被工程合同的引用数，引用不阻断删除，确认后物理删除（历史项目按删除前名称快照展示）。
  */
 @Injectable()
 export class DictService {
@@ -166,7 +167,43 @@ export class DictService {
   }
 
   /**
-   * 字典项批量硬删除（fin PRD §6：任一被历史项目引用则整批拒绝，不产生部分删除；幂等）。
+   * 字典项批量删除前引用预览（主 PRD §2.6）：逐目标返回被工程合同的引用数
+   * （地区/进度/业务分类按 id 列统计，资料齐全度按 completeness_docs JSONB 数组元素统计，
+   * 字典项 id 全局唯一，四项求和即该 id 的全部引用）；引用不阻断删除，
+   * 前端展示明细并要求确认后调用 batchDelete 物理删除。
+   *
+   * @param ids 字典项 id 列表
+   * @returns 逐字典项引用统计（按入参顺序）
+   * @throws RESOURCE_NOT_FOUND 任一目标不存在
+   */
+  async deletePreview(ids: readonly number[]): Promise<{ items: Array<{ id: number; dictType: FinanceDictItem['dictType']; referencedCount: number }> }> {
+    const rows = await this.prisma.client.financeDictItem.findMany({ where: { id: { in: [...ids] } } });
+    if (rows.length !== ids.length) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    const counts = await this.prisma.client.$queryRaw<Array<{ id: number; referenced: bigint }>>`
+      SELECT d.id,
+        ((SELECT COUNT(*) FROM fin.projects p WHERE p.region_id = d.id)
+         + (SELECT COUNT(*) FROM fin.projects p WHERE p.progress_id = d.id)
+         + (SELECT COUNT(*) FROM fin.projects p WHERE p.biz_category_id = d.id)
+         + (SELECT COUNT(*) FROM fin.projects p WHERE p.completeness_docs @> jsonb_build_array(jsonb_build_object('id', d.id)))) AS referenced
+      FROM fin.finance_dict_items d
+      WHERE d.id = ANY(${ids as number[]})
+    `;
+    const referencedById = new Map(counts.map((row) => [Number(row.id), Number(row.referenced)]));
+    const typeById = new Map(rows.map((row) => [row.id, row.dictType]));
+    return {
+      items: ids.map((id) => ({
+        id,
+        dictType: typeById.get(id) as FinanceDictItem['dictType'],
+        referencedCount: referencedById.get(id) ?? 0,
+      })),
+    };
+  }
+
+  /**
+   * 字典项批量硬删除（主 PRD §2.6 确认式删除：删除预览展示逐目标引用明细、前端确认后执行；
+   * 引用不阻断删除，历史项目按删除前名称快照展示，删除不追溯改写；幂等）。
    *
    * @param operator 操作人
    * @param ids 目标 id 列表
@@ -178,12 +215,6 @@ export class DictService {
       const rows = await tx.financeDictItem.findMany({ where: { id: { in: [...ids] } } });
       if (rows.length !== ids.length) {
         throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-      }
-      const refs = await countProjectRefs(tx, ids);
-      if (refs.region + refs.progress + refs.bizCategory > 0) {
-        throw new BusinessException(financeErrors.DICT_REFERENCED, {
-          referenced: refs.region + refs.progress + refs.bizCategory,
-        });
       }
       const result = await tx.financeDictItem.deleteMany({ where: { id: { in: [...ids] } } });
       return {

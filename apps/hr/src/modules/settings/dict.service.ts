@@ -11,9 +11,11 @@ import {
 
 /**
  * 人事字典服务（hr PRD §9）：字典项随业务引入；表单只能使用启用选项；
- * 选项可新增、编辑、排序、停用，并按主 PRD §2.6 批量硬删除未被引用的字典项。
- * MVP 无业务字典引用表——引用校验点保留（referencedIds 恒为空数组），
- * 业务引入字典类型时在此接入引用计数，任一目标被引用则整批拒绝。
+ * 选项可新增、编辑、排序、停用，并按主 PRD §2.6 确认式批量硬删除——
+ * 删除前 deletePreview 返回逐目标引用数，前端展示并确认后物理删除，不整批拒绝。
+ * 当前 HrDictType 仅 PLACEHOLDER 占位且无任何业务表引用 hr_dicts（schema 无 FK，
+ * 加班明细用枚举/JSON 快照而非字典 id），引用计数恒为 0；
+ * 业务引入字典类型时在 deletePreview 接入对应业务表的引用查询。
  */
 @Injectable()
 export class DictService {
@@ -147,12 +149,31 @@ export class DictService {
   }
 
   /**
-   * 批量硬删除字典项（主 PRD §2.6 配置类规则）：任一目标被业务或历史记录引用时整批拒绝。
-   * MVP 无引用表，引用检查点保留（恒通过）。
+   * 字典项批量删除前引用预览（主 PRD §2.6）：返回每个目标仍被业务引用的次数，
+   * 引用本身不阻断删除；前端展示并要求确认后调用 deleteBatch 物理删除。
+   * 当前无任何业务表引用 hr_dicts，referencedCount 恒为 0；
+   * 业务引入字典类型时在此按 dictType 查询对应业务表的引用数。
+   *
+   * @param ids 字典项 id 列表
+   * @returns 逐字典项引用统计
+   * @throws RESOURCE_NOT_FOUND 任一目标不存在
+   */
+  async deletePreview(ids: number[]): Promise<{ items: Array<{ id: number; referencedCount: number }> }> {
+    const rows = await this.prisma.client.hrDict.findMany({ where: { id: { in: ids } } });
+    if (rows.length !== ids.length) {
+      throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
+    }
+    // 引用查询点：业务引入字典类型后在此按 dictType 统计引用（当前无引用表，恒为 0）
+    return { items: ids.map((id) => ({ id, referencedCount: 0 })) };
+  }
+
+  /**
+   * 批量硬删除字典项（主 PRD §2.6 确认式删除：deletePreview 展示引用后确认执行；
+   * 引用不阻断删除，整批成功或整批回滚）。
    *
    * @param operator 操作人
    * @param ids 目标 id 列表（1~100）
-   * @returns 逐项结果（全部成功）
+   * @returns 删除数量
    * @throws RESOURCE_NOT_FOUND 任一目标不存在（整批不变更）
    */
   async deleteBatch(operator: HrOperationLogOperator, ids: number[], idempotencyKey?: string): Promise<{ deleted: number }> {
@@ -166,11 +187,6 @@ export class DictService {
         const existing = await tx.hrDict.findMany({ where: { id: { in: ids } } });
         if (existing.length !== ids.length) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
-        }
-        // 引用校验点：业务引入字典类型后在此查询引用（任一被引用 → 整批拒绝）
-        const referencedIds: number[] = [];
-        if (referencedIds.length > 0) {
-          throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '字典项已被业务引用，不可删除' });
         }
         await tx.hrDict.deleteMany({ where: { id: { in: ids } } });
         return {

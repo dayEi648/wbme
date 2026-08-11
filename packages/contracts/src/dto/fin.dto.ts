@@ -52,7 +52,7 @@ export class FinanceAmountItemDto {
   remark?: string;
 }
 
-/** 资料齐全度字典引用项（快照 [{id, name}]） */
+/** 资料齐全度字典引用项（快照 [{id, name}]；name 可省略，服务端以字典表当前名称为准重写快照） */
 export class DictRefItemDto {
   @ApiProperty({ description: '字典项 id' })
   @Type(() => Number)
@@ -60,10 +60,11 @@ export class DictRefItemDto {
   @Min(1)
   id!: number;
 
-  @ApiProperty({ description: '字典项名称快照', maxLength: 100 })
+  @ApiProperty({ description: '字典项名称快照（可选；服务端落库时以字典表名称为准）', required: false, maxLength: 100 })
+  @IsOptional()
   @IsString()
   @MaxLength(100)
-  name!: string;
+  name?: string;
 }
 
 /** 项目创建（fin PRD §3：名称+年度业务唯一键；非自动金额可留空，留空按 0 参与公式） */

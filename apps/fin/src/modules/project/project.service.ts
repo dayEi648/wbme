@@ -64,24 +64,27 @@ export interface ProjectWithDetails {
 }
 
 /**
- * 合并项目编辑输入中的分包方字段。
+ * 合并项目编辑输入中的数组字段（分包方 / 资料齐全度）。
  *
  * @param dto 客户端本次提交的项目数据
  * @param existingSubcontractors 数据库已保存的分包方数组
- * @returns 未提交分包方时保留旧值、显式空数组时保留清空意图的编辑数据
+ * @param existingCompletenessDocs 数据库已保存的资料齐全度快照（[{id, name}]）
+ * @returns 未提交数组字段时保留旧值、显式空数组时保留清空意图的编辑数据
  */
 export function mergeProjectUpdateDto(
   dto: ProjectCreateDto,
   existingSubcontractors: unknown,
+  existingCompletenessDocs?: unknown,
 ): ProjectCreateDto {
   return {
     ...dto,
     subcontractors: dto.subcontractors ?? (existingSubcontractors as string[]),
+    completenessDocs: dto.completenessDocs ?? ((existingCompletenessDocs ?? undefined) as ProjectCreateDto['completenessDocs']),
   };
 }
 
-/** 字典快照解析结果 */
-interface DictSnapshots {
+/** 字典快照解析结果（导出供 diffProject 单测构造输入） */
+export interface DictSnapshots {
   regionName: string | null;
   progressName: string | null;
   progressSemantic: 'TENTATIVE' | 'AUDITED' | null;
@@ -164,9 +167,9 @@ export class ProjectService {
         if (!existing) {
           throw new BusinessException(frameworkErrors.RESOURCE_NOT_FOUND);
         }
-        // 编辑接口允许分包方字段未提交：未提交表示不改动，显式 [] 才表示清空。
-        // 这样旧客户端只改其它字段时不会把已保存的分包方静默覆盖为空数组。
-        const effectiveDto = mergeProjectUpdateDto(dto, existing.subcontractors);
+        // 编辑接口允许分包方/资料齐全度字段未提交：未提交表示不改动，显式 [] 才表示清空。
+        // 这样旧客户端只改其它字段时不会把已保存的数组字段静默覆盖为空数组。
+        const effectiveDto = mergeProjectUpdateDto(dto, existing.subcontractors, existing.completenessDocs);
         const snapshots = await this.resolveDictSnapshots(tx, effectiveDto, existing);
         const businessKey = normalizeProjectName(effectiveDto.name);
         const diff = diffProject(existing, effectiveDto, businessKey, snapshots);
@@ -304,9 +307,9 @@ export class ProjectService {
    *
    * @param query 筛选参数
    * @param includeDeleted 是否查已删除视图
-   * @returns items（含明细与自动字段）+ total
+   * @returns items（项目字段与自动字段展平的列表行）+ total
    */
-  async list(query: ProjectQueryDto, includeDeleted: boolean): Promise<{ items: ProjectWithDetails[]; total: number }> {
+  async list(query: ProjectQueryDto, includeDeleted: boolean): Promise<{ items: Array<Project & ProjectCalcResult>; total: number }> {
     const where: Prisma.ProjectWhereInput = includeDeleted
       ? { deletedAt: { not: null } }
       : { deletedAt: null };
@@ -344,7 +347,7 @@ export class ProjectService {
         take: pageSize,
       }),
     ]);
-    return { total, items: await loadProjectsWithDetails(this.prisma, rows) };
+    return { total, items: await loadProjectListRows(this.prisma, rows) };
   }
 
   /**
@@ -512,8 +515,8 @@ function projectSnapshot(row: Project): Record<string, FieldValue> {
   return snapshot;
 }
 
-/** 编辑差异：计算有变化的字段及其前后值（数组/对象按序列化比较） */
-function diffProject(
+/** 编辑差异：计算有变化的字段及其前后值（数组/对象按序列化比较；空值等价归一） */
+export function diffProject(
   existing: Project,
   dto: ProjectCreateDto,
   businessKey: string,
@@ -525,8 +528,8 @@ function diffProject(
   const dtoValues: Record<string, FieldValue> = {
     name: dto.name,
     year: dto.year,
-    // 与库中 {id, name} 快照同形比较（解析结果已校验字典）
-    completenessDocs: snapshots.completenessDocs.length > 0 ? snapshots.completenessDocs : null,
+    // 与库中 {id, name} 快照同形比较（解析结果已校验字典；空数组保持 []，不与 null 互转）
+    completenessDocs: snapshots.completenessDocs,
     regionId: dto.regionId ?? null,
     progressId: dto.progressId ?? null,
     bizCategoryId: dto.bizCategoryId ?? null,
@@ -548,7 +551,7 @@ function diffProject(
   for (const field of PROJECT_FIELDS) {
     const oldValue = fieldValue(existing, field);
     const newValue = dtoValues[field] ?? null;
-    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+    if (!fieldValuesEqual(oldValue, newValue)) {
       changed.add(field);
       before[field] = oldValue;
       after[field] = newValue;
@@ -574,6 +577,22 @@ function diffProject(
     after.progressSemantic = snapshots.progressSemantic ?? 'TENTATIVE';
   }
   return { changed, before, after };
+}
+
+/**
+ * 字段值相等判定（diff 专用）：null/undefined 与空数组视为等价空值，
+ * 避免库中 [] 与提交侧 null（或反之）产生幻影差异、每次编辑都写假变更记录。
+ */
+function fieldValuesEqual(oldValue: FieldValue, newValue: FieldValue): boolean {
+  if (isEmptyFieldValue(oldValue) && isEmptyFieldValue(newValue)) {
+    return true;
+  }
+  return JSON.stringify(oldValue) === JSON.stringify(newValue);
+}
+
+/** 空值判定：null 或空数组（undefined 已在调用侧归一为 null） */
+function isEmptyFieldValue(value: FieldValue): boolean {
+  return value === null || (Array.isArray(value) && value.length === 0);
 }
 
 /** 写入项目操作记录（F-5；与业务变更同一事务；无实际差异时调用方不调用） */
@@ -684,4 +703,23 @@ export async function loadProjectsWithDetails(prisma: PrismaService, rows: reado
       }),
     };
   });
+}
+
+/**
+ * 列表行 = 项目主档字段与自动计算字段展平（工程合同/利润分析列表共用）。
+ *
+ * 前端列表（DataTable/利润分析表格）按扁平字段（`row.name`、`row.contractAmount`、
+ * `row.totalInvoiced`）渲染；详情接口 `getDetail` 保持 `{ project, details, auto }`
+ * 嵌套结构（前端详情抽屉按嵌套读取）。此前列表直接返回嵌套结构导致列表页空白。
+ *
+ * @param prisma Prisma 服务
+ * @param rows 项目行
+ * @returns 展平行的数组（项目字段 + 自动字段，无重名字段冲突）
+ */
+export async function loadProjectListRows(
+  prisma: PrismaService,
+  rows: readonly Project[],
+): Promise<Array<Project & ProjectCalcResult>> {
+  const items = await loadProjectsWithDetails(prisma, rows);
+  return items.map(({ project, auto }) => ({ ...project, ...auto }));
 }

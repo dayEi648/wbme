@@ -3,6 +3,7 @@ import { KeyOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DataTable, StatusTag } from '../../components/DataTable';
+import { catalogFunctionOptions } from '../../permission/catalog';
 import { ApiError, http } from '../../request/http';
 import { useFeedback } from '../../request/feedback';
 
@@ -252,7 +253,7 @@ function OperationLogsPage() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Breadcrumb items={[{ title: '门户', href: '/portal' }, { title: '个人中心', href: '/me' }, { title: '我的操作日志' }]} />
-      <DataTable title="我的操作日志" service="platform" endpoint="/me/operation-logs" pageKey="me-operation-logs" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'createdAt', title: '时间' }, { key: 'system', title: '系统' }, { key: 'feature', title: '功能' }, { key: 'actionType', title: '操作' }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: [{ label: '基础平台', value: 'BASE' }, { label: '管理后台', value: 'BACKSTAGE' }, { label: '资产系统', value: 'ASSET' }, { label: '人事系统', value: 'HR' }, { label: '财务系统', value: 'FIN' }] }, { key: 'feature', title: '功能', type: 'text' }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/me/operation-logs/export', filename: 'my-operation-logs.xlsx' }} actions={<Button onClick={() => navigate('/me')}>返回个人中心</Button>} />
+      <DataTable title="我的操作日志" service="platform" endpoint="/me/operation-logs" pageKey="me-operation-logs" columns={[{ key: 'id', title: 'ID', fixed: 'left' }, { key: 'createdAt', title: '时间' }, { key: 'system', title: '系统' }, { key: 'feature', title: '功能' }, { key: 'actionType', title: '操作' }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: [{ label: '基础平台', value: 'BASE' }, { label: '管理后台', value: 'BACKSTAGE' }, { label: '资产系统', value: 'ASSET' }, { label: '人事系统', value: 'HR' }, { label: '财务系统', value: 'FIN' }] }, { key: 'feature', title: '功能', type: 'enum', options: (filters) => catalogFunctionOptions(filters.find((filter) => filter.field === 'system')?.value) }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/me/operation-logs/export', filename: 'my-operation-logs.xlsx' }} actions={<Button onClick={() => navigate('/me')}>返回个人中心</Button>} />
     </Space>
   );
 }

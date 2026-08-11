@@ -8,7 +8,7 @@ import { DictService } from './dict.service';
 
 /**
  * 人事字典（hr PRD §9）：表单只能使用启用选项；选项可新增、编辑、排序、停用，
- * 按主 PRD §2.6 批量硬删除未被引用的字典项（任一目标被引用整批拒绝）。
+ * 按主 PRD §2.6 确认式批量硬删除（删除前 delete-preview 返回逐目标引用数，前端确认后物理删除）。
  * 权限：hr 功能"人事配置"（hr_config，公司档）——服务内断言。
  */
 @Controller('dicts')
@@ -59,11 +59,26 @@ export class DictController {
     });
   }
 
-  /** 批量硬删除字典项（未被引用；任一目标不存在/被引用整批不变更） */
+  /** 删除前引用预览（逐目标返回当前业务引用数；引用不阻断删除，确认后物理删除） */
+  @Get('delete-preview')
+  async deletePreview(@CurrentUser() userId: number, @Query('ids') idsRaw: string): Promise<unknown> {
+    await assertFunctionAccess(this.prisma.client, userId, HR_CONFIG_FUNCTION_CODE);
+    return this.dicts.deletePreview(this.parseIds(idsRaw));
+  }
+
+  /** 批量硬删除字典项（主 PRD §2.6 确认式删除；任一目标不存在整批不变更） */
   @Delete('delete')
   async deleteBatch(@CurrentUser() userId: number, @Body() dto: HrDictDeleteDto): Promise<{ deleted: number }> {
     await assertFunctionAccess(this.prisma.client, userId, HR_CONFIG_FUNCTION_CODE);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
     return this.dicts.deleteBatch(operator, dto.ids, dto.idempotencyKey);
+  }
+
+  /** query 逗号分隔 ids → number[] */
+  private parseIds(idsRaw: string): number[] {
+    return idsRaw
+      .split(',')
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 1);
   }
 }

@@ -121,7 +121,7 @@ export class HrDictQueryDto extends PaginationQueryDto {
   status?: 'ACTIVE' | 'DISABLED';
 }
 
-/** 批量硬删除字典项（未被引用时；任一被引用整批拒绝，hr PRD §9；主 PRD §9.5 批量操作幂等） */
+/** 批量硬删除字典项（主 PRD §2.6 确认式删除：引用预览后确认执行，不整批拒绝；§9.5 批量操作幂等） */
 export class HrDictDeleteDto extends IdempotentDto {
   @ApiProperty({
     description: `字典项 id 列表（1-${BATCH_LIMIT} 个，互不重复）`,

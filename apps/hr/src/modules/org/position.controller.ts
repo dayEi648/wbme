@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
-import { createPaginationResponse, ORG_STRUCTURE_FUNCTION_CODE, PaginationQueryDto, POSITION_MANAGE_FUNCTION_CODE, PositionCreateDto, PositionDeleteDto, PositionDepartmentsUpdateDto, PositionUpdateDto } from '@wbme/contracts';
+import { createPaginationResponse, ORG_STRUCTURE_FUNCTION_CODE, PaginationQueryDto, POSITION_MANAGE_FUNCTION_CODE, PositionCreateDto, PositionDeleteDto, PositionDepartmentsUpdateDto, PositionUpdateDto, TITLE_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { CurrentUser } from '@wbme/server';
 import { PrismaService } from '../../prisma.service';
 import { assertFunctionAccess, getFunctionAccess } from '../../shared/cross-schema-auth';
@@ -95,10 +95,14 @@ export class PositionController {
     return this.positions.deleteBatch(operator, dto.ids, dto.idempotencyKey);
   }
 
-  /** 岗位管理或组织架构任一功能即可读取岗位列表（hr PRD §7 引用口径） */
+  /** 岗位、职称或组织管理均可读取岗位引用，写操作仍仅岗位管理。 */
   private async assertEitherAccess(userId: number): Promise<void> {
     const manageAccess = await getFunctionAccess(this.prisma.client, userId, POSITION_MANAGE_FUNCTION_CODE);
     if (manageAccess.registered && manageAccess.allowed && manageAccess.systemOpen) {
+      return;
+    }
+    const titleAccess = await getFunctionAccess(this.prisma.client, userId, TITLE_MANAGE_FUNCTION_CODE);
+    if (titleAccess.registered && titleAccess.allowed && titleAccess.systemOpen) {
       return;
     }
     await assertFunctionAccess(this.prisma.client, userId, ORG_STRUCTURE_FUNCTION_CODE);

@@ -56,6 +56,18 @@ export class OvertimeController {
     return this.submission.submit(operator, dto);
   }
 
+  /**
+   * 加班表单可选员工，按本人/代交权限和部门闭包裁剪。
+   *
+   * @param userId 当前用户
+   * @returns 员工选择项
+   */
+  @Get('employee-options')
+  async employeeOptions(@CurrentUser() userId: number): Promise<{ data: Array<{ id: number; name: string }> }> {
+    const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
+    return { data: await this.submission.listEligibleEmployees(operator) };
+  }
+
   /** 取消本人/代提的待审批加班批次（批准或驳回后不能取消；断言目标为加班申请，L12） */
   @Post('applications/:id/cancel')
   async cancel(

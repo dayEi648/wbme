@@ -281,6 +281,11 @@ export class BackupService {
    * 重试/幂等场景下复用窗口内进行中或已成功的紧急备份，不重复创建；
    * 失败或过期记录不阻塞新建。
    *
+   * 磁盘门禁口径（2026-08-11 决策）：本路径**故意不过** `assertDiskAcceptsCapacityWrites`——
+   * 紧急备份是整库恢复前最后的安全网，磁盘达严重阈值时恰恰是最需要执行恢复的时刻，
+   * 拦截会把恢复路径彻底堵死；磁盘不足导致紧急备份失败时，由超管经
+   * `proceedWithoutEmergency` 人工确认风险后继续（双重确认，主 PRD §10.3）。
+   *
    * @param operatorId 发起人（超管）id
    * @returns 紧急备份记录 id
    */

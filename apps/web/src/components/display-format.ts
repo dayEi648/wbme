@@ -146,6 +146,9 @@ export function formatDisplayValue(value: unknown, key?: string): string {
   if (value === null || value === undefined || value === '') {
     return '—';
   }
+  if (typeof value === 'boolean') {
+    return value ? '是' : '否';
+  }
   if (key && isDateTimeField(key, value)) {
     return formatBeijingDateTime(value as string | Date);
   }

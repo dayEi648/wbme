@@ -147,6 +147,69 @@ describe('OperationLogService', () => {
       // 参数含闭包 id 数组：WHERE 参数列表 + [pageSize, offset]
       expect(args[0]).toEqual([2, 5]);
     });
+
+    it('具名 departmentId 按部门闭包展开并与部门快照求交集', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ descendant_id: 2 }, { descendant_id: 5 }]);
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0n }]);
+      await makeService(prisma).list({ page: 1, pageSize: 20, departmentId: 1 });
+
+      const closureSql = vi.mocked(prisma.client.$queryRaw).mock.calls[0]!;
+      expect(String(closureSql[0])).toContain('hr.department_closure');
+      const sql = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]![0] as string;
+      expect(sql).toContain('EXISTS');
+      expect(sql).toContain('operator_departments');
+      // 参数顺序：[闭包 id 数组, pageSize, offset]
+      const args = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]!.slice(1);
+      expect(args[0]).toEqual([2, 5]);
+    });
+
+    it('部门不存在时等于条件恒空集', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([]);
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0n }]);
+      await makeService(prisma).list({ page: 1, pageSize: 20, departmentId: 999 });
+      const sql = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]![0] as string;
+      expect(sql).toContain('1 = 0');
+    });
+
+    it('结构化筛选中的 departmentId 被剥离并走闭包过滤，其余条件仍由白名单编译', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ descendant_id: 2 }]);
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0n }]);
+      const filters = JSON.stringify({
+        logic: 'AND',
+        conditions: [
+          { field: 'departmentId', operator: 'EQUALS', value: '1' },
+          { field: 'system', operator: 'EQUALS', value: 'HR' },
+        ],
+      });
+      await makeService(prisma).list({ page: 1, pageSize: 20, filters });
+
+      const sql = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]![0] as string;
+      expect(sql).toContain('EXISTS');
+      expect(sql).toContain('system = $2');
+      // departmentId 不进入 buildTableSqlQuery 白名单编译（不会抛「不支持筛选或排序字段」）
+      const args = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]!.slice(1);
+      expect(args[0]).toEqual([2]);
+      expect(args[1]).toBe('HR');
+    });
+
+    it('结构化筛选 departmentId NOT_EQUALS 生成 NOT EXISTS；非法操作符抛校验错误', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ descendant_id: 2 }]);
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0n }]);
+      const filters = JSON.stringify({ logic: 'AND', conditions: [{ field: 'departmentId', operator: 'NOT_EQUALS', value: '1' }] });
+      await makeService(prisma).list({ page: 1, pageSize: 20, filters });
+      const sql = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]![0] as string;
+      expect(sql).toContain('NOT EXISTS');
+
+      const badFilters = JSON.stringify({ logic: 'AND', conditions: [{ field: 'departmentId', operator: 'CONTAINS', value: '1' }] });
+      await expect(makeService(prismaMock()).list({ page: 1, pageSize: 20, filters: badFilters })).rejects.toMatchObject({
+        name: 'BusinessException',
+        entry: expect.objectContaining({ code: 'VALIDATION_FAILED' }),
+      });
+    });
   });
 
   describe('listMine', () => {
@@ -173,6 +236,39 @@ describe('OperationLogService', () => {
       expect(mockedWriteLog).toHaveBeenCalledOnce();
       expect(mockedWriteLog.mock.calls[0]![1]).toMatchObject({ actionType: 'EXPORT', summary: '导出操作日志' });
       expect(loadOperationLogOperator).toHaveBeenCalled();
+    });
+  });
+
+  describe('departmentOptions', () => {
+    it('COMPANY 档返回全部部门并映射 parentId（父级由闭包深度推导）', async () => {
+      mockedGranted.mockReturnValue({ code: 'operation_log_view', dataScope: 'COMPANY' });
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([
+        { id: 1, name: '总部', status: 'ACTIVE', parent_id: null },
+        { id: 2, name: '技术部', status: 'ACTIVE', parent_id: 1 },
+      ]);
+      const result = await makeService(prisma).departmentOptions();
+
+      expect(result.data).toEqual([
+        { id: 1, name: '总部', parentId: null, status: 'ACTIVE' },
+        { id: 2, name: '技术部', parentId: 1, status: 'ACTIVE' },
+      ]);
+      const sql = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]![0] as string;
+      expect(sql).toContain('hr.departments_view');
+      expect(sql).not.toContain('WHERE v.id = ANY');
+    });
+
+    it('DEPARTMENT 档按本人部门闭包 ∪ 祖先链裁剪选项', async () => {
+      mockedGranted.mockReturnValue({ code: 'operation_log_view', dataScope: 'DEPARTMENT' });
+      mockedContext.mockReturnValue({ userId: 7 } as never);
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ id: 1 }, { id: 2 }]);
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([]);
+      await makeService(prisma).departmentOptions();
+
+      const call = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]!;
+      expect(call[0] as string).toContain('WHERE v.id = ANY($1::int[])');
+      expect(call[1]).toEqual([1, 2]);
     });
   });
 });

@@ -33,3 +33,39 @@ describe('buildBorrowWhereSql keyword（M20）', () => {
     expect(sql).toContain("record_type = 'PERSONAL'");
   });
 });
+
+/**
+ * 借还历史筛选回归（userId/recipientId 语义，borrow.dto.ts）：
+ * userId = PERSONAL 借用人 + AGENT 发起人（审批头 proxy_id/applicant_id）；
+ * recipientId = AGENT 受领人名单（agent_recipients）。
+ */
+describe('buildBorrowWhereSql userId / recipientId（借还历史筛选）', () => {
+  it('userId 同时匹配 PERSONAL user_id 与 AGENT 审批头 proxy_id/applicant_id', () => {
+    const sql = buildBorrowWhereSql({ userId: 42 });
+    expect(sql).toContain('user_id = 42');
+    expect(sql).toContain("record_type = 'AGENT'");
+    expect(sql).toContain('FROM asset.approval_requests ar');
+    expect(sql).toContain('ar.proxy_id = 42 OR ar.applicant_id = 42');
+  });
+
+  it('userId 与 recordType=PERSONAL 组合时 AGENT 分支不生效', () => {
+    const sql = buildBorrowWhereSql({ userId: 42, recordType: 'PERSONAL' });
+    expect(sql).toContain("record_type = 'PERSONAL'");
+    // AGENT 分支被外层 record_type = 'PERSONAL' AND 排除（我的借还列表不受影响）
+    expect(sql).toContain("record_type = 'AGENT' AND EXISTS");
+  });
+
+  it('recipientId 仅对 AGENT 记录匹配受领人名单', () => {
+    const sql = buildBorrowWhereSql({ recipientId: 7 });
+    expect(sql).toContain("record_type = 'AGENT' AND EXISTS");
+    expect(sql).toContain('FROM asset.agent_recipients arp');
+    // 关联键必须显式限定外层表（未限定的 request_id 会绑定到 arp.request_id 导致恒真）
+    expect(sql).toContain('arp.request_id = borrow_records.request_id AND arp.user_id = 7');
+  });
+
+  it('departmentIds AGENT 分支关联键显式限定外层表（防恒真绑定）', () => {
+    const sql = buildBorrowWhereSql({ departmentIds: new Set([1, 2]) });
+    expect(sql).toContain('ar.id = borrow_records.request_id');
+    expect(sql).toContain('arp.request_id = borrow_records.request_id');
+  });
+});

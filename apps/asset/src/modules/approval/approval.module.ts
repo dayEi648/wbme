@@ -1,5 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { InternalRestModule } from '@wbme/server';
+import { InternalRestModule, type InternalAuthRejection } from '@wbme/server';
+import { PrismaService } from '../../prisma.service';
+import { recordInternalTokenFailure } from '@wbme/logging';
 import { BorrowModule } from '../borrow/borrow.module';
 import { ClaimModule } from '../claim/claim.module';
 import { RequestModule } from '../request/request.module';
@@ -13,11 +15,16 @@ import { InternalApprovalController } from './internal-approval.controller';
  *
  * 副作用编排器注入各域服务（Request/Claim/Borrow 模块 forwardRef 互引打破构造循环，
  * 与 hr 的 ApprovalModule/OrgModule 互引模式一致）。
+ * onReject 将内部令牌校验失败写入 backstage.security_logs（INTERNAL_TOKEN_FAILED）。
  */
 @Module({
   imports: [
-    InternalRestModule.forRoot({
-      token: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+    InternalRestModule.forRootAsync({
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => ({
+        token: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+        onReject: (rejection: InternalAuthRejection) => recordInternalTokenFailure(prisma.client, rejection),
+      }),
     }),
     forwardRef(() => RequestModule),
     forwardRef(() => ClaimModule),

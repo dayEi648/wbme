@@ -7,7 +7,9 @@ import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { ResourceFormModal } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
-import { displayLabel, formatBeijingDateTime, formatMoney } from '../../components/display-format';
+import { deactivatedUsersSource, permissionEmployeesSource, permissionGroupsSource, type GrantItem, type RemoteOptionSource } from '../../components/selectors';
+import { displayLabel, formatBeijingDateTime, formatDetailValue, formatMoney } from '../../components/display-format';
+import { catalogFunctionOptions } from '../../permission/catalog';
 import { useFeedback } from '../../request/feedback';
 import { http } from '../../request/http';
 import { useSession } from '../../request/session';
@@ -53,6 +55,22 @@ const OPERATION_SYSTEM_OPTIONS = [
   { label: '人事系统', value: 'HR' },
   { label: '财务系统', value: 'FIN' },
 ];
+
+/** 操作日志「部门」筛选树（platform-core 按数据范围裁剪后输出扁平 parentId 列表）。 */
+const operationLogDepartmentTreeSource: RemoteOptionSource = {
+  service: 'platform',
+  endpoint: '/operation-logs/department-options',
+  tree: true,
+};
+
+/**
+ * 操作日志「功能」筛选选项：来自权限目录功能清单，
+ * 已选「系统」时只列该系统功能（主 PRD §3.3 联动要求）。
+ */
+function operationFeatureOptions(filters: Array<{ field: string; value: string }>): Array<{ label: string; value: string }> {
+  const system = filters.find((filter) => filter.field === 'system')?.value;
+  return catalogFunctionOptions(system);
+}
 
 const SECURITY_EVENT_TYPE_OPTIONS = [
   { label: '登录成功', value: 'LOGIN_SUCCESS' },
@@ -116,6 +134,74 @@ const USER_STATUS_LABELS: Readonly<Record<string, string>> = {
   DEACTIVATED: '已注销',
 };
 const DISK_STATUS_LABELS: Readonly<Record<string, string>> = { OK: '正常', WARN: '预警', CRITICAL: '严重' };
+
+/** 错误日志详情字段中文名（嵌套对象常见键同表标签化；未命中键回退通用映射 displayLabel）。 */
+const ERROR_LOG_DETAIL_LABELS: Readonly<Record<string, string>> = {
+  id: '日志 ID',
+  level: '级别',
+  service: '服务',
+  source: '来源',
+  errorCategory: '错误分类',
+  deployCommit: '部署版本',
+  fingerprint: '聚合指纹',
+  bucketStart: '聚合时段起点',
+  firstSeenAt: '首次发生',
+  lastSeenAt: '最近发生',
+  occurrenceCount: '发生次数',
+  firstRequestId: '首次请求 ID',
+  lastRequestId: '最近请求 ID',
+  sample: '错误样本（已脱敏）',
+  status: '处置状态',
+  handledBy: '处理人 ID',
+  handledAt: '处理时间',
+  remark: '处置备注',
+  message: '错误消息',
+  stack: '调用栈',
+};
+
+const ERROR_LOG_STATUS_LABELS: Readonly<Record<string, string>> = { PENDING: '待处理', HANDLED: '已处理', IGNORED: '已忽略' };
+const LOG_LEVEL_LABELS: Readonly<Record<string, string>> = { INFO: '信息', WARN: '警告', ERROR: '错误', CRITICAL: '严重' };
+
+/** 恢复预检结果字段中文名（backupId 已在步骤上下文展示，不重复列出）。 */
+const RESTORE_PRECHECK_LABELS: Readonly<Record<string, string>> = {
+  backupTime: '备份时间',
+  fileSize: '文件大小（字节）',
+  checksum: '校验和',
+  pgVersion: 'PostgreSQL 版本',
+  ready: '预检结果',
+};
+
+/** 恢复预检结果展示（枚举式中文标签；未知键回退通用映射）。 */
+function restorePrecheckItems(precheck: RecordValue): Array<{ key: string; label: string; children: React.ReactNode }> {
+  return Object.entries(precheck)
+    .filter(([key]) => key !== 'backupId')
+    .map(([key, value]) => {
+      let text: unknown = value;
+      if (key === 'ready') text = value === true ? '通过' : value === false ? '未通过' : value;
+      if (key === 'backupTime' && value) text = formatBeijingDateTime(String(value));
+      if (key === 'fileSize' && value !== null && value !== undefined && value !== '') text = formatMoney(String(value));
+      return {
+        key,
+        label: RESTORE_PRECHECK_LABELS[key] ?? displayLabel(key),
+        children: <span style={{ whiteSpace: 'pre-wrap' }}>{text === null || text === undefined || text === '' ? '—' : typeof text === 'object' ? JSON.stringify(formatDetailValue(text, RESTORE_PRECHECK_LABELS), null, 2) : String(text)}</span>,
+      };
+    });
+}
+
+/** 错误日志详情展示（枚举式中文标签；状态/级别中文化，时间键转北京时间，未知键回退通用映射）。 */
+function errorLogDetailItems(detail: RecordValue): Array<{ key: string; label: string; children: React.ReactNode }> {
+  return Object.entries(detail).map(([key, value]) => {
+    let text: unknown = value;
+    if (key === 'status') text = ERROR_LOG_STATUS_LABELS[String(value ?? '')] ?? value;
+    if (key === 'level') text = LOG_LEVEL_LABELS[String(value ?? '')] ?? value;
+    if (key === 'bucketStart' || key === 'firstSeenAt' || key === 'lastSeenAt' || key === 'handledAt') text = value ? formatBeijingDateTime(String(value)) : value;
+    return {
+      key,
+      label: ERROR_LOG_DETAIL_LABELS[key] ?? displayLabel(key),
+      children: <span style={{ whiteSpace: 'pre-wrap' }}>{text === null || text === undefined || text === '' ? '—' : typeof text === 'object' ? JSON.stringify(formatDetailValue(text, ERROR_LOG_DETAIL_LABELS), null, 2) : String(text)}</span>,
+    };
+  });
+}
 
 /** 管理后台路由容器。 */
 export default function BackstagePage() {
@@ -243,7 +329,13 @@ function UserManagement() {
   };
   const previewRestore = async (values: RecordValue) => {
     try {
-      const userIds = parseIdArray(values.userIds, '用户 ID');
+      const rawIds = values.userIds;
+      const userIds = Array.isArray(rawIds)
+        ? rawIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+        : [];
+      if (userIds.length === 0) {
+        throw new Error('请至少选择一名已注销用户');
+      }
       const result = await http.post<RecordValue>('/users/restorations/preview', { userIds });
       setRestorePreview(result);
       setRestoreOpen(false);
@@ -287,13 +379,14 @@ function UserManagement() {
           { key: 'status', title: '状态', type: 'enum', options: [{ label: '待激活', value: 'PENDING_ACTIVATION' }, { label: '正常', value: 'ACTIVE' }, { label: '已注销', value: 'DEACTIVATED' }] },
         ]}
         actions={<Space wrap><Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建用户</Button><Button onClick={() => setRestoreOpen(true)}>恢复已注销用户</Button></Space>}
+        emptyAction={{ label: '去创建', onExecute: () => setCreateOpen(true) }}
         onRowClick={(row) => setDetailId(Number(row.id))}
         batchAction={{ label: '批量注销', danger: true, onExecute: async (userIds) => { await http.post('/users/deactivations/batch', { userIds: userIds.map(Number) }); } }}
       />
       <ResourceFormModal title="新建用户" open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={create} fields={[
         { key: 'name', label: '姓名', required: true, maxLength: 50 },
         { key: 'phone', label: '手机号', required: true, maxLength: 32 },
-        { key: 'gender', label: '性别', type: 'select', required: true, options: [{ label: '男', value: 'MALE' }, { label: '女', value: 'FEMALE' }] },
+        { key: 'gender', label: '性别', type: 'select', required: true, options: [{ label: '男', value: 'MALE' }, { label: '女', value: 'FEMALE' }], width: 'narrow' },
       ]} />
       <Drawer title="用户详情" open={detailId !== null} onClose={() => { setDetailId(null); setInvitationUrl(null); }} width={520}>
         {detail ? (
@@ -315,10 +408,10 @@ function UserManagement() {
       </Drawer>
       <ResourceFormModal title="编辑用户资料" open={editing} onCancel={() => setEditing(false)} onSubmit={update} initialValues={detail ?? {}} fields={[
         { key: 'name', label: '姓名', required: true, maxLength: 50 },
-        { key: 'gender', label: '性别', type: 'select', required: true, options: [{ label: '男', value: 'MALE' }, { label: '女', value: 'FEMALE' }] },
+        { key: 'gender', label: '性别', type: 'select', required: true, options: [{ label: '男', value: 'MALE' }, { label: '女', value: 'FEMALE' }], width: 'narrow' },
       ]} />
       <ResourceFormModal title="恢复已注销用户" open={restoreOpen} onCancel={() => { setRestoreOpen(false); setRestorePreview(null); }} onSubmit={previewRestore} fields={[
-        { key: 'userIds', label: '用户 ID（JSON 数组，最多 100 个）', type: 'textarea', required: true, placeholder: '[101,102]' },
+        { key: 'userIds', label: '已注销用户', type: 'remote-multi-select', required: true, remote: deactivatedUsersSource, placeholder: '按姓名或手机号搜索', width: 'full' },
       ]} submitText="生成恢复预览" />
       {restorePreview ? <Drawer title="恢复预览" open onClose={() => setRestorePreview(null)} width={640}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -362,6 +455,8 @@ function RestorePreviewItem({ item }: { item: RecordValue }) {
 
 function PermissionEmployees() {
   const feedback = useFeedback();
+  const { user } = useSession();
+  const hidePermissionManage = user?.isSuperAdmin !== true;
   const [selectedIds, setSelectedIds] = useState<Array<string | number>>([]);
   const [batchOpen, setBatchOpen] = useState(false);
   const [targetId, setTargetId] = useState<number | null>(null);
@@ -382,9 +477,10 @@ function PermissionEmployees() {
   const save = async (values: RecordValue) => {
     if (!targetId || !grantDetail || typeof grantDetail.permissionVersion !== 'number') return;
     try {
+      const grants = normalizeGrants(values.grants);
       await http.put(`/permission/employees/${targetId}/grants`, {
         permissionVersion: grantDetail.permissionVersion,
-        grants: parseGrantItems(values.grants),
+        grants,
       });
       feedback.success('员工授权已保存');
       setEditing(false);
@@ -397,10 +493,15 @@ function PermissionEmployees() {
   const batchGrant = async (values: RecordValue) => {
     if (selectedIds.length === 0) return;
     try {
+      const grants = normalizeGrants(values.grants);
+      const rawGroupIds = values.groupIds;
+      const groupIds = Array.isArray(rawGroupIds)
+        ? rawGroupIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+        : [];
       await http.post('/permission/grants/batch', {
         userIds: selectedIds.map(Number),
-        grants: parseGrantItems(values.grants),
-        groupIds: parseIdArray(values.groupIds, '权限组 ID'),
+        grants,
+        groupIds,
       });
       feedback.success(`已为 ${selectedIds.length} 名员工追加授权`);
       setBatchOpen(false);
@@ -410,6 +511,12 @@ function PermissionEmployees() {
       feedback.error(error, '批量授权失败');
     }
   };
+
+  const editingGrants = Array.isArray(grantDetail?.grants)
+    ? (grantDetail.grants as Array<RecordValue>)
+      .filter((grant) => typeof grant.functionCode === 'string' && typeof grant.dataScope === 'string')
+      .map((grant) => ({ functionCode: String(grant.functionCode), dataScope: grant.dataScope as GrantItem['dataScope'] }))
+    : [];
 
   return <>
     <DataTable
@@ -434,18 +541,20 @@ function PermissionEmployees() {
         <Button type="primary" onClick={() => setEditing(true)}>修改权限</Button>
       </Space> : <Typography.Text>正在加载...</Typography.Text>}
     </Drawer>
-    <ResourceFormModal title="修改员工权限" open={editing} onCancel={() => setEditing(false)} onSubmit={save} initialValues={{ grants: JSON.stringify(grantDetail?.grants ?? [], null, 2) }} fields={[
-      { key: 'grants', label: '完整授权（JSON 数组）', type: 'textarea', required: true, maxLength: 10000, placeholder: '[{"functionCode":"fixed_asset_view","dataScope":"COMPANY"}]' },
+    <ResourceFormModal title="修改员工权限" open={editing} onCancel={() => setEditing(false)} onSubmit={save} initialValues={{ grants: editingGrants }} fields={[
+      { key: 'grants', label: '功能授权', type: 'permission-grants', permissionVariant: 'tree', required: true, width: 'full', hidePermissionManage },
     ]} />
-    <ResourceFormModal title={`批量追加授权（${selectedIds.length} 人）`} open={batchOpen} onCancel={() => setBatchOpen(false)} onSubmit={batchGrant} initialValues={{ grants: '[]', groupIds: '[]' }} fields={[
-      { key: 'grants', label: '直接授权（JSON 数组）', type: 'textarea', required: true, maxLength: 10000, placeholder: '[{"functionCode":"fixed_asset_view","dataScope":"COMPANY"}]' },
-      { key: 'groupIds', label: '权限组 ID（JSON 数组，可空）', type: 'textarea', maxLength: 2000, placeholder: '[1,2]' },
+    <ResourceFormModal title={`批量追加授权（${selectedIds.length} 人）`} open={batchOpen} onCancel={() => setBatchOpen(false)} onSubmit={batchGrant} initialValues={{ grants: [], groupIds: [] }} fields={[
+      { key: 'grants', label: '直接授权', type: 'permission-grants', permissionVariant: 'tree', width: 'full', hidePermissionManage },
+      { key: 'groupIds', label: '权限组', type: 'remote-multi-select', remote: permissionGroupsSource, placeholder: '选择一个或多个权限组展开追加', width: 'full' },
     ]} />
   </>;
 }
 
 function PermissionGroups() {
   const feedback = useFeedback();
+  const { user } = useSession();
+  const hidePermissionManage = user?.isSuperAdmin !== true;
   const [open, setOpen] = useState(false);
   const [groupId, setGroupId] = useState<number | null>(null);
   const [group, setGroup] = useState<RecordValue | null>(null);
@@ -460,7 +569,7 @@ function PermissionGroups() {
   }, [feedback, groupId]);
   const create = async (values: RecordValue) => {
     try {
-      await http.post('/permission/groups', { name: values.name, description: values.description, items: parseGrantItems(values.items) });
+      await http.post('/permission/groups', { name: values.name, description: values.description, items: normalizeGrants(values.items) });
       feedback.success('权限组已创建');
       setOpen(false);
       setVersion((value) => value + 1);
@@ -471,7 +580,7 @@ function PermissionGroups() {
   const update = async (values: RecordValue) => {
     if (!groupId) return;
     try {
-      await http.put(`/permission/groups/${groupId}`, { name: values.name, description: values.description, items: parseGrantItems(values.items) });
+      await http.put(`/permission/groups/${groupId}`, { name: values.name, description: values.description, items: normalizeGrants(values.items) });
       feedback.success('权限组已更新');
       setEditing(false);
       setVersion((value) => value + 1);
@@ -480,9 +589,14 @@ function PermissionGroups() {
       feedback.error(error, '更新权限组失败');
     }
   };
+  const editingItems = Array.isArray(group?.items)
+    ? (group.items as Array<RecordValue>)
+      .filter((item) => typeof item.functionCode === 'string' && typeof item.dataScope === 'string')
+      .map((item) => ({ functionCode: String(item.functionCode), dataScope: item.dataScope as GrantItem['dataScope'] }))
+    : [];
   return <>
-    <DataTable key={version} title="权限组" service="platform" endpoint="/permission/groups" pageKey="backstage-permission-groups" columns={[...LIST_COLUMNS, { key: 'itemCount', title: '功能数' }]} onRowClick={(row) => setGroupId(Number(row.id))} actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建权限组</Button>} batchAction={{ label: '删除权限组', danger: true, onExecute: async (groupIds) => { await http.post('/permission/groups/batch-delete', { groupIds: groupIds.map(Number) }); } }} />
-    <ResourceFormModal title="新建权限组" open={open} onCancel={() => setOpen(false)} onSubmit={create} initialValues={{ items: '[]' }} fields={[{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'description', label: '说明', type: 'textarea', maxLength: 500 }, { key: 'items', label: '授权明细（JSON 数组）', type: 'textarea', required: true, maxLength: 10000, placeholder: '[{"functionCode":"fixed_asset_view","dataScope":"COMPANY"}]' }]} />
+    <DataTable key={version} title="权限组" service="platform" endpoint="/permission/groups" pageKey="backstage-permission-groups" columns={[...LIST_COLUMNS, { key: 'itemCount', title: '功能数' }]} onRowClick={(row) => setGroupId(Number(row.id))} actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建权限组</Button>} emptyAction={{ label: '去创建', onExecute: () => setOpen(true) }} batchAction={{ label: '删除权限组', danger: true, onExecute: async (groupIds) => { await http.post('/permission/groups/batch-delete', { groupIds: groupIds.map(Number) }); } }} />
+    <ResourceFormModal title="新建权限组" open={open} onCancel={() => setOpen(false)} onSubmit={create} initialValues={{ items: [] }} fields={[{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'description', label: '说明', type: 'textarea', maxLength: 500 }, { key: 'items', label: '授权明细', type: 'permission-grants', permissionVariant: 'matrix', required: true, width: 'full', hidePermissionManage }]} />
     <Drawer title="权限组详情" open={groupId !== null} onClose={() => setGroupId(null)} width={640}>
       {group ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Card size="small" title="基本信息">名称：{String(group.name ?? '—')}；说明：{String(group.description ?? '—')}</Card>
@@ -490,7 +604,7 @@ function PermissionGroups() {
         <Button type="primary" onClick={() => setEditing(true)}>编辑权限组</Button>
       </Space> : <Typography.Text>正在加载...</Typography.Text>}
     </Drawer>
-    <ResourceFormModal title="编辑权限组" open={editing} onCancel={() => setEditing(false)} onSubmit={update} initialValues={{ name: group?.name, description: group?.description, items: JSON.stringify(group?.items ?? [], null, 2) }} fields={[{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'description', label: '说明', type: 'textarea', maxLength: 500 }, { key: 'items', label: '授权明细（JSON 数组）', type: 'textarea', required: true, maxLength: 10000 }]} />
+    <ResourceFormModal title="编辑权限组" open={editing} onCancel={() => setEditing(false)} onSubmit={update} initialValues={{ name: group?.name, description: group?.description, items: editingItems }} fields={[{ key: 'name', label: '名称', required: true, maxLength: 50 }, { key: 'description', label: '说明', type: 'textarea', maxLength: 500 }, { key: 'items', label: '授权明细', type: 'permission-grants', permissionVariant: 'matrix', required: true, width: 'full', hidePermissionManage }]} />
   </>;
 }
 
@@ -556,7 +670,7 @@ function SystemStatusTab() {
 }
 
 function OperationLogs() {
-  return <DataTable title="操作日志" service="platform" endpoint="/operation-logs" pageKey="backstage-operation-logs" columns={[...LIST_COLUMNS, { key: 'operatorName', title: '操作者' }, { key: 'actionType', title: '操作', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: OPERATION_SYSTEM_OPTIONS }, { key: 'feature', title: '功能', type: 'text' }, { key: 'operatorId', title: '操作者', type: 'number' }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/operation-logs/export', filename: 'operation-logs.xlsx', method: 'POST' }} />;
+  return <DataTable title="操作日志" service="platform" endpoint="/operation-logs" pageKey="backstage-operation-logs" columns={[...LIST_COLUMNS, { key: 'operatorName', title: '操作者' }, { key: 'actionType', title: '操作', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'summary', title: '摘要' }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: OPERATION_SYSTEM_OPTIONS }, { key: 'feature', title: '功能', type: 'enum', options: operationFeatureOptions }, { key: 'operatorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'departmentId', title: '部门', type: 'tree', remote: operationLogDepartmentTreeSource }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/operation-logs/export', filename: 'operation-logs.xlsx', method: 'POST' }} />;
 }
 
 function SystemLogs() {
@@ -584,10 +698,10 @@ function SystemLogs() {
     <Tabs
       items={[
         { key: 'errors', label: '错误日志', children: <DataTable key={`errors-${version}`} title="错误日志" service="platform" endpoint="/system-logs/errors" pageKey="backstage-error-logs" columns={[...LIST_COLUMNS, { key: 'level', title: '级别' }, { key: 'service', title: '服务' }, { key: 'occurrenceCount', title: '发生次数' }, { key: 'lastSeenAt', title: '最近发生' }]} filterFields={[{ key: 'service', title: '服务', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: [{ label: '待处理', value: 'PENDING' }, { label: '已处理', value: 'HANDLED' }, { label: '已忽略', value: 'IGNORED' }] }]} onRowClick={(row) => setDetailId(Number(row.id))} exportConfig={{ allEndpoint: '/system-logs/errors/export', filename: 'errors-logs.xlsx', method: 'POST' }} rowActions={(row) => row.status === 'PENDING' ? <Space size="small"><Popconfirm title="确认标记为已处理？" onConfirm={() => void dispose(Number(row.id), 'HANDLED')}><Button size="small">已处理</Button></Popconfirm><Popconfirm title="确认忽略此错误？" onConfirm={() => void dispose(Number(row.id), 'IGNORED')}><Button size="small" danger>忽略</Button></Popconfirm></Space> : null} /> },
-        { key: 'security', label: '安全日志', children: <DataTable title="安全日志" service="platform" endpoint="/system-logs/security" pageKey="backstage-security-logs" columns={[...LIST_COLUMNS, { key: 'eventType', title: '事件' }, { key: 'actorName', title: '操作者' }, { key: 'targetUserName', title: '目标用户' }, { key: 'result', title: '结果', render: (value: unknown) => <StatusTag value={value} /> }]} filterFields={[{ key: 'eventType', title: '事件类型', type: 'enum', options: SECURITY_EVENT_TYPE_OPTIONS }, { key: 'actorId', title: '操作者', type: 'number' }, { key: 'targetUserId', title: '目标用户', type: 'number' }, { key: 'result', title: '结果', type: 'enum', options: [{ label: '成功', value: 'SUCCESS' }, { label: '失败', value: 'FAILURE' }] }]} exportConfig={{ allEndpoint: '/system-logs/security/export', filename: 'security-logs.xlsx', method: 'POST' }} /> },
+        { key: 'security', label: '安全日志', children: <DataTable title="安全日志" service="platform" endpoint="/system-logs/security" pageKey="backstage-security-logs" columns={[...LIST_COLUMNS, { key: 'eventType', title: '事件' }, { key: 'actorName', title: '操作者' }, { key: 'targetUserName', title: '目标用户' }, { key: 'result', title: '结果', render: (value: unknown) => <StatusTag value={value} /> }]} filterFields={[{ key: 'eventType', title: '事件类型', type: 'enum', options: SECURITY_EVENT_TYPE_OPTIONS }, { key: 'actorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'targetUserId', title: '目标用户', type: 'remote', remote: permissionEmployeesSource }, { key: 'result', title: '结果', type: 'enum', options: [{ label: '成功', value: 'SUCCESS' }, { label: '失败', value: 'FAILURE' }] }]} exportConfig={{ allEndpoint: '/system-logs/security/export', filename: 'security-logs.xlsx', method: 'POST' }} /> },
       ]}
     />
-    <Drawer title="错误日志详情" open={detailId !== null} onClose={() => setDetailId(null)} width={620}>{detail ? <Descriptions bordered column={1} size="small" items={Object.entries(detail).map(([key, value]) => ({ key, label: displayLabel(key), children: <span style={{ whiteSpace: 'pre-wrap' }}>{typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '—')}</span> }))} /> : <Typography.Text>正在加载...</Typography.Text>}</Drawer>
+    <Drawer title="错误日志详情" open={detailId !== null} onClose={() => setDetailId(null)} width={620}>{detail ? <Descriptions bordered column={1} size="small" items={errorLogDetailItems(detail)} /> : <Typography.Text>正在加载...</Typography.Text>}</Drawer>
   </Space>;
 }
 
@@ -605,8 +719,8 @@ function Announcements() {
     }
   };
   return <>
-    <DataTable key={version} title="系统公告" service="platform" endpoint="/announcements" pageKey="backstage-announcements" columns={[...LIST_COLUMNS, { key: 'title', title: '标题' }, { key: 'publishedAt', title: '发布时间' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '草稿', value: 'DRAFT' }, { label: '展示中', value: 'PUBLISHING' }, { label: '已撤回', value: 'REVOKED' }] }]} actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建公告</Button>} batchAction={{ label: '删除公告', danger: true, onExecute: async (ids) => { await http.delete('/announcements/batch', { ids: ids.map(Number) }); setVersion((value) => value + 1); } }} rowActions={(row) => { const status = String(row.status ?? ''); return <Space size="small">{status === 'DRAFT' ? <Popconfirm title="确认发布此公告？" onConfirm={() => void changeStatus(Number(row.id), 'publish')}><Button size="small">发布</Button></Popconfirm> : null}{status === 'PUBLISHING' ? <Popconfirm title="确认撤回此公告？" onConfirm={() => void changeStatus(Number(row.id), 'revoke')}><Button size="small" danger>撤回</Button></Popconfirm> : null}</Space>; }} />
-    <ResourceFormModal title="新建公告" open={open} onCancel={() => setOpen(false)} onSubmit={async (values) => { await http.post('/announcements', values); feedback.success('公告草稿已创建'); setOpen(false); setVersion((value) => value + 1); }} fields={[{ key: 'title', label: '标题', required: true, maxLength: 200 }, { key: 'content', label: '内容', type: 'textarea', maxLength: 10000 }]} />
+    <DataTable key={version} title="系统公告" service="platform" endpoint="/announcements" pageKey="backstage-announcements" columns={[...LIST_COLUMNS, { key: 'title', title: '标题' }, { key: 'publishedAt', title: '发布时间' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '草稿', value: 'DRAFT' }, { label: '展示中', value: 'PUBLISHING' }, { label: '已撤回', value: 'REVOKED' }] }]} actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建公告</Button>} emptyAction={{ label: '去创建', onExecute: () => setOpen(true) }} batchAction={{ label: '删除公告', danger: true, onExecute: async (ids) => { await http.delete('/announcements/batch', { ids: ids.map(Number) }); setVersion((value) => value + 1); } }} rowActions={(row) => { const status = String(row.status ?? ''); return <Space size="small">{status === 'DRAFT' ? <Popconfirm title="确认发布此公告？" onConfirm={() => void changeStatus(Number(row.id), 'publish')}><Button size="small">发布</Button></Popconfirm> : null}{status === 'PUBLISHING' ? <Popconfirm title="确认撤回此公告？" onConfirm={() => void changeStatus(Number(row.id), 'revoke')}><Button size="small" danger>撤回</Button></Popconfirm> : null}</Space>; }} />
+    <ResourceFormModal title="新建公告" open={open} onCancel={() => setOpen(false)} onSubmit={async (values) => { await http.post('/announcements', values); feedback.success('公告草稿已创建'); setOpen(false); setVersion((value) => value + 1); }} fields={[{ key: 'title', label: '标题', required: true, maxLength: 200, width: 'wide' }, { key: 'content', label: '内容', type: 'textarea', maxLength: 10000 }]} />
   </>;
 }
 
@@ -691,7 +805,7 @@ function Backups() {
         </Form>
       ) : precheck ? (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Descriptions bordered column={1} size="small" items={Object.entries(precheck).filter(([key]) => key !== 'backupId').map(([key, value]) => ({ key, label: displayLabel(key), children: <span style={{ whiteSpace: 'pre-wrap' }}>{key === 'fileSize' && value !== null && value !== undefined && value !== '' ? formatMoney(String(value)) : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '—')}</span> }))} />
+          <Descriptions bordered column={1} size="small" items={restorePrecheckItems(precheck)} />
           <Form layout="vertical" onFinish={(values) => void confirmRestore(values)}>
             <Form.Item name="note" label="恢复说明"><Input.TextArea maxLength={500} rows={2} /></Form.Item>
             <Form.Item name="proceedWithoutEmergency" label="紧急备份失败时，已人工确认风险并继续" valuePropName="checked"><Checkbox /></Form.Item>
@@ -780,31 +894,21 @@ function isRecord(value: unknown): value is RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseJsonArray(value: unknown, label: string): unknown[] {
-  if (value === undefined || value === null || value === '') return [];
-  if (typeof value !== 'string') throw new Error(`${label}必须是 JSON 数组`);
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) throw new Error(`${label}必须是 JSON 数组`);
-    return parsed;
-  } catch {
-    throw new Error(`${label} JSON 格式不正确`);
+/**
+ * 将权限编辑器产出的授权列表规范化为后端 DTO。
+ *
+ * @param value 表单中的 grants/items 字段
+ * @returns 合法的功能编码 + 数据范围列表
+ * @throws 结构不合法时抛出可读错误
+ */
+function normalizeGrants(value: unknown): GrantItem[] {
+  if (!Array.isArray(value)) {
+    throw new Error('请通过权限选择器配置授权');
   }
-}
-
-function parseIdArray(value: unknown, label: string): number[] {
-  const items = parseJsonArray(value, label);
-  if (!items.every((item) => typeof item === 'number' && Number.isInteger(item) && item > 0)) throw new Error(`${label}必须是正整数数组`);
-  return items as number[];
-}
-
-function parseGrantItems(value: unknown): Array<{ functionCode: string; dataScope: 'SELF' | 'DEPARTMENT' | 'COMPANY' }> {
-  const items = parseJsonArray(value, '授权明细');
-  const result = items.map((item) => {
+  return value.map((item) => {
     if (!isRecord(item) || typeof item.functionCode !== 'string' || !['SELF', 'DEPARTMENT', 'COMPANY'].includes(String(item.dataScope))) {
-      throw new Error('授权明细必须包含 functionCode 与合法 dataScope');
+      throw new Error('授权明细不完整，请重新勾选功能与数据范围');
     }
-    return { functionCode: item.functionCode, dataScope: item.dataScope as 'SELF' | 'DEPARTMENT' | 'COMPANY' };
+    return { functionCode: item.functionCode, dataScope: item.dataScope as GrantItem['dataScope'] };
   });
-  return result;
 }

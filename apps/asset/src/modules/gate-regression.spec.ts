@@ -474,6 +474,51 @@ describeDb('asset 关口回归（T7 修复验收）', () => {
     }
   });
 
+  it('借还历史筛选回归：userId 命中 PERSONAL 借用人和 AGENT 发起人（proxy/applicant），recipientId 命中受领人', async () => {
+    // 代领审批头：申请人 = applicantId，代交人（proxy）= deptApproverId（两路匹配分别验证）；
+    // AGENT 借还记录 user_id 恒为 null（发起人只存在审批头）
+    const [tempHeadId, tempAgentRecordId, tempPersonalRecordId] = [BASE + 95, BASE + 96, BASE + 97];
+    await prisma.client.$executeRaw`DELETE FROM asset.agent_recipients WHERE request_id = ${tempHeadId}`;
+    await prisma.client.$executeRaw`DELETE FROM asset.borrow_records WHERE id IN (${tempAgentRecordId}, ${tempPersonalRecordId})`;
+    await prisma.client.$executeRaw`DELETE FROM asset.approval_requests WHERE id = ${tempHeadId}`;
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.approval_requests (id, application_no, request_type, applicant_id, applicant_name, proxy_id, proxy_name, status, version, submitted_at, created_at, updated_at)
+      VALUES (${tempHeadId}, 'AS-GATE-0095', 'AGENT_REQUEST', ${applicantId}, '关口测试申请人', ${deptApproverId}, '关口测试部门审批人', 'APPROVED', 1, NOW(), NOW(), NOW())
+    `;
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.borrow_records (id, record_type, user_id, user_name, agent_request_id, request_id, inventory_item_id, consumable_name, spec, warehouse_name, warehouse_path, qty, returned_qty, written_off_qty, borrowed_at, due_at, created_at)
+      VALUES
+        (${tempAgentRecordId}, 'AGENT', NULL, NULL, ${tempHeadId}, ${tempHeadId}, ${reusableItemId}, '关口筛选代领品', '标准', '关口测试库位', '关口测试库位', 2, 0, 0, NOW(), NOW() + INTERVAL '30 days', NOW()),
+        (${tempPersonalRecordId}, 'PERSONAL', ${applicantId}, '关口测试申请人', NULL, ${tempHeadId}, ${reusableItemId}, '关口筛选个人品', '标准', '关口测试库位', '关口测试库位', 1, 0, 0, NOW(), NOW() + INTERVAL '30 days', NOW())
+    `;
+    await prisma.client.$executeRaw`
+      INSERT INTO asset.agent_recipients (request_id, user_id, user_name, department_snapshot, created_at)
+      VALUES (${tempHeadId}, ${assetMaintainerId}, '关口测试资产维护人', '[]'::jsonb, NOW())
+    `;
+    const idsOf = (items: unknown[]): number[] => (items as Array<{ id: number }>).map((row) => Number(row.id));
+    try {
+      // PERSONAL 借用人 + AGENT 申请人（applicant_id）同时命中
+      const byApplicant = await borrow.listHistory({ userId: applicantId, page: 1, pageSize: 100 });
+      expect(idsOf(byApplicant.items)).toContain(tempPersonalRecordId);
+      expect(idsOf(byApplicant.items)).toContain(tempAgentRecordId);
+      // AGENT 代交人（proxy_id）命中（修复前恒为空）
+      const byProxy = await borrow.listHistory({ userId: deptApproverId, recordType: 'AGENT', page: 1, pageSize: 100 });
+      expect(idsOf(byProxy.items)).toContain(tempAgentRecordId);
+      // 无关用户不命中
+      const byOther = await borrow.listHistory({ userId: inventoryManagerId, recordType: 'AGENT', page: 1, pageSize: 100 });
+      expect(idsOf(byOther.items)).not.toContain(tempAgentRecordId);
+      // recipientId 命中受领人名单；PERSONAL 记录不受 recipientId 匹配
+      const byRecipient = await borrow.listHistory({ recipientId: assetMaintainerId, page: 1, pageSize: 100 });
+      expect(idsOf(byRecipient.items)).toContain(tempAgentRecordId);
+      expect(idsOf(byRecipient.items)).not.toContain(tempPersonalRecordId);
+      expect(idsOf(byRecipient.items)).not.toContain(borrowAgentBId);
+    } finally {
+      await prisma.client.$executeRaw`DELETE FROM asset.agent_recipients WHERE request_id = ${tempHeadId}`;
+      await prisma.client.$executeRaw`DELETE FROM asset.borrow_records WHERE id IN (${tempAgentRecordId}, ${tempPersonalRecordId})`;
+      await prisma.client.$executeRaw`DELETE FROM asset.approval_requests WHERE id = ${tempHeadId}`;
+    }
+  });
+
   it('新增关口：仅固定资产维护的部门档列表不会越权显示其他部门资产', async () => {
     const list = await assetService.list(assetMaintainerId, { page: 1, pageSize: 50 });
     const ids = list.items.map((item) => item.id);

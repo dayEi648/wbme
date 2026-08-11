@@ -57,7 +57,8 @@ vi.mock('../../request/http', () => ({
   http: {
     get: vi.fn((path: string) => {
       if (path.startsWith('/profit/projects')) {
-        return Promise.resolve({ data: [{ id: 1, name: '测试项目', contractAmount: '100', invoicedAmount: '0', receivedAmount: '0' }] });
+        // 行结构为后端展平后的扁平行；可编辑字段（PRD：付款节点起的非自动字段）用于草稿/保存用例
+        return Promise.resolve({ data: [{ id: 1, name: '测试项目', tentativeAuditedAmount: '100', paymentNode: '主合同付款节点', contractAmount: '100', totalInvoiced: '0', totalReceived: '0', dataRevision: 0 }] });
       }
       if (path === '/profit/totals') {
         return Promise.resolve({});
@@ -133,14 +134,14 @@ describe('ProfitAnalysis 离开保护（M22）', () => {
 
   it('/fin/profit 命中 profit 分支，不渲染其它页面内容（防 case 缺失回归）', async () => {
     renderProfit();
-    expect(await firstField('测试项目 contractAmount')).toBeTruthy();
+    expect(await firstField('测试项目 tentativeAuditedAmount')).toBeTruthy();
     expect(screen.queryByTestId('other-page')).toBeNull();
   });
 
   it('无草稿时站内导航不弹确认', async () => {
     renderProfit();
     // 等待数据加载完成（输入框出现）
-    const amountInput = await firstField('测试项目 contractAmount');
+    const amountInput = await firstField('测试项目 tentativeAuditedAmount');
     expect(amountInput).toBeTruthy();
     await userEvent.click(screen.getByText('去工程合同'));
     await waitFor(() => expect(screen.getByTestId('current-path').textContent).toBe('/fin/projects'));
@@ -150,7 +151,7 @@ describe('ProfitAnalysis 离开保护（M22）', () => {
   it('有草稿时导航弹确认，「留在本页」回退且不重复弹窗', async () => {
     const user = userEvent.setup();
     renderProfit();
-    const amountInput = await firstField('测试项目 contractAmount');
+    const amountInput = await firstField('测试项目 tentativeAuditedAmount');
     // 金额输入框（rc-input-number）在 jsdom 下不走 userEvent 键盘序列，用 change 事件产生草稿
     fireEvent.change(amountInput, { target: { value: '200' } });
     expect(await screen.findByText(/1 个未提交草稿/)).toBeTruthy();
@@ -166,7 +167,7 @@ describe('ProfitAnalysis 离开保护（M22）', () => {
   it('有草稿时导航弹确认，「放弃并离开」放行', async () => {
     const user = userEvent.setup();
     renderProfit();
-    const amountInput = await firstField('测试项目 contractAmount');
+    const amountInput = await firstField('测试项目 tentativeAuditedAmount');
     fireEvent.change(amountInput, { target: { value: '300' } });
     expect(await screen.findByText(/1 个未提交草稿/)).toBeTruthy();
     await user.click(screen.getByText('去工程合同'));
@@ -179,7 +180,7 @@ describe('ProfitAnalysis 离开保护（M22）', () => {
   it('确认「放弃并离开」后保护复位：再次编辑并离开仍弹确认（M22 回归）', async () => {
     const user = userEvent.setup();
     renderProfit();
-    const amountInput = await firstField('测试项目 contractAmount');
+    const amountInput = await firstField('测试项目 tentativeAuditedAmount');
     // 第一次：产生草稿 → 离开 → 确认放弃
     fireEvent.change(amountInput, { target: { value: '300' } });
     expect(await screen.findByText(/1 个未提交草稿/)).toBeTruthy();
@@ -192,7 +193,7 @@ describe('ProfitAnalysis 离开保护（M22）', () => {
     expect(screen.queryByText(/未提交草稿/)).toBeNull();
     await user.click(screen.getByText('回利润分析'));
     await waitFor(() => expect(screen.getByTestId('current-path').textContent).toBe('/fin/profit'));
-    const amountInput2 = await firstField('测试项目 contractAmount');
+    const amountInput2 = await firstField('测试项目 tentativeAuditedAmount');
     fireEvent.change(amountInput2, { target: { value: '400' } });
     expect(await screen.findByText(/1 个未提交草稿/)).toBeTruthy();
     // 第二次离开：保护必须重新生效（修复前 leaveConfirmedRef 永不复位导致不再弹窗）
@@ -203,7 +204,7 @@ describe('ProfitAnalysis 离开保护（M22）', () => {
   it('保存请求在途（saving）时导航仍弹确认（竞态修复：保存在途离开无感知）', async () => {
     const user = userEvent.setup();
     renderProfit();
-    const nameInput = await firstField('测试项目 name');
+    const nameInput = await firstField('测试项目 paymentNode');
     // 保存请求挂起不 resolve，saveState 保持 saving（修复前 saving 不参与离开判定，
     // 导航直接放行，保存随后失败时用户已在别的页面且无任何提示）
     vi.mocked(http.put).mockImplementationOnce(() => new Promise(() => {}));
@@ -217,7 +218,7 @@ describe('ProfitAnalysis 离开保护（M22）', () => {
   it('确认放弃后，在途保存失败不重新标记：再次导航不弹确认（竞态修复：二次拦截）', async () => {
     const user = userEvent.setup();
     renderProfit();
-    const nameInput = await firstField('测试项目 name');
+    const nameInput = await firstField('测试项目 paymentNode');
     const deferred: { reject: (reason?: unknown) => void } = { reject: () => {} };
     vi.mocked(http.put).mockImplementationOnce(
       () => new Promise((_resolve, reject) => { deferred.reject = reject; }),
