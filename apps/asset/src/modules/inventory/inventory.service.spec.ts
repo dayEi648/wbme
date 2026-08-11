@@ -191,25 +191,29 @@ describeDb('InventoryService.correctBatch（T7-4）', () => {
       // - 一方被锁后一致性校验拒绝（VALIDATION_FAILED）：identity 三字段与锁前
       //   快照不符，属并发冲突的显式检测，重试即可。
       // 不允许出现死锁（40P01）或其它错误——即 M8 锁序纪律（条目升序 → 批次）的回归护栏。
-      const [r1, r2] = await Promise.allSettled([
+      const [supplierOutcome, specOutcome] = await Promise.allSettled([
         service.correctBatch(operator, batchId, { supplierId: 99901, reason: '并发改供应商' }),
         service.correctBatch(operator, batchId, { spec: '并发新规格', reason: '并发改规格' }),
       ]);
-      const rejected = [r1, r2].filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      const rejected = [supplierOutcome, specOutcome].filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
       for (const r of rejected) {
         const reason = r.reason as { entry?: { code?: string }; message?: string };
         expect(reason.entry?.code).toBe('VALIDATION_FAILED');
       }
-      const succeeded = [r1, r2].filter((r) => r.status === 'fulfilled');
+      const succeeded = [supplierOutcome, specOutcome].filter((r) => r.status === 'fulfilled');
       expect(succeeded.length).toBeGreaterThanOrEqual(1);
 
-      // 核心断言（无丢失更新）：供应商修改必须保留（若并发方用过期值覆盖，此处为 null/旧值）
+      // 按实际成功方断言字段：规格先写时 identity 校验会拒绝供应商纠正，supplier 可仍为 null；
+      // 双双成功时才同时校验两字段——这才是 S5「后提交者不得用过期 peek 覆盖」的回归护栏。
       const batchRows = await prisma.client.$queryRaw<Array<{ supplier_name: string | null; spec: string }>>`
         SELECT supplier_name, spec FROM asset.batches WHERE id = ${batchId}
       `;
-      expect(batchRows[0]?.supplier_name).toBe('新供应商');
-      if (succeeded.length === 2) {
-        // 双双成功时规格修改也保留
+      if (supplierOutcome.status === 'fulfilled') {
+        expect(batchRows[0]?.supplier_name).toBe('新供应商');
+      }
+      if (specOutcome.status === 'fulfilled') {
         expect(batchRows[0]?.spec).toBe('并发新规格');
       }
     }

@@ -24,8 +24,15 @@ test.describe('核心业务链路', () => {
     await page.getByText('运维监控').click();
     await expect(page.getByText('操作日志').first()).toBeVisible({ timeout: 15_000 });
     await page.getByText('操作日志').first().click();
-    // 表格加载：至少出现表格容器（数据可能为空，但应渲染表头）
-    await expect(page.getByText('操作者').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/\/backstage\/operation-logs/);
+    await expect(page.getByRole('heading', { name: '操作日志' })).toBeVisible({ timeout: 15_000 });
+    // DataTable 空列表只渲染 Empty（无表头）；新鲜 CI 库通常无操作日志。
+    // 列表加载完成：空态「暂无数据」，或有历史数据时出现列文案「操作者」。
+    await expect(page.getByText(/暂无数据|操作者/).first()).toBeVisible({ timeout: 15_000 });
+    // 筛选契约（与用例名对齐）：抽屉快捷筛选含「操作者」字段，不依赖表格是否有行。
+    // accessible name 形如「filter 筛选」或「filter 筛选（n）」；须锚定开头，避免命中「导出已筛选」。
+    await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /^(filter\s+)?筛\s*选/ }).click();
+    await expect(page.locator('.ant-drawer').getByText('操作者').first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('资产台账页面加载（表格契约可用）', async ({ page }) => {
@@ -58,7 +65,8 @@ test.describe('核心业务链路', () => {
     const title = `E2E公告写链路${Date.now()}`;
     // 新建草稿（ResourceFormModal：标题必填，提交按钮为「保存」；表单控件限定在弹窗内匹配，
     // 避免与列表表头「调整标题列宽」等 aria-label 歧义）
-    await page.getByText('新建公告').click();
+    // Ant Design Button + PlusOutlined：getByText 会同时命中 button 与内层 span（strict mode）
+    await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /新建公告/ }).click();
     const dialog = page.getByRole('dialog', { name: '新建公告' });
     await dialog.getByLabel('标题').fill(title);
     await dialog.getByLabel('内容').fill('E2E 写链路测试内容：发布后撤回');
