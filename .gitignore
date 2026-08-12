@@ -212,8 +212,11 @@ alembic/versions/*.py
 .agents/restore-state/
 .agents/restore-state-test/
 apps/recovery-executor/.agents/
+apps/worker/.agents/
 
 # E2E 测试临时产物（T10-4）
 apps/web/e2e-results/
 apps/web/test-results/
 apps/web/playwright-report/
+
+.zcode
