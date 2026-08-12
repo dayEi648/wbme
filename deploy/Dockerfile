@@ -66,4 +66,4 @@ COPY --from=builder /wbme/apps ./apps
 RUN useradd -r -u 10001 -m wbme && chown -R wbme:wbme /wbme
 USER wbme
 
-EXPOSE 3001 3002 3003 3004
+EXPOSE 43001 43002 43003 43004

@@ -37,8 +37,8 @@ export interface HrPositionApplicationItem {
   opinion: string | null;
 }
 
-/** hr 服务内部地址（开发默认本地回环；生产 compose 私网 http://hr:3003） */
-const HR_INTERNAL_BASE_URL = process.env.HR_INTERNAL_BASE_URL ?? 'http://localhost:3003';
+/** hr 服务内部地址（开发默认本地回环；生产 compose 私网 http://hr:43003） */
+const HR_INTERNAL_BASE_URL = process.env.HR_INTERNAL_BASE_URL ?? 'http://localhost:43003';
 
 @Injectable()
 export class HrOrgClient {

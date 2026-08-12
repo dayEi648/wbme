@@ -11,6 +11,7 @@ import {
   IdempotencyHeaderInterceptor,
   RequestTimeoutInterceptor,
   ShutdownStateService,
+  listenWithFallback,
 } from '@wbme/server';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma.service';
@@ -36,9 +37,10 @@ async function bootstrap(): Promise<void> {
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalInterceptors(new IdempotencyHeaderInterceptor(), new AccessLogInterceptor(), new RequestTimeoutInterceptor());
 
-  const port = Number(process.env.ASSET_PORT ?? 3002);
-  await app.listen(port);
-  console.log(`asset listening on http://localhost:${port}`);
+  // 默认端口 43002（开发环境少见端口段）；被占用时 listenWithFallback 自动 +1 顺延（开发友好）
+  const port = Number(process.env.ASSET_PORT ?? 43002);
+  const actualPort = await listenWithFallback(app, port);
+  console.log(`asset listening on http://localhost:${actualPort}`);
 
   // 优雅停机（主 PRD §9.13）：SIGTERM/SIGINT → 就绪探针立即 503 → 有界宽限内
   // 等待请求到达安全事务边界 → app.close（HTTP 停止 + Prisma/Redis 客户端关闭）→ 退出

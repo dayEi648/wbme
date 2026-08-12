@@ -23,7 +23,7 @@ import { DingtalkStateService } from './dingtalk.state.service';
 import { DingtalkController } from './dingtalk.controller';
 
 const REDIS_URL = process.env.REDIS_URL;
-const TEST_PUBLIC_ORIGIN = 'http://localhost:5173';
+const TEST_PUBLIC_ORIGIN = 'http://localhost:45173';
 
 /** 测试用假 Prisma（仅覆盖回调路径用到的查询） */
 function fakePrismaService() {
@@ -58,6 +58,8 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
   beforeAll(async () => {
     redis = new Redis(REDIS_URL ?? 'redis://localhost:6379');
     process.env.PUBLIC_ORIGIN = TEST_PUBLIC_ORIGIN;
+    // 显式 stub 回调地址（避免测试结果依赖本地 .env 的 DINGTALK_REDIRECT_URI 取值）
+    process.env.DINGTALK_REDIRECT_URI = `${TEST_PUBLIC_ORIGIN}/api/v1/auth/dingtalk/callback`;
     process.env.DINGTALK_CORP_ID = 'test-corp';
 
     gateway = new FakeDingtalkGateway();
@@ -120,7 +122,7 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
     expect(res.body.authorizeUrl).toContain('login.dingtalk.com/oauth2/auth');
     expect(res.body.authorizeUrl).toContain('state=');
     // 回调地址须指向后端 /api/v1 路由（经前端/Nginx 代理转发，base PRD §2）
-    expect(res.body.authorizeUrl).toContain(`redirect_uri=${encodeURIComponent('http://localhost:5173/api/v1/auth/dingtalk/callback')}`);
+    expect(res.body.authorizeUrl).toContain(`redirect_uri=${encodeURIComponent(`${TEST_PUBLIC_ORIGIN}/api/v1/auth/dingtalk/callback`)}`);
   });
 
   it('A4 流程类用途（ACTIVATION）缺少流程 Cookie 拒绝', async () => {

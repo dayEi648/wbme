@@ -56,7 +56,7 @@ describe('disk-status（主 PRD §9.13）', () => {
   });
 
   it('配置集中探针时使用内部令牌读取真实聚合状态', async () => {
-    vi.stubEnv('HEALTH_DISK_STATUS_URL', 'http://recovery-executor:3090');
+    vi.stubEnv('HEALTH_DISK_STATUS_URL', 'http://recovery-executor:43090');
     vi.stubEnv('INTERNAL_SERVICE_TOKEN', 'internal-token');
     vi.stubEnv('DISK_STATUS_CALLER', 'platform-core');
     const fetchMock = vi.fn().mockResolvedValue({
@@ -67,7 +67,7 @@ describe('disk-status（主 PRD §9.13）', () => {
 
     await expect(readDiskStatus()).resolves.toEqual({ status: 'WARN', usageRatio: 0.85, measurementAvailable: true });
     expect(fetchMock).toHaveBeenCalledWith(
-      new URL('http://recovery-executor:3090/recovery/disk'),
+      new URL('http://recovery-executor:43090/recovery/disk'),
       expect.objectContaining({
         headers: { authorization: 'Bearer internal-token', 'x-wbme-caller': 'platform-core' },
       }),
@@ -75,7 +75,7 @@ describe('disk-status（主 PRD §9.13）', () => {
   });
 
   it('集中探针响应无效时按不可测量失败安全处理', async () => {
-    vi.stubEnv('HEALTH_DISK_STATUS_URL', 'http://recovery-executor:3090');
+    vi.stubEnv('HEALTH_DISK_STATUS_URL', 'http://recovery-executor:43090');
     vi.stubEnv('INTERNAL_SERVICE_TOKEN', 'internal-token');
     vi.stubEnv('DISK_STATUS_CALLER', 'platform-core');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'OK' }) }));

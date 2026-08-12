@@ -7,8 +7,8 @@ import { InternalHttpClient, InternalRequestError } from '@wbme/server';
  * asset 不可用时：预览降级返回 null（hr 侧按 0 展示并提示），删除事务整体中止（不产生部分删除）。
  */
 
-/** asset 内部 base URL（开发默认本地回环；生产 compose 私网 http://asset:3002/internal/v1） */
-const ASSET_INTERNAL_BASE_URL = process.env.ASSET_INTERNAL_BASE_URL ?? 'http://localhost:3002/internal/v1';
+/** asset 内部 base URL（开发默认本地回环；生产 compose 私网 http://asset:43002/internal/v1） */
+const ASSET_INTERNAL_BASE_URL = process.env.ASSET_INTERNAL_BASE_URL ?? 'http://localhost:43002/internal/v1';
 
 /** asset 部门接口响应 */
 interface AssetDepartmentResult {

@@ -84,7 +84,7 @@ Worker：`apps/worker/src/processors/backup.processor.ts` 执行 `pg_dump` / OSS
 
 ## 恢复执行器
 
-独立端口（默认 3090，与执行器 `RECOVERY_EXECUTOR_PORT` 默认一致），**非** `/api/v1`：
+独立端口（默认 43090，与执行器 `RECOVERY_EXECUTOR_PORT` 默认一致），**非** `/api/v1`：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

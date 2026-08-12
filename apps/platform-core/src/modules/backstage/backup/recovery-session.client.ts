@@ -3,13 +3,13 @@ import { BusinessException, integrationErrors } from '@wbme/contracts';
 import { InternalHttpClient, InternalRequestError } from '@wbme/server';
 
 /**
- * 恢复执行器内部地址（开发默认本地回环 3090，与执行器默认端口一致；生产 compose 私网 http://recovery-executor:3090）。
+ * 恢复执行器内部地址（开发默认本地回环 43090，与执行器默认端口一致；生产 compose 私网 http://recovery-executor:43090）。
  * 恢复执行器内部控制路由挂在 `/recovery/*` 下（无 `/internal/v1` 前缀），
  * 因此 base URL 不得带 internal 后缀，否则 InternalHttpClient 直拼 `${baseUrl}${path}`
  * 会请求到不存在的 `/internal/v1/recovery/session` → 404（M29）。
  */
 const RECOVERY_EXECUTOR_INTERNAL_BASE_URL =
-  process.env.RECOVERY_EXECUTOR_INTERNAL_BASE_URL ?? 'http://localhost:3090';
+  process.env.RECOVERY_EXECUTOR_INTERNAL_BASE_URL ?? 'http://localhost:43090';
 
 /** 恢复控制 Cookie 名（与执行器 RECOVERY_COOKIE_NAME 一致） */
 export const RECOVERY_SESSION_COOKIE_NAME = 'wbme_recovery_session';

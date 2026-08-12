@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import cookieParser from 'cookie-parser';
+import { listenWithFallback } from '@wbme/server';
 import { RecoveryExecutorModule } from './recovery-executor.module';
 import { RecoveryExecutorService } from './recovery-executor.service';
 
@@ -27,9 +28,10 @@ try {
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(RecoveryExecutorModule);
   app.use(cookieParser());
-  const port = Number(process.env.RECOVERY_EXECUTOR_PORT ?? 3090);
-  await app.listen(port);
-  console.log(`recovery-executor listening on http://localhost:${port}`);
+  // 默认端口 43090（开发环境少见端口段）；被占用时 listenWithFallback 自动 +1 顺延（开发友好）
+  const port = Number(process.env.RECOVERY_EXECUTOR_PORT ?? 43090);
+  const actualPort = await listenWithFallback(app, port);
+  console.log(`recovery-executor listening on http://localhost:${actualPort}`);
 
   const recovery = app.get(RecoveryExecutorService);
   let shuttingDown = false;

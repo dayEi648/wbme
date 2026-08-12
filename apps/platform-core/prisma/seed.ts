@@ -89,7 +89,7 @@ async function seedSuperAdmin(prisma: PrismaClient): Promise<void> {
     });
   });
   // 凭证放 URL fragment（base PRD §2：不得放 path/query）；打印到 stdout 仅展示给部署者，不写日志
-  const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
+  const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:45173';
   const activationUrl = `${origin}/activate#${rawToken}`;
   console.log(`[seed] 超级管理员激活链接（一次性，${INVITATION_VALID_SECONDS / 86400} 天有效，仅本次展示）：${activationUrl}`);
   // 终端二维码（与链接同一凭证；链接与二维码两种交付方式，仅 stdout 一次性展示）

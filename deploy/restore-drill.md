@@ -21,7 +21,7 @@
 ```bash
 # 1. 恢复执行器就绪（状态目录读写 + 控制配置；数据库不可连不阻断）
 docker compose --env-file .env.production exec -T recovery-executor node -e \
-  "fetch('http://127.0.0.1:3090/recovery/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  "fetch('http://127.0.0.1:43090/recovery/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # 2. 确认最近备份存在（管理后台「数据备份」页或 OSS backups/ 前缀）
 docker compose --env-file .env.production exec -T worker node -e \
@@ -38,7 +38,7 @@ docker compose --env-file .env.production exec -T worker node -e \
 INTERNAL_TOKEN="$(grep '^INTERNAL_SERVICE_TOKEN=' .env.production | cut -d= -f2-)"
 # 备份异步执行：先触发，返回 backupId；再轮询状态直至 SUCCEEDED（caller 白名单仅 migration-runner）
 docker compose --env-file .env.production exec -T platform-core node -e '
-  fetch("http://127.0.0.1:3001/internal/v1/backups/immediate", {
+  fetch("http://127.0.0.1:43001/internal/v1/backups/immediate", {
     method: "POST",
     headers: { "authorization": "Bearer " + process.argv[1], "x-wbme-caller": "migration-runner", "content-type": "application/json" },
     body: "{}",
@@ -50,7 +50,7 @@ docker compose --env-file .env.production exec -T platform-core node -e '
 # 轮询备份状态（替换 <backupId> 为上一步返回的 backupId）；SUCCEEDED 后才可进入下一步
 docker compose --env-file .env.production exec -T platform-core node -e '
   const id = Number(process.argv[1]);
-  fetch("http://127.0.0.1:3001/internal/v1/backups/immediate/status/" + id, {
+  fetch("http://127.0.0.1:43001/internal/v1/backups/immediate/status/" + id, {
     headers: { "authorization": "Bearer " + process.argv[2], "x-wbme-caller": "migration-runner" },
   }).then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.status === "SUCCEEDED" ? 0 : 1); })
 ' "<backupId>" "$INTERNAL_TOKEN"
@@ -76,7 +76,7 @@ docker compose --env-file .env.production exec -T platform-core node -e '
 docker compose --env-file .env.production exec -T platform-core node -e '
   const cookie = process.argv[1];
   const csrf = /(?:^|; )wbme_csrf=([^;]+)/.exec(cookie)?.[1] ?? "";
-  fetch("http://127.0.0.1:3001/api/v1/restores/session", {
+  fetch("http://127.0.0.1:43001/api/v1/restores/session", {
     method: "POST",
     headers: { cookie, "x-wbme-csrf-token": csrf },
   }).then(r => { console.log(r.status, r.headers.get("set-cookie")); process.exit(r.ok ? 0 : 1); })
@@ -106,7 +106,7 @@ docker compose --env-file .env.production stop platform-core asset hr fin worker
 INTERNAL_TOKEN="$(grep '^INTERNAL_SERVICE_TOKEN=' .env.production | cut -d= -f2-)"
 # 投递恢复清单（worker 内部令牌 + 调用方白名单；body 必填 restoreUuid/backupId）
 docker compose --env-file .env.production exec -T recovery-executor node -e '
-  fetch("http://127.0.0.1:3090/recovery/delivery", {
+  fetch("http://127.0.0.1:43090/recovery/delivery", {
     method: "POST",
     headers: { "authorization": "Bearer " + process.argv[1], "x-wbme-caller": "worker", "content-type": "application/json" },
     body: JSON.stringify({ restoreUuid: "drill-" + Date.now(), backupId: Number(process.argv[2]) }),
@@ -120,7 +120,7 @@ docker compose --env-file .env.production exec -T recovery-executor node -e '
 
 ```bash
 docker compose --env-file .env.production exec -T recovery-executor node -e '
-  fetch("http://127.0.0.1:3090/recovery/status", { headers: { cookie: process.argv[1] } })
+  fetch("http://127.0.0.1:43090/recovery/status", { headers: { cookie: process.argv[1] } })
     .then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.error ? 1 : 0); })
 ' "wbme_recovery_session=<token>"
 ```
@@ -132,13 +132,13 @@ docker compose --env-file .env.production exec -T recovery-executor node -e '
 ```bash
 # 触发恢复（需步骤 3 签发的恢复控制 Cookie；无 Cookie → 401）
 docker compose --env-file .env.production exec -T recovery-executor node -e '
-  fetch("http://127.0.0.1:3090/recovery/retry", { method: "POST", headers: { cookie: process.argv[1] } })
+  fetch("http://127.0.0.1:43090/recovery/retry", { method: "POST", headers: { cookie: process.argv[1] } })
     .then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(d.error ? 1 : 0); })
 ' "wbme_recovery_session=<token>"
 
 # 轮询状态直至 DONE 或 MAINTENANCE（失败保持维护；同样需 Cookie）
 watch -n 5 'docker compose --env-file .env.production exec -T recovery-executor node -e \
-  "fetch(\"http://127.0.0.1:3090/recovery/status\", { headers: { cookie: process.argv[1] } }).then(r=>r.json()).then(d=>console.log(JSON.stringify(d)))" \
+  "fetch(\"http://127.0.0.1:43090/recovery/status\", { headers: { cookie: process.argv[1] } }).then(r=>r.json()).then(d=>console.log(JSON.stringify(d)))" \
   "wbme_recovery_session=<token>"'
 ```
 

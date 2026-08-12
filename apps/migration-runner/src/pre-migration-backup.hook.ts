@@ -42,7 +42,7 @@ function defaultExec(command: string): Promise<HookExecResult> {
 
 /** 默认平台备份客户端：HTTP 调用 platform-core 内部端点（需 INTERNAL_SERVICE_TOKEN） */
 function defaultPlatformBackupClient(env: NodeJS.ProcessEnv): PlatformBackupClient {
-  const baseUrl = (env.PLATFORM_CORE_INTERNAL_BASE_URL ?? env.PLATFORM_CORE_URL ?? 'http://localhost:3001').replace(/\/$/, '');
+  const baseUrl = (env.PLATFORM_CORE_INTERNAL_BASE_URL ?? env.PLATFORM_CORE_URL ?? 'http://localhost:43001').replace(/\/$/, '');
   const token = env.INTERNAL_SERVICE_TOKEN?.trim();
   return {
     async triggerImmediateBackup(): Promise<{ backupId: number }> {

@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { createServer } from 'node:http';
+import { listenServerWithFallback } from '@wbme/server';
 import { WorkerModule } from './worker.module';
 import { WorkerRuntimeService } from './worker-runtime.service';
 
@@ -7,7 +8,7 @@ import { WorkerRuntimeService } from './worker-runtime.service';
 const SHUTDOWN_GRACE_MS = 15_000;
 
 /** 健康探针默认端口（compose 注入 WORKER_HEALTH_URL 供健康状态页探测） */
-const HEALTH_PORT = Number(process.env.WORKER_HEALTH_PORT ?? 3105);
+const HEALTH_PORT = Number(process.env.WORKER_HEALTH_PORT ?? 43105);
 
 /**
  * Worker 部署单元入口。
@@ -45,8 +46,9 @@ async function bootstrap(): Promise<void> {
     res.writeHead(404, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ status: 'not_found' }));
   });
-  healthServer.listen(HEALTH_PORT, '0.0.0.0');
-  console.log(`[worker] 健康探针 listening on http://localhost:${HEALTH_PORT}`);
+  // 健康探针（被占用时自动 +1 顺延，开发环境友好；返回实际端口供日志提示）
+  const actualHealthPort = await listenServerWithFallback(healthServer, HEALTH_PORT, '0.0.0.0');
+  console.log(`[worker] 健康探针 listening on http://localhost:${actualHealthPort}`);
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {

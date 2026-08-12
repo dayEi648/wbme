@@ -28,7 +28,7 @@ function cookieSecure(): boolean {
 
 /** 前端公开地址（回调 302 与链接生成基准 origin） */
 function publicOrigin(): string {
-  return process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
+  return process.env.PUBLIC_ORIGIN ?? 'http://localhost:45173';
 }
 
 /** 钉钉回调地址（与开发者后台一致；须指向后端 /api/v1 路由，经前端/Nginx 代理转发） */

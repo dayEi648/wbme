@@ -30,7 +30,7 @@ describe('processAccountLifecycle（账号生命周期消费）', () => {
 
   it('调用 hr 内部接口幂等取消岗位申请（URL/头/体/超时）', async () => {
     vi.stubEnv('INTERNAL_SERVICE_TOKEN', 'token-abc');
-    vi.stubEnv('HR_INTERNAL_BASE_URL', 'http://hr:3003');
+    vi.stubEnv('HR_INTERNAL_BASE_URL', 'http://hr:43003');
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -41,7 +41,7 @@ describe('processAccountLifecycle（账号生命周期消费）', () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://hr:3003/internal/v1/lifecycle/cancel-position-applications');
+    expect(url).toBe('http://hr:43003/internal/v1/lifecycle/cancel-position-applications');
     expect(init.method).toBe('POST');
     expect(init.headers).toMatchObject({ authorization: 'Bearer token-abc', 'x-wbme-caller': 'worker' });
     expect(JSON.parse(String(init.body))).toEqual({

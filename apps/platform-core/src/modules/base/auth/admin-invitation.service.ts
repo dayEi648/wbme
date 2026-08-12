@@ -149,13 +149,13 @@ export class AdminInvitationService {
       });
     });
     await this.securityLog.record('INVITATION_ISSUED', 'SUCCESS', { actorId: adminId, targetUserId });
-    const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
+    const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:45173';
     return `${origin}/${fragmentPath}#${rawToken}`;
   }
 
   /** 激活链接：凭证放 URL fragment（base PRD §2：不得放在 path/query） */
   private activationUrl(rawToken: string): string {
-    const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:5173';
+    const origin = process.env.PUBLIC_ORIGIN ?? 'http://localhost:45173';
     return `${origin}/activate#${rawToken}`;
   }
 

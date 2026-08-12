@@ -22,7 +22,7 @@ export async function processAccountLifecycle(task: BackgroundTaskRow, _ctx: Pro
   if (!token) {
     throw new Error('INTERNAL_SERVICE_TOKEN 未配置，无法调用 hr 取消岗位申请');
   }
-  const baseUrl = (process.env.HR_INTERNAL_BASE_URL ?? 'http://localhost:3003').replace(/\/$/, '');
+  const baseUrl = (process.env.HR_INTERNAL_BASE_URL ?? 'http://localhost:43003').replace(/\/$/, '');
   const response = await fetch(`${baseUrl}/internal/v1/lifecycle/cancel-position-applications`, {
     method: 'POST',
     headers: {

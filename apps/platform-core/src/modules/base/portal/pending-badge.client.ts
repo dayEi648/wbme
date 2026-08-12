@@ -27,8 +27,8 @@ export class PendingBadgeClient {
     if (!token) {
       return new PendingBadgeClient(null, null);
     }
-    const hrBase = process.env.HR_INTERNAL_BASE_URL ?? 'http://localhost:3003';
-    const assetBase = process.env.ASSET_INTERNAL_BASE_URL ?? 'http://localhost:3002';
+    const hrBase = process.env.HR_INTERNAL_BASE_URL ?? 'http://localhost:43003';
+    const assetBase = process.env.ASSET_INTERNAL_BASE_URL ?? 'http://localhost:43002';
     return new PendingBadgeClient(
       new InternalHttpClient({ baseUrl: hrBase, token, caller: 'platform-core' }),
       new InternalHttpClient({ baseUrl: assetBase, token, caller: 'platform-core' }),

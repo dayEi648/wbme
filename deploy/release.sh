@@ -87,7 +87,7 @@ wait_ready() { # $1 服务名 $2 端口 [$3 探针路径 默认 /readyz]
   done
   fail "服务 $svc 未就绪（$port$path 超时）"
 }
-# worker 业务无 HTTP 端口（L37 起仅健康探针 3105 供健康状态页探测）；
+# worker 业务无 HTTP 端口（L37 起仅健康探针 43105 供健康状态页探测）；
 # 发布等待以容器健康状态为准（kill -0 进程存活 + 启动强检已过）
 wait_worker_healthy() {
   local i cid
@@ -125,7 +125,7 @@ if [ -z "${SKIP_DEPLOY:-}" ]; then
     # 迁移完成后下方第 5 节以 readyz 复核全部服务。
     log "拉起备份链路（platform-core / worker）..."
     docker compose "${COMPOSE_OPTS[@]}" up -d platform-core worker
-    wait_ready platform-core 3001 /healthz
+    wait_ready platform-core 43001 /healthz
     wait_worker_healthy
   fi
 
@@ -169,16 +169,16 @@ wait_ready_running() { # $1 服务名 $2 端口 [$3 探针路径 默认 /readyz]
   fi
   wait_ready "$@"
 }
-wait_ready_running platform-core 3001
-wait_ready_running asset 3002
-wait_ready_running hr 3003
-wait_ready_running fin 3004
+wait_ready_running platform-core 43001
+wait_ready_running asset 43002
+wait_ready_running hr 43003
+wait_ready_running fin 43004
 if is_stopped_before worker; then
   log "跳过就绪探测：worker（发布前已停用，保持停用状态，主 PRD §1.3）"
 else
   wait_worker_healthy
 fi
-wait_ready_running recovery-executor 3090 /recovery/readyz
+wait_ready_running recovery-executor 43090 /recovery/readyz
 # web（nginx alpine 内置 wget；探针经 Nginx 回源 platform-core）
 if is_stopped_before web; then
   log "跳过就绪探测：web（发布前已停用，保持停用状态，主 PRD §1.3）"
@@ -212,7 +212,7 @@ docker volume inspect wbme_postgres_data >/dev/null 2>&1 \
 docker volume inspect wbme_redis_data >/dev/null 2>&1 \
   || fail "命名卷 wbme_redis_data 不存在（§9.13）"
 
-log "核验公网端口（web 80/443 应监听，5432/6379/3090 不得暴露公网，§9.14）..."
+log "核验公网端口（web 80/443 应监听，5432/6379/43090 不得暴露公网，§9.14）..."
 if command -v ss >/dev/null 2>&1; then
   # ss -ltnH 输出无表头（LISTEN Recv-Q Send-Q Local Address:Port Peer Address:Port），
   # Local Address:Port 在第 4 列——必须按列匹配；行首锚定 ^(0.0.0.0|::):port 匹配的是
@@ -221,8 +221,8 @@ if command -v ss >/dev/null 2>&1; then
     ss -ltnH 2>/dev/null | awk -v port="$port" '$4 ~ ":" port "$" { found = 1 } END { exit(found ? 0 : 1) }' \
       || fail "$port 端口未监听（§9.14：仅 Nginx 入口 80/443 暴露公网）"
   done
-  # 5432（PG）/6379（Redis）/3090（恢复执行器）不得监听在非回环地址（127.0.0.0/8 回环允许）
-  for port in 5432 6379 3090; do
+  # 5432（PG）/6379（Redis）/43090（恢复执行器）不得监听在非回环地址（127.0.0.0/8 回环允许）
+  for port in 5432 6379 43090; do
     if ss -ltnH 2>/dev/null | awk -v port="$port" '$4 ~ ":" port "$" && $4 !~ /^127\./ { found = 1 } END { exit(found ? 0 : 1) }'; then
       fail "端口 $port 监听在非回环地址（§9.14：仅 80/443 暴露公网，业务端口应仅在容器网络）"
     fi
@@ -262,7 +262,7 @@ INTERNAL_TOKEN="$(grep -E '^INTERNAL_SERVICE_TOKEN=' "$ENV_FILE" | head -1 | cut
 VERSION="${TAG#v}"
 APPEND_RESULT="$(docker compose "${COMPOSE_OPTS[@]}" exec -T platform-core node -e '
   const [releaseId, version, commitSha, subjectsJson, token] = process.argv.slice(1);
-  fetch("http://127.0.0.1:3001/internal/v1/release-logs/append", {
+  fetch("http://127.0.0.1:43001/internal/v1/release-logs/append", {
     method: "POST",
     headers: { "content-type": "application/json", "authorization": "Bearer " + token, "x-wbme-caller": "release-script" },
     body: JSON.stringify({ releaseId, version, commitSha, subjects: JSON.parse(subjectsJson) }),

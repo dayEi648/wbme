@@ -18,8 +18,8 @@ export async function processRestoreDelivery(task: BackgroundTaskRow, _ctx: Proc
   if (!token) {
     throw new Error('INTERNAL_SERVICE_TOKEN 未配置，无法投递恢复请求');
   }
-  // 开发默认 3090，与执行器默认端口一致（生产由 compose 注入 RECOVERY_EXECUTOR_URL）
-  const baseUrl = (process.env.RECOVERY_EXECUTOR_URL ?? 'http://127.0.0.1:3090').replace(/\/$/, '');
+  // 开发默认 43090，与执行器默认端口一致（生产由 compose 注入 RECOVERY_EXECUTOR_URL）
+  const baseUrl = (process.env.RECOVERY_EXECUTOR_URL ?? 'http://127.0.0.1:43090').replace(/\/$/, '');
   const response = await fetch(`${baseUrl}/recovery/delivery`, {
     method: 'POST',
     headers: {

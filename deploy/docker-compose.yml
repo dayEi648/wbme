@@ -46,7 +46,7 @@ x-backend-env: &backend-env
 
 # 健康检查（node 24 内置 fetch；就绪探针在优雅停机期间返回 503）
 x-healthcheck-ready: &healthcheck-ready
-  test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['PLATFORM_CORE_PORT']||'3001')+'/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+  test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['PLATFORM_CORE_PORT']||'43001')+'/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
   interval: 15s
   timeout: 5s
   retries: 5
@@ -133,7 +133,7 @@ services:
       # 时序由 release.sh 保证（升级部署先拉起 platform-core/worker 再运行本容器；
       # 首次部署空库时钩子自动豁免跳过备份）
       PRE_MIGRATION_BACKUP_WAIT: "1"
-      PLATFORM_CORE_INTERNAL_BASE_URL: http://platform-core:3001
+      PLATFORM_CORE_INTERNAL_BASE_URL: http://platform-core:43001
       # PRE_MIGRATION_BACKUP_CMD 仍为命令行逃生通道；内部接口使用全平台共享 INTERNAL_SERVICE_TOKEN
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
@@ -152,7 +152,7 @@ services:
     command: ["node", "apps/platform-core/dist/main.js"]
     environment:
       <<: *backend-env
-      PLATFORM_CORE_PORT: "3001"
+      PLATFORM_CORE_PORT: "43001"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
       # 会话 Cookie Secure 属性（主 PRD §9.14）：生产 HTTPS 下为 true；纯内网/开发 HTTP 可显式 false
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
@@ -166,27 +166,27 @@ services:
       OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
       OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
       OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
-      HR_INTERNAL_BASE_URL: http://hr:3003/internal/v1
-      ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
+      HR_INTERNAL_BASE_URL: http://hr:43003/internal/v1
+      ASSET_INTERNAL_BASE_URL: http://asset:43002/internal/v1
       # 注意：恢复执行器内部控制路由挂 /recovery/*（非 /internal/v1），base URL 不带 internal 前缀（M29）
-      RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}
       # 维护标记/恢复状态目录（只读：标记由恢复执行器写入）
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
       # 健康状态页服务探针（backstage PRD §11）：各部署单元探针 URL 统一注入本服务
-      PLATFORM_CORE_HEALTH_URL: http://platform-core:3001
-      ASSET_HEALTH_URL: http://asset:3002
-      HR_HEALTH_URL: http://hr:3003
-      FIN_HEALTH_URL: http://fin:3004
-      WORKER_HEALTH_URL: http://worker:3105
-      RECOVERY_EXECUTOR_HEALTH_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}/recovery
+      PLATFORM_CORE_HEALTH_URL: http://platform-core:43001
+      ASSET_HEALTH_URL: http://asset:43002
+      HR_HEALTH_URL: http://hr:43003
+      FIN_HEALTH_URL: http://fin:43004
+      WORKER_HEALTH_URL: http://worker:43105
+      RECOVERY_EXECUTOR_HEALTH_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}/recovery
       # 集中磁盘探针：恢复执行器只读测量 PostgreSQL/Redis 数据卷与恢复状态目录。
-      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}
       DISK_STATUS_CALLER: platform-core
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
       <<: *healthcheck-ready
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:43001/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -201,7 +201,7 @@ services:
     command: ["node", "apps/asset/dist/main.js"]
     environment:
       <<: *backend-env
-      ASSET_PORT: "3002"
+      ASSET_PORT: "43002"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
       OSS_BUCKET: ${OSS_BUCKET}
       OSS_REGION: ${OSS_REGION}
@@ -212,7 +212,7 @@ services:
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:43002/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -226,16 +226,16 @@ services:
     command: ["node", "apps/hr/dist/main.js"]
     environment:
       <<: *backend-env
-      HR_PORT: "3003"
+      HR_PORT: "43003"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
       # M12：部门删除预览/置空资产归属调用 asset 内部接口
-      ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
+      ASSET_INTERNAL_BASE_URL: http://asset:43002/internal/v1
       # 维护标记由恢复执行器写入；hr 仅读取并在应用层拒绝业务流量
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:43003/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -249,16 +249,16 @@ services:
     command: ["node", "apps/fin/dist/main.js"]
     environment:
       <<: *backend-env
-      FIN_PORT: "3004"
+      FIN_PORT: "43004"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
       # Excel 导入的容量门禁读取恢复执行器的统一真实磁盘状态
-      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}
       DISK_STATUS_CALLER: fin
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3004/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:43004/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -273,9 +273,9 @@ services:
     command: ["node", "apps/worker/dist/main.js"]
     environment:
       <<: *backend-env
-      HR_INTERNAL_BASE_URL: http://hr:3003/internal/v1
-      ASSET_INTERNAL_BASE_URL: http://asset:3002/internal/v1
-      RECOVERY_EXECUTOR_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      HR_INTERNAL_BASE_URL: http://hr:43003/internal/v1
+      ASSET_INTERNAL_BASE_URL: http://asset:43002/internal/v1
+      RECOVERY_EXECUTOR_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}
       # Worker 执行备份上传与图片清理，需 OSS 配置（生产禁静默回退本地存储，S3）
       OSS_BUCKET: ${OSS_BUCKET}
       OSS_REGION: ${OSS_REGION}
@@ -287,9 +287,9 @@ services:
       PSQL_PATH: /usr/bin/psql
       # L37：最小健康探针（/healthz 存活、/readyz 就绪）供健康状态页探测；
       # 探针 URL（WORKER_HEALTH_URL）由 platform-core 注入（健康状态页在该服务内运行）
-      WORKER_HEALTH_PORT: "3105"
+      WORKER_HEALTH_PORT: "43105"
       # 定时任务与备份容量门禁读取统一状态；维护期间停止新任务投递
-      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-3090}
+      HEALTH_DISK_STATUS_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}
       DISK_STATUS_CALLER: worker
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
     volumes:
@@ -316,7 +316,7 @@ services:
     command: ["node", "apps/recovery-executor/dist/main.js"]
     environment:
       <<: *backend-env
-      RECOVERY_EXECUTOR_PORT: ${RECOVERY_EXECUTOR_PORT:-3090}
+      RECOVERY_EXECUTOR_PORT: ${RECOVERY_EXECUTOR_PORT:-43090}
       RECOVERY_SESSION_SECRET: ${RECOVERY_SESSION_SECRET}
       # 恢复状态目录（数据库外 ECS 持久化；读写）
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
@@ -333,7 +333,7 @@ services:
       HEALTH_DISK_CRITICAL_RATIO: ${HEALTH_DISK_CRITICAL_RATIO:-0.9}
       # 恢复退出维护状态前的「全部应运行服务就绪检查」（backstage PRD §10，问题10 修复）：
       # 恢复执行器轮询以下各服务 /readyz 全部通过后才移除维护标记
-      RESTORE_READINESS_URLS: http://platform-core:3001/readyz,http://asset:3002/readyz,http://hr:3003/readyz,http://fin:3004/readyz,http://worker:3105/readyz
+      RESTORE_READINESS_URLS: http://platform-core:43001/readyz,http://asset:43002/readyz,http://hr:43003/readyz,http://fin:43004/readyz,http://worker:43105/readyz
     volumes:
       - /opt/wbme/persist/restore-state:/opt/wbme/persist/restore-state
       - postgres_data:/opt/wbme/disk-volumes/postgres:ro
@@ -342,7 +342,7 @@ services:
     cap_add: [DAC_READ_SEARCH]
     # 就绪检查：状态目录读写 + 控制通道可达；数据库/OSS 不可用时报告依赖失败但不阻断控制路由
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['RECOVERY_EXECUTOR_PORT']||'3090')+'/recovery/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env['RECOVERY_EXECUTOR_PORT']||'43090')+'/recovery/readyz').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
