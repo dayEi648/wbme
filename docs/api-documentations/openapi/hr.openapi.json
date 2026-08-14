@@ -3410,16 +3410,6 @@
             "schema": {
               "type": "number"
             }
-          },
-          {
-            "description": "用户 id",
-            "in": "query",
-            "name": "userId",
-            "required": true,
-            "schema": {
-              "minimum": 1,
-              "type": "number"
-            }
           }
         ],
         "responses": {

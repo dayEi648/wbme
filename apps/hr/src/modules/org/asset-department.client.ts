@@ -7,8 +7,8 @@ import { InternalHttpClient, InternalRequestError } from '@wbme/server';
  * asset 不可用时：预览降级返回 null（hr 侧按 0 展示并提示），删除事务整体中止（不产生部分删除）。
  */
 
-/** asset 内部 base URL（开发默认本地回环；生产 compose 私网 http://asset:43002/internal/v1） */
-const ASSET_INTERNAL_BASE_URL = process.env.ASSET_INTERNAL_BASE_URL ?? 'http://localhost:43002/internal/v1';
+/** asset 内部 base URL（开发默认本地回环；生产 compose 私网 http://asset:43002；路径自带 /internal/v1 前缀） */
+const ASSET_INTERNAL_BASE_URL = process.env.ASSET_INTERNAL_BASE_URL ?? 'http://localhost:43002';
 
 /** asset 部门接口响应 */
 interface AssetDepartmentResult {
@@ -39,7 +39,7 @@ export class AssetDepartmentClient {
       return null;
     }
     try {
-      const response = await this.client.get(`/departments/${departmentId}/asset-count`);
+      const response = await this.client.get(`/internal/v1/departments/${departmentId}/asset-count`);
       // InternalHttpClient 对 4xx/5xx 返回 Response 而不抛错：非 2xx 一律视为依赖错误降级
       // （否则 body.count 为 undefined、deletePreview 静默显示 0——M12 复核修复）
       if (!response.ok) {
@@ -66,7 +66,7 @@ export class AssetDepartmentClient {
     if (!this.client) {
       throw new Error('内部令牌未配置，无法调用 asset 部门接口');
     }
-    const response = await this.client.write(`/departments/${departmentId}/clear-assignments`, { method: 'POST', body: {} });
+    const response = await this.client.write(`/internal/v1/departments/${departmentId}/clear-assignments`, { method: 'POST', body: {} });
     if (!response.ok) {
       throw new InternalRequestError(
         `asset 置空部门资产归属失败（HTTP ${response.status}）：${departmentId}`,

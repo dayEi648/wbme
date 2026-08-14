@@ -70,15 +70,3 @@ export class InternalPositionApplicationQueryDto extends PaginationQueryDto {
   @Min(1)
   userId!: number;
 }
-
-/** 内部查询用户组织身份（P2） */
-export class InternalUserOrgQueryDto {
-  @ApiProperty({
-    description: '用户 id',
-    minimum: 1,
-  })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  userId!: number;
-}

@@ -166,8 +166,8 @@ services:
       OSS_RAM_ROLE_NAME: ${OSS_RAM_ROLE_NAME:-}
       OSS_PREFIX_IMAGES: ${OSS_PREFIX_IMAGES:-images}
       OSS_PREFIX_BACKUPS: ${OSS_PREFIX_BACKUPS:-backups}
-      HR_INTERNAL_BASE_URL: http://hr:43003/internal/v1
-      ASSET_INTERNAL_BASE_URL: http://asset:43002/internal/v1
+      HR_INTERNAL_BASE_URL: http://hr:43003
+      ASSET_INTERNAL_BASE_URL: http://asset:43002
       # 注意：恢复执行器内部控制路由挂 /recovery/*（非 /internal/v1），base URL 不带 internal 前缀（M29）
       RECOVERY_EXECUTOR_INTERNAL_BASE_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}
       # 维护标记/恢复状态目录（只读：标记由恢复执行器写入）
@@ -229,7 +229,7 @@ services:
       HR_PORT: "43003"
       COOKIE_SIGNING_KEY: ${COOKIE_SIGNING_KEY}
       # M12：部门删除预览/置空资产归属调用 asset 内部接口
-      ASSET_INTERNAL_BASE_URL: http://asset:43002/internal/v1
+      ASSET_INTERNAL_BASE_URL: http://asset:43002
       # 维护标记由恢复执行器写入；hr 仅读取并在应用层拒绝业务流量
       RESTORE_STATE_DIR: /opt/wbme/persist/restore-state
     volumes:
@@ -273,8 +273,8 @@ services:
     command: ["node", "apps/worker/dist/main.js"]
     environment:
       <<: *backend-env
-      HR_INTERNAL_BASE_URL: http://hr:43003/internal/v1
-      ASSET_INTERNAL_BASE_URL: http://asset:43002/internal/v1
+      HR_INTERNAL_BASE_URL: http://hr:43003
+      ASSET_INTERNAL_BASE_URL: http://asset:43002
       RECOVERY_EXECUTOR_URL: http://recovery-executor:${RECOVERY_EXECUTOR_PORT:-43090}
       # Worker 执行备份上传与图片清理，需 OSS 配置（生产禁静默回退本地存储，S3）
       OSS_BUCKET: ${OSS_BUCKET}

@@ -120,10 +120,11 @@ function buildServiceEnv(ports) {
   env.ASSET_URL = `http://localhost:${ports.asset}`;
   env.HR_URL = `http://localhost:${ports.hr}`;
   env.FIN_URL = `http://localhost:${ports.fin}`;
-  // 服务间内部 base URL（docker-compose 内网口径的本地等价：http://host:port）
+  // 服务间内部 base URL（docker-compose 内网口径的本地等价）：统一裸 host:port，
+  // 请求路径自带 /internal/v1 前缀（客户端约定），这里不得再带前缀，否则拼接成双前缀
   env.PLATFORM_CORE_INTERNAL_BASE_URL = `http://localhost:${ports['platform-core']}`;
-  env.ASSET_INTERNAL_BASE_URL = `http://localhost:${ports.asset}/internal/v1`;
-  env.HR_INTERNAL_BASE_URL = `http://localhost:${ports.hr}/internal/v1`;
+  env.ASSET_INTERNAL_BASE_URL = `http://localhost:${ports.asset}`;
+  env.HR_INTERNAL_BASE_URL = `http://localhost:${ports.hr}`;
   // 公开 origin 与钉钉回调（激活/重置链接、OAuth 回调与 Vite 端口保持一致）
   env.PUBLIC_ORIGIN = `http://localhost:${ports.web}`;
   env.DINGTALK_REDIRECT_URI = `http://localhost:${ports.web}/api/v1/auth/dingtalk/callback`;

@@ -2,7 +2,6 @@ import { Body, Controller, Get, Inject, Param, ParseIntPipe, Post, Query } from 
 import {
   InternalPositionApplicationQueryDto,
   InternalPositionApplicationSubmitDto,
-  InternalUserOrgQueryDto,
 } from '@wbme/contracts';
 import { AllowedCallers, InternalAuthGuard, Public } from '@wbme/server';
 import { UseGuards } from '@nestjs/common';
@@ -68,7 +67,7 @@ export class InternalPositionApplicationController {
   /** P2 用户组织身份（部门/岗位/可否自助申请；用户不存在返回空结构供前端降级） */
   @Get('users/:userId/org')
   @AllowedCallers('platform-core')
-  async getOrg(@Param('userId', ParseIntPipe) userId: number, @Query() _query: InternalUserOrgQueryDto): Promise<unknown> {
+  async getOrg(@Param('userId', ParseIntPipe) userId: number): Promise<unknown> {
     const [name, rows] = await Promise.all([
       loadUserName(this.prisma.client, userId),
       this.prisma.client.$queryRaw<
