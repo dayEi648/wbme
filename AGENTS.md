@@ -72,6 +72,42 @@ The business stack is built entirely on TypeScript (frontend + business backend)
 | Deployment | Ubuntu + Docker + Nginx | - |
 | Object Storage | Alibaba Cloud OSS | - |
 
+### 1.3 Project Structure
+
+When the directory structure of this project changes, the `AGENTS.md` file needs to be updated.
+
+```
+wbme/
+├── apps/                        # Deployment units and frontend
+│   ├── platform-core/           # base + backstage backend (auth, permissions, platform infrastructure)
+│   ├── asset/                   # Asset system backend (ledger/inventory/borrow-return/approval/QR code)
+│   ├── hr/                      # HR system backend (organization/overtime/approval/account lifecycle)
+│   ├── fin/                     # Finance system backend (contracts/profit analysis/Excel import-export)
+│   ├── web/                     # Frontend (Vite + React + Ant Design)
+│   ├── worker/                  # BullMQ Worker (Outbox scheduling + background task consumption)
+│   ├── recovery-executor/       # Database recovery executor
+│   └── migration-runner/        # Migration executor (unified migrations for dev/release)
+├── packages/                    # @wbme shared packages
+│   ├── contracts/               # Shared contracts (error codes/DTOs/enums/permission catalog)
+│   ├── server/                  # NestJS shared infrastructure (request tracing/session/internal REST/export)
+│   ├── approval/                # Unified approval engine
+│   ├── logging/                 # Operation log templates and restricted logging statements
+│   ├── tasks/                   # Unified background task restricted interfaces (Outbox SQL)
+│   └── files/                   # File storage and OSS conventions
+├── docs/                        # Project documentation
+│   ├── prds/                    # PRDs (main PRD + each subsystem)
+│   ├── api-documentations/      # API docs and OpenAPI build-time artifacts
+│   ├── database-design/         # Database schema design
+│   ├── for-frontend/            # Frontend design guidelines
+│   └── references/              # Reference materials (profit analysis Excel templates, etc.)
+├── scripts/                     # Engineering scripts (one-click startup, E2E seeding)
+│   └── db-views/                # Read-only view scripts (executed uniformly by Migration Runner)
+├── deploy/                      # Production deployment (Dockerfile/Compose/Nginx/release scripts/disaster recovery drills)
+├── .agents/                     # Internal working directory (plans, temporary images)
+│   └── plans/                   # Plans and todo lists
+└── .github/                     # CI workflows
+```
+
 ---
 
 ## 2. Context Retrieval Index
@@ -82,7 +118,6 @@ Access project resources on demand according to the current task:
 | --- | --- | --- | --- |
 | PRD | `docs/prds/` | Requirement documents | The PRD of this project |
 | Task Plans | `.agents/plans/` | Task lists, plans and schedules | Store complex, long-term, or temporarily deferred plans and planning documents in this directory |
-| Directory Structure | `docs/directory.md` | Project directory structure | Check this document when you need to understand the project directory structure. |
 | Frontend References | `docs/for-frontend/` | Frontend design guidance | Check this folder when you need frontend guidance such as frontend development standards, styles and design |
 | Backend References | `docs/for-backend/` | Backend implementation guidance | Check this folder when you need backend implementation guidance |
 | Temporary Images | `.agents/pngs/` | Storage and cleanup of temporary image resources | Store temporary image resources in `.agents/pngs/`, and clean up unused images after work is done |
@@ -92,21 +127,22 @@ Access project resources on demand according to the current task:
 
 ## 3. Project Constraints
 
-### 3.1 Local dev dependencies (local services, no Docker)
+### 3.1 Local dev dependencies
 
-- **PostgreSQL 18**: Running as a system service (listening on 5432). Dev database `wbme-dev` (connection string in root `.env` → `DATABASE_URL`).
-- **Redis**: running as a Homebrew service (`brew services list` shows `redis started`), listening on 6379.
-- To check availability, connect directly using the `.env` connection string (`psql ... -c "SELECT 1"`, `redis-cli ping`) instead of relying on `which` / `brew list`.
+PostgreSQL 18 and Redis 8 are required. To locate them on any machine, check in order:
+1. Docker: `docker compose ps` (both services defined in `docker-compose.yml`).
+2. Local service: `pg_isready` / `redis-cli ping`.
+3. Fallback: connection strings in root `.env` (`DATABASE_URL`, `REDIS_URL`).
 
 ### 3.2 Front-end view validation
 
-Every time you finish developing the front-end page/component/button and other view-related code, you must use Playwright or utilize the `kimi-webbridge` skill to verify the front-end view effect. If you find that the effect is not as expected, you should make timely adjustments.
+Every time you finish developing the front-end page/component/button and other view-related code, you must use Playwright to verify the front-end view effect. If you find that the effect is not as expected, you should make timely adjustments.
 
 ### 3.3 Document maintenance
 
-- If the project structure changes, update `directory.md` 
-- If the requirements expressed in user's message conflict with the PRD or are not documented in the PRD, then you need to update the `prd.md`. (Before making the modification, you should first ask user for confirmation whether to modify the PRD.)
-- When writing or modifying any document content or code comments, do not leave any traces. Do not write "After being approved by the user..." "Previously it was xxx, but it has been changed to xxx...." I do not need them. You can just write down the information that is relevant and useful for the present, and delete the outdated and useless information.
+- If the project structure changes, update the Project Structure section (`### 1.3`) in `AGENTS.md`
+- If the requirements expressed in user's message conflict with the PRD or are not documented in the PRD, then you need to update the prd. (Before making the modification, you should first ask user for confirmation whether to modify the PRD.)
+- When writing or modifying any document content or code comments, do not leave any traces. Do not write "After being approved by the user ……" "It was originally xxx ……" I do not need them. You can just write down the information that is relevant and useful for the present, and delete the outdated and useless information.
 
 ### 3.4 Git Guidelines
 
@@ -114,7 +150,7 @@ Every time you finish developing the front-end page/component/button and other v
 - Commit titles are written in bilingual Chinese and English conveying the same meaning, with Chinese and English separated by `/`.
 - Format example:
   ```
-  docs: 完善 AGENTS.md 并初始化 directory.md / Update AGENTS.md and initialize directory.md
+  docs: 更新 AGENTS.md 中的项目目录结构 / Update the project structure in AGENTS.md
   ```
 - Before executing `git commit` or `git push`, it is necessary to obtain the explicit consent of the user. Unauthorized submission or pushing is strictly prohibited.
 
