@@ -71,12 +71,17 @@ describe('ProfitAnalysis 交互契约（批次 6）', () => {
     await waitFor(() => expect(http.put).toHaveBeenCalledTimes(1));
     expect(vi.mocked(http.put).mock.calls[0]?.[1]).toMatchObject({ field: 'paymentNode', value: '节点B' });
 
+    // 撤销/重做栈保存在 React state 中：等待保存成功的副作用提交并重渲染后再触发快捷键，
+    // 否则快捷键处理器读到的仍是旧栈（偶发时序失败）；按钮禁用态即栈状态的可见表达
+    await waitFor(() => expect((screen.getByRole('button', { name: /撤\s*销/ }) as HTMLButtonElement).disabled).toBe(false));
+
     // ⌘Z 撤销：重新提交编辑前值（主合同付款节点）
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true }));
     await waitFor(() => expect(http.put).toHaveBeenCalledTimes(2));
     expect(vi.mocked(http.put).mock.calls[1]?.[1]).toMatchObject({ field: 'paymentNode', value: '主合同付款节点' });
     const nodeAfter = await fieldInput('测试项目 paymentNode') as HTMLInputElement;
     await waitFor(() => expect(nodeAfter.value).toBe('主合同付款节点'));
+    await waitFor(() => expect((screen.getByRole('button', { name: /重\s*做/ }) as HTMLButtonElement).disabled).toBe(false));
 
     // ⌘⇧Z 重做：重新提交编辑后值（节点B）
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true }));
@@ -95,13 +100,17 @@ describe('ProfitAnalysis 交互契约（批次 6）', () => {
     fireEvent.change(input, { target: { value: '节点B' } });
     fireEvent.blur(input);
     await waitFor(() => expect(http.put).toHaveBeenCalledTimes(1));
+    // 等待保存成功副作用提交（撤销栈入栈）并重渲染，再触发快捷键
+    await waitFor(() => expect((screen.getByRole('button', { name: /撤\s*销/ }) as HTMLButtonElement).disabled).toBe(false));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true }));
     await waitFor(() => expect(http.put).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect((screen.getByRole('button', { name: /重\s*做/ }) as HTMLButtonElement).disabled).toBe(false));
 
-    // 撤销后新编辑（revision 3）：重做栈被清空
+    // 撤销后新编辑（revision 3）：重做栈被清空（等待清空副作用重渲染：重做按钮变禁用）
     fireEvent.change(input, { target: { value: '节点C' } });
     fireEvent.blur(input);
     await waitFor(() => expect(http.put).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect((screen.getByRole('button', { name: /重\s*做/ }) as HTMLButtonElement).disabled).toBe(true));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true }));
     // 重做栈为空：不发起请求
     await new Promise((resolve) => setTimeout(resolve, 20));
