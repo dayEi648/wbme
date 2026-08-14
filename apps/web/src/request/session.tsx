@@ -22,6 +22,8 @@ interface MeResponse {
 
 interface SessionContextValue {
   user: CurrentUser | null;
+  /** 当前账号是否已绑定钉钉（账户安全页展示用；扫码登录与手机号自动同步依赖该绑定）。 */
+  hasDingtalkBinding: boolean;
   functionCodes: ReadonlySet<string>;
   /** 前端显隐辅助；不取代服务端授权。 */
   can: (functionCode: string) => boolean;
@@ -44,12 +46,14 @@ const IMPLIED_FUNCTION_CODES: Readonly<Record<string, readonly string[]>> = {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const feedback = useFeedback();
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [hasDingtalkBinding, setHasDingtalkBinding] = useState(false);
   const [functionCodes, setFunctionCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   const goLogin = useCallback(() => {
     setUser(null);
+    setHasDingtalkBinding(false);
     setFunctionCodes([]);
     navigate('/login', { replace: true });
   }, [navigate]);
@@ -58,9 +62,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const me = await http.get<MeResponse>('/auth/me');
       setUser(me.user);
+      setHasDingtalkBinding(me.hasDingtalkBinding);
       setFunctionCodes(me.functionCodes);
     } catch {
       setUser(null);
+      setHasDingtalkBinding(false);
       setFunctionCodes([]);
     } finally {
       setLoading(false);
@@ -72,6 +78,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
       setSessionExpiredHandler((messageText?: string, silent?: boolean) => {
         setUser(null);
+        setHasDingtalkBinding(false);
         setFunctionCodes([]);
         if (!silent) {
           feedback.error(new Error(messageText ?? '登录状态已失效，请重新登录'), messageText ?? '登录状态已失效，请重新登录');
@@ -94,13 +101,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       user,
+      hasDingtalkBinding,
       functionCodes: grantedFunctions,
       can: (functionCode: string) => user?.isSuperAdmin === true || grantedFunctions.has(functionCode) || (IMPLIED_FUNCTION_CODES[functionCode] ?? []).some((impliedBy) => grantedFunctions.has(impliedBy)),
       loading,
       refresh,
       logout,
     }),
-    [user, grantedFunctions, loading, refresh, logout],
+    [user, hasDingtalkBinding, grantedFunctions, loading, refresh, logout],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

@@ -28,9 +28,10 @@ test.describe('门户与个人中心', () => {
     await login(page);
     await page.getByText('个人中心').first().click();
     await expect(page).toHaveURL(/\/me/);
-    // 身份区域（E2E 用户姓名）
+    // 个人资料 Tab（默认）：只读展示身份区域（E2E 用户姓名）
     await expect(page.getByText('E2E测试员')).toBeVisible({ timeout: 15_000 });
-    // 我的操作日志表格加载（登录行为本身已写操作日志）
+    // 我的日志 Tab：操作日志表格加载（登录行为本身已写操作日志）
+    await page.getByRole('tab', { name: '我的日志' }).click();
     await expect(page.getByText('我的操作日志')).toBeVisible();
   });
 });
