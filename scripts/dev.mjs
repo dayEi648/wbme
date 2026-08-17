@@ -20,6 +20,14 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
+const isWindows = process.platform === 'win32';
+/**
+ * Windows 下 corepack 提供的 pnpm 是无扩展名 shim（shell 脚本），CreateProcess 无法直接执行（ENOENT）；
+ * Node ≥18.20 又禁止无 shell 直接 spawn .cmd（CVE-2024-27980）。故仅 Windows 经 cmd.exe（shell:true）
+ * 包装，由 PATHEXT 解析 pnpm.cmd；全部参数为静态无空格字符串，无注入面。POSIX 行为不变。
+ */
+const pnpmShellOption = isWindows ? { shell: true } : {};
+
 // 加载仓库根 .env（本地开发变量；生产/CI 由部署环境注入，缺失时跳过）
 try {
   loadEnvFile(resolve(root, '.env'));
@@ -165,7 +173,7 @@ async function checkDependencies() {
 }
 
 function buildPackages() {
-  const result = spawnSync('pnpm', ['build:packages'], { cwd: root, stdio: 'inherit' });
+  const result = spawnSync('pnpm', ['build:packages'], { cwd: root, stdio: 'inherit', ...pnpmShellOption });
   if (result.status !== 0) {
     console.error('[dev] 共享包构建失败，停止启动');
     process.exit(1);
@@ -175,7 +183,7 @@ function buildPackages() {
 
 /** 生成 Prisma Client（src 下 generated 目录不提交，全新 clone 无产物；generate 幂等，重复执行安全） */
 function generatePrisma() {
-  const result = spawnSync('pnpm', ['prisma:generate'], { cwd: root, stdio: 'inherit' });
+  const result = spawnSync('pnpm', ['prisma:generate'], { cwd: root, stdio: 'inherit', ...pnpmShellOption });
   if (result.status !== 0) {
     console.error('[dev] Prisma Client 生成失败，停止启动');
     process.exit(1);
@@ -201,6 +209,7 @@ function buildMissingServices() {
       cwd: root,
       stdio: 'inherit',
       env: process.env,
+      ...pnpmShellOption,
     });
     if (result.status !== 0) {
       console.error(`[dev] ${service.name} 构建失败，停止启动`);
@@ -215,6 +224,7 @@ function runMigrationRunner(env) {
     cwd: root,
     stdio: 'inherit',
     env,
+    ...pnpmShellOption,
   });
   if (result.status !== 0) {
     console.error('[dev] Migration Runner 执行失败（迁移未完成），停止启动');
@@ -233,6 +243,7 @@ function runSeed(env) {
     cwd: root,
     stdio: 'inherit',
     env,
+    ...pnpmShellOption,
   });
   if (result.status !== 0) {
     console.error('[dev] 种子初始化失败（权限目录/超管账号），停止启动');
@@ -248,6 +259,8 @@ function startServices(env) {
       cwd: resolve(root, 'apps', service.name),
       stdio: 'inherit',
       env,
+      // 仅 pnpm 服务（web）在 Windows 下需 cmd.exe 包装；node 服务直起保证 SIGTERM 精确命中进程本体
+      ...(isWindows && service.cmd[0] === 'pnpm' ? { shell: true } : {}),
     });
     child.on('exit', (code) => {
       // Worker 为常驻进程（消费队列任务）；code 0 退出属异常（调度器/消费者不应主动退出）

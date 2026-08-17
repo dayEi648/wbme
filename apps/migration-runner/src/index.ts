@@ -55,9 +55,13 @@ function prismaDirOf(root: string, unit: DeploymentUnit): string {
  * 已 COPY 该目录）而非 `pnpm --filter <pkg> exec`——生产镜像无 pnpm 且根 workspace
  * 清单未复制，`pnpm` 必 ENOENT（S4 复核修复）；cwd 由调用方指向应用目录以解析
  * prisma.config.ts。
+ *
+ * Windows 下 .bin 内 CreateProcess 可执行的是 prisma.cmd（无扩展名文件为 POSIX shim，
+ * 直接 spawn 必 ENOENT）；生产容器为 Linux，不受此后缀分支影响。
  */
 function prismaBinOf(root: string, unit: DeploymentUnit): string {
-  return resolve(root, 'apps', unit.name, 'node_modules', '.bin', 'prisma');
+  const bin = process.platform === 'win32' ? 'prisma.cmd' : 'prisma';
+  return resolve(root, 'apps', unit.name, 'node_modules', '.bin', bin);
 }
 
 /** 单元是否已配置 Prisma schema（尚未建模的单元跳过迁移） */
@@ -69,7 +73,13 @@ function hasSchema(root: string, unit: DeploymentUnit): boolean {
 /** 执行命令并等待结束 */
 function run(cmd: string, args: string[], cwd?: string): Promise<{ ok: boolean; code: number | null }> {
   return new Promise((resolvePromise) => {
-    const child = spawn(cmd, args, { stdio: 'inherit', env: process.env, cwd });
+    // Windows 下 Node ≥18.20 禁止无 shell 直接 spawn .cmd（CVE-2024-27980）；参数全为静态字符串，无注入面
+    const child = spawn(cmd, args, {
+      stdio: 'inherit',
+      env: process.env,
+      cwd,
+      shell: process.platform === 'win32',
+    });
     child.on('close', (code) => resolvePromise({ ok: code === 0, code }));
   });
 }

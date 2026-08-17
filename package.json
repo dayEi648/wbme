@@ -12,7 +12,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --workspace-concurrency=1 -r test",
     "build": "pnpm -r build",
-    "build:packages": "pnpm -r --filter './packages/**' build",
+    "build:packages": "pnpm -r --filter \"./packages/**\" build",
     "prisma:generate": "pnpm -r --filter @wbme/platform-core --filter @wbme/asset --filter @wbme/hr --filter @wbme/fin exec prisma generate",
     "dev": "node scripts/dev.mjs"
   },
