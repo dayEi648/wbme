@@ -114,7 +114,7 @@ async function generate(): Promise<string> {
   const { AppModule } = await import('../app.module.js');
   const app = await NestFactory.create(AppModule.register({ redis }), { logger: false });
   try {
-    app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz', 'internal/(.*)'] });
+    app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz', 'internal/{*path}'] });
     const pkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8')) as { version: string };
     const config = new DocumentBuilder()
       .setTitle('WBME hr API')

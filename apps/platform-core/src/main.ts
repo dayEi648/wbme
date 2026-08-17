@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule.register({ redis }));
   app.use(createRequestContextMiddleware('platform-core'));
   // 内部 REST 不挂 api/v1 前缀（主 PRD §9.4；与 healthz/readyz 同级排除）
-  app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz', 'internal/(.*)'] });
+  app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz', 'internal/{*path}'] });
   const errorLogWriter = app.get(PlatformErrorLogWriter);
   app.useGlobalFilters(new GlobalExceptionFilter(defaultDependencyDetector, errorLogWriter));
   app.useGlobalPipes(createValidationPipe());
