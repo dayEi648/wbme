@@ -279,6 +279,61 @@ export class AuthService {
     return this.createUserSession(user.id, false, ip);
   }
 
+  /**
+   * 自助绑定钉钉（BIND 回调，base PRD §2）：已登录用户把当前钉钉身份绑到本人账号。
+   *
+   * unionId 全局唯一（含已解绑/注销历史占用，与扫码注册同一标准）；
+   * 写入绑定与手机号同步在同一事务（手机号以钉钉本次授权返回为准）；
+   * 成功/失败均写安全日志。
+   *
+   * @param userId 绑定目标用户（授权发起时已确认登录态）
+   * @param input 钉钉授权返回的稳定标识与手机号
+   * @param ip 来源 IP（安全日志）
+   * @throws DINGTALK_ALREADY_BOUND 该钉钉身份已绑定账号，或本账号已有有效绑定
+   */
+  async bindDingtalk(
+    userId: number,
+    input: { unionId: string; mobile: string; stateCode: string },
+    ip: string,
+  ): Promise<void> {
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true, deletedAt: true },
+    });
+    if (!user || user.deletedAt !== null || user.status !== 'ACTIVE') {
+      throw new BusinessException(frameworkErrors.UNAUTHORIZED);
+    }
+    const [unionOccupied, selfBound] = await Promise.all([
+      this.prisma.client.dingtalkBinding.findFirst({
+        where: { dingtalkUnionId: input.unionId },
+        select: { id: true },
+      }),
+      this.prisma.client.dingtalkBinding.findFirst({
+        where: { userId, status: 'BOUND' },
+        select: { id: true },
+      }),
+    ]);
+    if (unionOccupied || selfBound) {
+      await this.securityLog.record('DINGTALK_BOUND', 'FAILURE', {
+        actorId: userId,
+        reason: unionOccupied ? '钉钉身份已绑定其他账号' : '账号已存在有效钉钉绑定',
+        sourceIp: ip,
+      });
+      throw new BusinessException(accountErrors.DINGTALK_ALREADY_BOUND);
+    }
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.dingtalkBinding.create({
+        data: { userId, dingtalkUnionId: input.unionId, createdBy: userId },
+      });
+      // 手机号跟随钉钉授权结果（与扫码登录同一同步规则；被占用则跳过不影响绑定）
+      await this.phoneSync.syncFromDingtalk(tx, userId, input.stateCode, input.mobile, ip);
+    });
+    await this.securityLog.record('DINGTALK_BOUND', 'SUCCESS', {
+      actorId: userId,
+      sourceIp: ip,
+    });
+  }
+
   /** 公共：为已认证账号创建全新会话（登录成功即轮换，防会话固定） */
   async createUserSession(userId: number, rememberMe: boolean, _ip: string): Promise<LoginResult> {
     const user = await this.prisma.client.user.findUnique({

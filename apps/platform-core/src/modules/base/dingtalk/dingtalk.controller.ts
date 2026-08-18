@@ -1,7 +1,8 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Controller, Get, Inject, Query, Req, Res, UseGuards } from '@nestjs/common';
-import { BusinessException, accountErrors, normalizePhoneFromParts } from '@wbme/contracts';
+import { BusinessException, accountErrors, frameworkErrors, normalizePhoneFromParts } from '@wbme/contracts';
 import {
+  CurrentUser,
   Public,
   RateLimit,
   RateLimitGuard,
@@ -19,7 +20,7 @@ import { AuthService } from '../auth/auth.service';
 import { FlowSessionService } from '../auth/flows/flow-session.service';
 import { DINGTALK_GATEWAY, DingtalkNotMemberError, DingtalkUnavailableError, type DingtalkGateway } from './dingtalk.gateway';
 import { DingtalkGatewayImpl } from './dingtalk.gateway.impl';
-import { DINGTALK_PURPOSES, DingtalkStateService, type DingtalkPurpose } from './dingtalk.state.service';
+import { DINGTALK_PURPOSES, DingtalkStateService, type DingtalkPurpose, type DingtalkStateData } from './dingtalk.state.service';
 
 /** 会话 Cookie Secure 属性（生产必须 true；本地 http 开发设 false） */
 function cookieSecure(): boolean {
@@ -64,6 +65,10 @@ export class DingtalkController {
     @Req() req: Request,
   ): Promise<{ authorizeUrl: string }> {
     const purpose = this.resolvePurpose(purposeRaw);
+    // 自助绑定必须登录态（用户标识取自会话守卫），走专用端点 bind/authorize
+    if (purpose === 'BIND') {
+      throw new BusinessException(frameworkErrors.UNAUTHORIZED);
+    }
     // 流程类用途（激活/重置）必须持有对应的一次性流程 Cookie（兑换或发起时签发）；
     // 流程标识随一次性 state 交给钉钉回调（base PRD §2：回调只携带 state/nonce 和流程标识，
     // 不依赖流程 Cookie 覆盖钉钉路径）
@@ -80,6 +85,30 @@ export class DingtalkController {
       throw new BusinessException(accountErrors.DINGTALK_CONFIG_MISSING);
     }
     const state = await this.state.issue(purpose, flowId);
+    return { authorizeUrl: this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
+  }
+
+  /**
+   * 自助绑定发起（登录态，base PRD §2）：已登录用户发起钉钉授权以绑定本人账号。
+   * 用户标识由会话守卫确认，随一次性 state 携带；回调只认 state 不依赖会话 Cookie。
+   */
+  @Get('bind/authorize')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'dingtalk-bind-authorize', keyType: 'ip', limit: 30, windowSeconds: 60 })
+  async bindAuthorize(@CurrentUser() userId: number): Promise<{ authorizeUrl: string }> {
+    const impl = this.gateway as DingtalkGatewayImpl;
+    if (!impl.isConfigured?.()) {
+      throw new BusinessException(accountErrors.DINGTALK_CONFIG_MISSING);
+    }
+    // 已有有效绑定：前端按绑定状态隐藏入口，此处服务端兜底拒绝
+    const bound = await this.prisma.client.dingtalkBinding.findFirst({
+      where: { userId, status: 'BOUND' },
+      select: { id: true },
+    });
+    if (bound) {
+      throw new BusinessException(accountErrors.DINGTALK_ALREADY_BOUND);
+    }
+    const state = await this.state.issue('BIND', undefined, userId);
     return { authorizeUrl: this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
   }
 
@@ -124,6 +153,10 @@ export class DingtalkController {
         await this.handleLoginFlow(res, req, { unionId: info.unionId, mobile, stateCode }, ip);
         return;
       }
+      if (purpose === 'BIND') {
+        await this.handleBindFlow(res, stateData, { unionId: info.unionId, mobile, stateCode }, ip);
+        return;
+      }
       if (purpose === 'REGISTRATION') {
         // 扫码注册：绑定身份校验（unionId 未绑定 + 手机号未占用）后进入完善页
         await this.ensureRegistrable(info.unionId, mobile, stateCode);
@@ -158,6 +191,32 @@ export class DingtalkController {
         return;
       }
       this.redirect(res, '/login?error=SYSTEM');
+    }
+  }
+
+  /**
+   * 自助绑定回调分流（A5 BIND）：绑定目标用户由一次性 state 携带（回调路径不依赖会话 Cookie）。
+   * 结果经个人中心安全页查询参数反馈（dingtalkBind=success 或业务错误码），不跳登录页。
+   */
+  private async handleBindFlow(
+    res: Response,
+    stateData: DingtalkStateData,
+    info: { unionId: string; mobile: string; stateCode: string },
+    ip: string,
+  ): Promise<void> {
+    const target = '/me?tab=security';
+    try {
+      if (!stateData.userId) {
+        throw new BusinessException(accountErrors.DINGTALK_STATE_INVALID);
+      }
+      await this.auth.bindDingtalk(stateData.userId, info, ip);
+      this.redirect(res, `${target}&dingtalkBind=success`);
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        this.redirect(res, `${target}&dingtalkBind=${error.entry.code}`);
+        return;
+      }
+      throw error;
     }
   }
 

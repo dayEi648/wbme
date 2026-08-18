@@ -13,7 +13,8 @@ try {
   // 环境变量由外部注入时跳过
 }
 import type { INestApplication } from '@nestjs/common';
-import { GlobalExceptionFilter } from '@wbme/server';
+import { BusinessException, accountErrors } from '@wbme/contracts';
+import { GlobalExceptionFilter, PUBLIC_ROUTE_KEY } from '@wbme/server';
 import { PrismaService } from '../../../prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { FlowSessionService } from '../auth/flows/flow-session.service';
@@ -53,7 +54,11 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
 
   const authService = {
     loginWithDingtalk: async () => null,
-  } as { loginWithDingtalk: (input: unknown, ip: string) => Promise<unknown> };
+    bindDingtalk: async () => undefined,
+  } as {
+    loginWithDingtalk: (input: unknown, ip: string) => Promise<unknown>;
+    bindDingtalk: (userId: number, input: unknown, ip: string) => Promise<void>;
+  };
 
   beforeAll(async () => {
     redis = new Redis(REDIS_URL ?? 'redis://localhost:6379');
@@ -209,5 +214,58 @@ describe.skipIf(!REDIS_URL)('DingtalkController（A4/A5 扫码授权，base PRD 
     const cookies = String(res.headers['set-cookie'] ?? []);
     expect(cookies).toContain('wbme_session=test-session-123');
     expect(cookies).toContain('wbme_csrf=csrf-token');
+  });
+
+  it('A4 公开端点 purpose=BIND 拒绝（自助绑定须走登录态专用端点）', async () => {
+    const res = await request(app.getHttpServer()).get('/auth/dingtalk/authorize?purpose=BIND');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('自助绑定发起端点无会话上下文 → 401（绑定目标用户必须由会话守卫确认）', async () => {
+    const res = await request(app.getHttpServer()).get('/auth/dingtalk/bind/authorize');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('A5 BIND 回调成功 → 302 安全页并以 state 携带的用户标识完成绑定', async () => {
+    await cleanStates();
+    let boundUserId: number | undefined;
+    authService.bindDingtalk = async (userId: number) => {
+      boundUserId = userId;
+    };
+    const state = await new DingtalkStateService(redis).issue('BIND', undefined, 42);
+    const res = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/me?tab=security&dingtalkBind=success`);
+    expect(boundUserId).toBe(42);
+  });
+
+  it('A5 BIND 回调业务失败（已绑定）→ 302 安全页带错误码，不跳登录页', async () => {
+    await cleanStates();
+    authService.bindDingtalk = async () => {
+      throw new BusinessException(accountErrors.DINGTALK_ALREADY_BOUND);
+    };
+    const state = await new DingtalkStateService(redis).issue('BIND', undefined, 42);
+    const res = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/me?tab=security&dingtalkBind=DINGTALK_ALREADY_BOUND`);
+  });
+
+  it('A5 BIND 回调 state 未携带用户标识 → 302 DINGTALK_STATE_INVALID', async () => {
+    await cleanStates();
+    authService.bindDingtalk = async () => undefined;
+    const state = await new DingtalkStateService(redis).issue('BIND');
+    const res = await request(app.getHttpServer()).get(`/auth/dingtalk/callback?code=abc&state=${state}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${TEST_PUBLIC_ORIGIN}/me?tab=security&dingtalkBind=DINGTALK_STATE_INVALID`);
+  });
+});
+
+describe('DingtalkController 路由公开性（主 PRD §9.6）', () => {
+  it('自助绑定发起为登录态路由（无 @Public 元数据）；授权发起与回调保持公开', () => {
+    expect(Reflect.getMetadata(PUBLIC_ROUTE_KEY, DingtalkController.prototype.bindAuthorize)).toBeUndefined();
+    expect(Reflect.getMetadata(PUBLIC_ROUTE_KEY, DingtalkController.prototype.authorize)).toBe(true);
+    expect(Reflect.getMetadata(PUBLIC_ROUTE_KEY, DingtalkController.prototype.callback)).toBe(true);
   });
 });

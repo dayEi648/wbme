@@ -85,6 +85,7 @@ const SECURITY_EVENT_TYPE_OPTIONS = [
   { label: '修改密码', value: 'PASSWORD_CHANGED' },
   { label: '签发密码重置', value: 'PASSWORD_RESET_ISSUED' },
   { label: '完成密码重置', value: 'PASSWORD_RESET_COMPLETED' },
+  { label: '绑定钉钉', value: 'DINGTALK_BOUND' },
   { label: '同步手机号', value: 'PHONE_SYNCED' },
   { label: '手机号冲突', value: 'PHONE_SYNC_CONFLICT' },
   { label: '内部令牌失败', value: 'INTERNAL_TOKEN_FAILED' },
