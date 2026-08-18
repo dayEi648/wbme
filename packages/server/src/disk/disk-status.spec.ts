@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { statfs } from 'node:fs/promises';
 import { frameworkErrors } from '@wbme/contracts';
 import {
   assertDiskAcceptsCapacityWrites,
@@ -8,6 +9,13 @@ import {
   readDiskStatus,
   readLocalDiskStatus,
 } from './disk-status';
+
+// 仅替换 statfs，其余 fs.promises 保持真实实现，避免影响传递依赖
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  statfs: vi.fn(),
+}));
+const statfsMock = vi.mocked(statfs);
 
 describe('disk-status（主 PRD §9.13）', () => {
   afterEach(() => {
@@ -52,6 +60,26 @@ describe('disk-status（主 PRD §9.13）', () => {
       status: 'CRITICAL',
       usageRatio: 0.91,
       measurementAvailable: true,
+    });
+  });
+
+  it('默认测量基于 fs.statfs 计算使用率（无需外部 df 命令）', async () => {
+    vi.stubEnv('HEALTH_DISK_PATHS', '/data/postgres');
+    statfsMock.mockResolvedValue({ blocks: 200, bavail: 50 } as Awaited<ReturnType<typeof statfs>>);
+    await expect(readLocalDiskStatus()).resolves.toEqual({
+      status: 'OK',
+      usageRatio: 0.75,
+      measurementAvailable: true,
+    });
+  });
+
+  it('statfs 失败（路径不存在/平台不支持）时按不可测量失败安全处理', async () => {
+    vi.stubEnv('HEALTH_DISK_PATHS', '/nonexistent');
+    statfsMock.mockRejectedValue(new Error('ENOENT'));
+    await expect(readLocalDiskStatus()).resolves.toEqual({
+      status: 'CRITICAL',
+      usageRatio: null,
+      measurementAvailable: false,
     });
   });
 

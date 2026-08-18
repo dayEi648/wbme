@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { statfs } from 'node:fs/promises';
 import { BusinessException, frameworkErrors } from '@wbme/contracts';
-
-const execFileAsync = promisify(execFile);
 
 /** 磁盘预警阈值（主 PRD §9.13：部署安全常量，可用环境变量覆盖） */
 const DEFAULT_DISK_WARN_RATIO = 0.8;
@@ -59,7 +56,8 @@ export function diskPathsToMeasure(): string[] {
 /**
  * 读取本容器可见持久化路径的使用率并以最高值分类（主 PRD §9.13）。
  *
- * 真实执行 `df -k <path>`。任一配置路径无法测量时显式标记为不可用，避免把
+ * 真实读取文件系统统计（`fs.statfs`，跨平台、无外部命令依赖）。任一配置路径
+ * 无法测量时显式标记为不可用，避免把
  * 未覆盖的数据卷伪装为正常磁盘状态；容量型写入门禁会据此拒绝请求。
  *
  * @param measure 单路径测量函数（测试可注入）
@@ -150,29 +148,21 @@ export function classifyDisk(ratio: number): DiskStatusLevel {
 }
 
 /**
- * 对单个路径执行 `df -k` 并计算使用率。
+ * 对单个路径执行 `fs.statfs` 并计算使用率。
+ *
+ * 使用率口径：已用块 = 总块数 - 非特权调用方可用块数（bavail），比 df 的
+ * used/(used+avail) 略保守（保留块计入已用）；Windows 上 bavail 与 bfree 相同。
  *
  * @param path 文件系统路径
  * @returns 使用率；测量失败返回 null
  */
 async function measurePathUsageRatio(path: string): Promise<number | null> {
   try {
-    const { stdout } = await execFileAsync('df', ['-k', path]);
-    const lines = stdout.trim().split('\n');
-    if (lines.length < 2) {
+    const stats = await statfs(path);
+    if (!Number.isFinite(stats.blocks) || stats.blocks <= 0) {
       return null;
     }
-    const parts = lines[1]?.split(/\s+/) ?? [];
-    // df -k 输出：Filesystem 1K-blocks Used Available Capacity Mounted
-    if (parts.length < 3) {
-      return null;
-    }
-    const total = Number(parts[1]);
-    const used = Number(parts[2]);
-    if (!Number.isFinite(total) || !Number.isFinite(used) || total <= 0) {
-      return null;
-    }
-    return used / total;
+    return (stats.blocks - stats.bavail) / stats.blocks;
   } catch {
     return null;
   }
