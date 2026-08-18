@@ -26,14 +26,21 @@
 
 ### A4 授权发起 `GET /auth/dingtalk/authorize?purpose=`
 公开（ACTIVATION/RESET 需对应一次性流程 Cookie）。
-- purpose：`LOGIN` / `REGISTRATION` / `ACTIVATION` / `RESET`
+- purpose：`LOGIN` / `REGISTRATION` / `ACTIVATION` / `RESET`（`BIND` 须走登录态专用端点，见下条）
 - 成功：`{ authorizeUrl }`（服务端签名 URL，含一次性 state，TTL 5 分钟；流程类用途的流程标识随 state 携带，钉钉跳转与回调只带 state/nonce 与流程标识，base PRD §2）
 - 失败：`DINGTALK_CONFIG_MISSING`(503 未配置) / `FLOW_SESSION_INVALID`(422) / `RATE_LIMITED`(429)
 - 限流（base PRD §4 三维）：IP 30 次/分 + 会话（流程 Cookie）10 次/分；回调另按一次性 state 5 次/分计数
 
+### 自助绑定发起 `GET /auth/dingtalk/bind/authorize`
+登录态（base PRD §2：已登录用户自助绑定钉钉；绑定目标用户由会话守卫确认并随一次性 state 携带）。
+- 成功：`{ authorizeUrl }`（同上签名 URL，purpose=BIND）；回调成功后 302 到 `/me?tab=security&dingtalkBind=success`，业务失败 302 到 `/me?tab=security&dingtalkBind={code}`
+- 失败：`UNAUTHORIZED`(401 未登录) / `DINGTALK_CONFIG_MISSING`(503) / `DINGTALK_ALREADY_BOUND`(422 已有有效绑定) / `RATE_LIMITED`(429)
+- 限流：IP 30 次/分
+- 安全事件：DINGTALK_BOUND（成功与失败均记录；手机号同步另记 PHONE_SYNCED / PHONE_SYNC_CONFLICT）
+
 ### A5 钉钉回调 `GET /auth/dingtalk/callback?code=&state=`
 公开 GET（CSRF 由一次性 state 承担）。校验 state（取用即删）→ 授权码换 token → 组织校验（corpId 与部署配置一致 + 组织成员 active）→ 按 purpose 分流。
-- 成功：302 到前端（LOGIN 已绑定 → /portal 并下发会话 Cookie；未绑定 → /register；ACTIVATION/RESET → 对应完成页，流程标识由一次性 state 取出，回调路径无需携带流程 Cookie）
+- 成功：302 到前端（LOGIN 已绑定 → /portal 并下发会话 Cookie；未绑定 → /register；ACTIVATION/RESET → 对应完成页，流程标识由一次性 state 取出，回调路径无需携带流程 Cookie；BIND → `/me?tab=security&dingtalkBind=success`，绑定与手机号同步在当次事务完成）
 - 失败：302 到 `/login?error={code}`（`DINGTALK_ORG_MISMATCH`（含钉钉明确返回"非本组织成员"） / `DINGTALK_STATE_INVALID` / `DINGTALK_ALREADY_BOUND` / `DEPENDENCY_UNAVAILABLE` 等）
 - 钉钉超时/5xx/网络错误按依赖不可用处理，不得误报组织不匹配、不得跳过校验；仅钉钉明确拒绝（成员查询 401/403/404 或未返回成员）才提示组织不匹配
 
