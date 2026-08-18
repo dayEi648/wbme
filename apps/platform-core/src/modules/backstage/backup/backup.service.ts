@@ -61,7 +61,14 @@ export class BackupService {
       this.prisma.client.backup.findMany({ orderBy: [{ backupTime: 'desc' }, { id: 'desc' }], skip, take: dto.pageSize }),
       this.prisma.client.backup.count(),
     ]);
-    return createPaginationResponse(items, total, dto.page, dto.pageSize);
+    // fileSize 为 BigInt 列：原样返回会让 res.json() 的 JSON.stringify 抛 TypeError（500），
+    // 与 precheckRestore 同口径转字符串
+    return createPaginationResponse(
+      items.map((item) => ({ ...item, fileSize: item.fileSize?.toString() ?? null })),
+      total,
+      dto.page,
+      dto.pageSize,
+    );
   }
 
   /** 恢复记录列表 */

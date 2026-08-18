@@ -289,6 +289,17 @@ describeDb('加班提交（T6-5）', () => {
     expect(summary.totalHours).toBeCloseTo(summary.totalMinutes / 60, 2);
   });
 
+  it('员工月度明细：minutes 为 number 且整体可 JSON 序列化（BigInt 泄漏回归）', async () => {
+    const summaryService = new OvertimeSummaryService(prisma);
+    const rows = (await summaryService.detailForUser(operatorUserId)) as Array<Record<string, unknown>>;
+    expect(rows.length).toBeGreaterThan(0);
+    // 首个用例已批准当日 18:00–20:00（120 分钟）
+    const mine = rows.find((row) => row.reason === 'T6 测试加班');
+    expect(mine?.minutes).toBe(120);
+    // BigInt 泄漏会让 res.json() 的 JSON.stringify 抛 TypeError，接口表现为 500「系统处理失败」
+    expect(() => JSON.stringify(rows)).not.toThrow();
+  });
+
   /** 汇总辅助（复用 OvertimeSummaryService） */
   async function submissionSubmitSummary(userId: number): Promise<{ totalMinutes: number; totalHours: number }> {
     const summaryService = new OvertimeSummaryService(prisma);

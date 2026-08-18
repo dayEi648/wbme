@@ -110,7 +110,7 @@ export class OvertimeSummaryService {
    */
   async detailForUser(userId: number, month?: string): Promise<unknown[]> {
     const { start, end } = monthRange(month);
-    return this.prisma.client.$queryRaw<unknown[]>`
+    const rows = await this.prisma.client.$queryRaw<Array<Record<string, unknown> & { minutes: bigint }>>`
       SELECT oi.id,
              r.application_no,
              oi.overtime_date,
@@ -129,6 +129,9 @@ export class OvertimeSummaryService {
         AND oi.overtime_date < ${end}::date
       ORDER BY oi.overtime_date, oi.id
     `;
+    // minutes 为 ::bigint 列：原样返回会让 res.json() 的 JSON.stringify 抛 TypeError（500），
+    // 与 summaryMine/statsForUsers 同口径转 number
+    return rows.map((row) => ({ ...row, minutes: Number(row.minutes) }));
   }
 }
 

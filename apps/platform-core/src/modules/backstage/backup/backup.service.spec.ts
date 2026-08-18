@@ -82,6 +82,31 @@ describe('BackupService', () => {
     vi.useRealTimers();
   });
 
+  describe('listBackups', () => {
+    it('fileSize（BigInt 列）转为字符串，返回结构可被 JSON.stringify 直接序列化', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.backup.findMany).mockResolvedValue([succeededBackup]);
+      vi.mocked(prisma.client.backup.count).mockResolvedValue(1);
+      const result = (await makeService(prisma).listBackups({ page: 1, pageSize: 20 })) as {
+        data: Array<{ fileSize: unknown }>;
+        pagination: { page: number; pageSize: number; totalItems: number };
+      };
+      expect(result.data[0]!.fileSize).toBe('1024');
+      // 回归断言：BigInt 泄漏会让 res.json() 抛 TypeError，页面表现为 500「系统处理失败」
+      expect(() => JSON.stringify(result)).not.toThrow();
+      expect(result.pagination).toMatchObject({ page: 1, pageSize: 20, totalItems: 1 });
+    });
+
+    it('fileSize 为 null 时保持 null（不变成字符串）', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.backup.findMany).mockResolvedValue([{ ...succeededBackup, fileSize: null }]);
+      vi.mocked(prisma.client.backup.count).mockResolvedValue(1);
+      const result = (await makeService(prisma).listBackups({ page: 1, pageSize: 20 })) as { data: Array<{ fileSize: unknown }> };
+      expect(result.data[0]!.fileSize).toBeNull();
+      expect(() => JSON.stringify(result)).not.toThrow();
+    });
+  });
+
   describe('triggerImmediateBackup', () => {
     it('运行中备份存在时排队创建备份记录与任务（串行执行，问题7）', async () => {
       const prisma = prismaMock();

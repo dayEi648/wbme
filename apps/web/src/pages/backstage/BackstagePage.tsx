@@ -708,7 +708,7 @@ function Backups() {
       const result = await http.get<{ data?: Array<RecordValue> }>('/backups?page=1&pageSize=50', { active: true });
       setBackupOptions((result.data ?? [])
         .filter((row) => row.status === 'SUCCEEDED')
-        .map((row) => ({ label: `#${String(row.id)} ${String(row.type ?? '')}（${row.completedAt ? formatBeijingDateTime(String(row.completedAt)) : '—'}）`, value: Number(row.id) })));
+        .map((row) => ({ label: `#${String(row.id)} ${String(row.taskType ?? '')}（${row.finishedAt ? formatBeijingDateTime(String(row.finishedAt)) : '—'}）`, value: Number(row.id) })));
     } catch (error) {
       feedback.error(error, '备份列表加载失败');
     } finally {
@@ -774,8 +774,8 @@ function Backups() {
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Tabs
       items={[
-        { key: 'backups', label: '数据备份', children: <DataTable key={`backups-${version}`} title="数据备份" service="platform" endpoint="/backups" pageKey="backstage-backups" columns={[...LIST_COLUMNS, { key: 'type', title: '类型' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'completedAt', title: '完成时间' }]} actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void immediateBackup()}>立即备份</Button>{user?.isSuperAdmin ? <Button danger onClick={() => { setRestoreOpen(true); setRestoreStep('form'); setPrecheck(null); }}>恢复</Button> : null}</Space>} /> },
-        { key: 'restores', label: '恢复记录', children: <DataTable key={`restores-${version}`} title="恢复记录" service="platform" endpoint="/restores" pageKey="backstage-restores" columns={[...LIST_COLUMNS, { key: 'backupId', title: '来源备份' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'createdAt', title: '发起时间' }]} /> },
+        { key: 'backups', label: '数据备份', children: <DataTable key={`backups-${version}`} title="数据备份" service="platform" endpoint="/backups" pageKey="backstage-backups" columns={[{ key: 'taskType', title: '类型' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'backupTime', title: '备份时间' }, { key: 'finishedAt', title: '完成时间' }]} actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void immediateBackup()}>立即备份</Button>{user?.isSuperAdmin ? <Button danger onClick={() => { setRestoreOpen(true); setRestoreStep('form'); setPrecheck(null); }}>恢复</Button> : null}</Space>} /> },
+        { key: 'restores', label: '恢复记录', children: <DataTable key={`restores-${version}`} title="恢复记录" service="platform" endpoint="/restores" pageKey="backstage-restores" columns={[{ key: 'backupId', title: '来源备份' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'initiatedAt', title: '发起时间' }, { key: 'finishedAt', title: '完成时间' }]} /> },
       ]}
     />
     <Drawer title="数据库恢复" open={restoreOpen} onClose={() => { setRestoreOpen(false); setRestoreStep('form'); setPrecheck(null); form.resetFields(); }} width="min(92vw, 620px)">
