@@ -8,7 +8,7 @@ import {
   frameworkErrors,
   inventoryErrors,
 } from '@wbme/contracts';
-import { buildTablePrismaQuery } from '@wbme/server';
+import { buildTablePrismaQuery, buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, type TableSqlField } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import {
@@ -35,6 +35,33 @@ async function assertBatchStillExists(tx: Prisma.TransactionClient, batchId: num
   }
 }
 
+/** 库存条目结构化筛选字段（低库存/可用库存 SQL 路径）。 */
+const INVENTORY_ITEM_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'ii.id', type: 'number' },
+  consumableId: { column: 'ii.consumable_id', type: 'number' },
+  warehouseId: { column: 'ii.warehouse_id', type: 'number' },
+  spec: { column: 'ii.spec', type: 'text' },
+  warehouseName: { column: 'ii.warehouse_name', type: 'text' },
+  bookQty: { column: 'ii.book_qty', type: 'number' },
+  reservedQty: { column: 'ii.reserved_qty', type: 'number' },
+  createdAt: { column: 'ii.created_at', type: 'date' },
+  updatedAt: { column: 'ii.updated_at', type: 'date' },
+};
+
+/** 批次结构化筛选字段（含 JOIN 后的库位 id）。 */
+const BATCH_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'b.id', type: 'number' },
+  inventoryItemId: { column: 'b.inventory_item_id', type: 'number' },
+  consumableId: { column: 'b.consumable_id', type: 'number' },
+  consumableName: { column: 'b.consumable_name', type: 'text' },
+  spec: { column: 'b.spec', type: 'text' },
+  warehouseId: { column: 'ii.warehouse_id', type: 'number' },
+  warehouseName: { column: 'b.warehouse_name', type: 'text' },
+  remainingQty: { column: 'b.remaining_qty', type: 'number' },
+  receivedAt: { column: 'b.received_at', type: 'date' },
+  createdAt: { column: 'b.created_at', type: 'date' },
+};
+
 /** 库存条目列表项 */
 export interface InventoryItemListItem {
   id: number;
@@ -50,6 +77,85 @@ export interface InventoryItemListItem {
   availableQty: number;
   /** 低库存标记（可用 < 品种安全库存） */
   lowStock: boolean;
+}
+
+/**
+ * 构建库存条目（低库存/可用库存）SQL 查询条件与排序（纯函数，便于单测）。
+ *
+ * @param query 查询参数
+ * @returns WHERE 子句（不含 WHERE 关键字）、ORDER BY 子句、参数列表
+ */
+export function buildInventoryItemComputedListQuery(query: InventoryItemQueryDto): {
+  whereSql: string;
+  orderBySql: string;
+  params: unknown[];
+} {
+  const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+  const conditions: string[] = ['TRUE'];
+  const params: unknown[] = [];
+  if (query.consumableId && !structuredFields.has('consumableId')) {
+    params.push(query.consumableId);
+    conditions.push(`ii.consumable_id = $${params.length}`);
+  }
+  if (query.warehouseId && !structuredFields.has('warehouseId')) {
+    params.push(query.warehouseId);
+    conditions.push(`ii.warehouse_id = $${params.length}`);
+  }
+  if (query.spec && !structuredFields.has('spec')) {
+    params.push(query.spec);
+    conditions.push(`ii.spec = $${params.length}`);
+  }
+  if (query.lowStockOnly) {
+    conditions.push('ii.book_qty - ii.reserved_qty < c.safety_stock');
+  }
+  if (query.availableOnly) {
+    conditions.push("c.status = 'ACTIVE'");
+    conditions.push('ii.book_qty > ii.reserved_qty');
+  }
+  const compiled = buildTableSqlQuery(query, INVENTORY_ITEM_FILTER_FIELDS, { parameterOffset: params.length });
+  if (compiled.whereSql) {
+    conditions.push(compiled.whereSql);
+    params.push(...compiled.params);
+  }
+  const whereSql = conditions.join(' AND ');
+  const orderBySql = compiled.orderBySql ? `ORDER BY ${compiled.orderBySql}` : 'ORDER BY ii.id ASC';
+  return { whereSql, orderBySql, params };
+}
+
+/**
+ * 构建批次列表 SQL 查询条件与排序（纯函数，便于单测）。
+ *
+ * @param query 查询参数
+ * @returns WHERE 子句（不含 WHERE 关键字）、ORDER BY 子句、参数列表
+ */
+export function buildBatchListQuery(query: BatchQueryDto): {
+  whereSql: string;
+  orderBySql: string;
+  params: unknown[];
+} {
+  const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+  const conditions: string[] = ['TRUE'];
+  const params: unknown[] = [];
+  if (query.inventoryItemId && !structuredFields.has('inventoryItemId')) {
+    params.push(query.inventoryItemId);
+    conditions.push(`b.inventory_item_id = $${params.length}`);
+  }
+  if (query.consumableId && !structuredFields.has('consumableId')) {
+    params.push(query.consumableId);
+    conditions.push(`b.consumable_id = $${params.length}`);
+  }
+  if (query.warehouseId && !structuredFields.has('warehouseId')) {
+    params.push(query.warehouseId);
+    conditions.push(`ii.warehouse_id = $${params.length}`);
+  }
+  const compiled = buildTableSqlQuery(query, BATCH_FILTER_FIELDS, { parameterOffset: params.length });
+  if (compiled.whereSql) {
+    conditions.push(compiled.whereSql);
+    params.push(...compiled.params);
+  }
+  const whereSql = conditions.join(' AND ');
+  const orderBySql = compiled.orderBySql ? `ORDER BY ${compiled.orderBySql}` : 'ORDER BY b.received_at DESC, b.id DESC';
+  return { whereSql, orderBySql, params };
 }
 
 /**
@@ -77,17 +183,18 @@ export class InventoryService {
     if (query.lowStockOnly || query.availableOnly) {
       return this.listItemsWithComputedFilters(query, page, pageSize);
     }
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.InventoryItemWhereInput = {};
-    if (query.id) {
+    if (query.id && !structuredFields.has('id')) {
       where.id = query.id;
     }
-    if (query.consumableId) {
+    if (query.consumableId && !structuredFields.has('consumableId')) {
       where.consumableId = query.consumableId;
     }
-    if (query.warehouseId) {
+    if (query.warehouseId && !structuredFields.has('warehouseId')) {
       where.warehouseId = query.warehouseId;
     }
-    if (query.spec) {
+    if (query.spec && !structuredFields.has('spec')) {
       where.spec = query.spec;
     }
     const tableQuery = buildTablePrismaQuery(query, {
@@ -146,36 +253,18 @@ export class InventoryService {
     page: number,
     pageSize: number,
   ): Promise<{ items: InventoryItemListItem[]; total: number }> {
-    const conditions: Prisma.Sql[] = [Prisma.sql`TRUE`];
-    if (query.consumableId) {
-      conditions.push(Prisma.sql`ii.consumable_id = ${query.consumableId}`);
-    }
-    if (query.warehouseId) {
-      conditions.push(Prisma.sql`ii.warehouse_id = ${query.warehouseId}`);
-    }
-    if (query.spec) {
-      conditions.push(Prisma.sql`ii.spec = ${query.spec}`);
-    }
-    if (query.lowStockOnly) {
-      conditions.push(Prisma.sql`ii.book_qty - ii.reserved_qty < c.safety_stock`);
-    }
-    if (query.availableOnly) {
-      conditions.push(Prisma.sql`c.status = 'ACTIVE'`);
-      conditions.push(Prisma.sql`ii.book_qty > ii.reserved_qty`);
-    }
-    const whereSql = Prisma.join(conditions, ' AND ');
+    const { whereSql, orderBySql, params } = buildInventoryItemComputedListQuery(query);
     const offset = (page - 1) * pageSize;
     const [countRows, rows] = await Promise.all([
-      this.prisma.client.$queryRaw<Array<{ total: bigint }>>`
-        SELECT COUNT(*)::bigint AS total
-        FROM asset.inventory_items ii
-        INNER JOIN asset.consumables c ON c.id = ii.consumable_id
-        WHERE ${whereSql}
-      `,
-      this.prisma.client.$queryRaw<
-        Array<InventoryItemListItem & { safetyStock: number }>
-      >`
-        SELECT
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `SELECT COUNT(*)::bigint AS total
+         FROM asset.inventory_items ii
+         INNER JOIN asset.consumables c ON c.id = ii.consumable_id
+         WHERE ${whereSql}`,
+        ...params,
+      ),
+      this.prisma.client.$queryRawUnsafe<Array<InventoryItemListItem & { safetyStock: number }>>(
+        `SELECT
           ii.id,
           ii.consumable_id AS "consumableId",
           c.name AS "consumableName",
@@ -190,9 +279,12 @@ export class InventoryService {
         FROM asset.inventory_items ii
         INNER JOIN asset.consumables c ON c.id = ii.consumable_id
         WHERE ${whereSql}
-        ORDER BY ii.id ASC
-        LIMIT ${pageSize} OFFSET ${offset}
-      `,
+        ${orderBySql}
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        offset,
+      ),
     ]);
     return {
       total: Number(countRows[0]?.total ?? 0),
@@ -203,52 +295,62 @@ export class InventoryService {
   /**
    * 批次列表（分页；条目/品种/库位筛选；含剩余数量与追溯来源）。
    *
+   * 按库位筛选通过 JOIN asset.inventory_items 实现，使 warehouseId 成为可筛选列。
+   *
    * @param query 查询参数
    * @returns items + total
    */
   async listBatches(query: BatchQueryDto): Promise<{ items: unknown[]; total: number }> {
-    const where: Prisma.BatchWhereInput = {};
-    if (query.inventoryItemId) {
-      where.inventoryItemId = query.inventoryItemId;
-    }
-    if (query.consumableId) {
-      where.consumableId = query.consumableId;
-    }
-    if (query.warehouseId) {
-      // A-11 批次只保存库位名称/路径快照；按库位筛选经条目归属先查 id 集合
-      const ids = await this.prisma.client.inventoryItem.findMany({
-        where: { warehouseId: query.warehouseId },
-        select: { id: true },
-      });
-      where.inventoryItemId = { in: ids.map((item) => item.id) };
-    }
-    const tableQuery = buildTablePrismaQuery(query, {
-      id: { prismaField: 'id', type: 'number' },
-      inventoryItemId: { prismaField: 'inventoryItemId', type: 'number' },
-      consumableId: { prismaField: 'consumableId', type: 'number' },
-      consumableName: { prismaField: 'consumableName', type: 'text' },
-      spec: { prismaField: 'spec', type: 'text' },
-      warehouseName: { prismaField: 'warehouseName', type: 'text' },
-      remainingQty: { prismaField: 'remainingQty', type: 'number' },
-      receivedAt: { prismaField: 'receivedAt', type: 'date' },
-      createdAt: { prismaField: 'createdAt', type: 'date' },
-    });
-    const effectiveWhere: Prisma.BatchWhereInput = tableQuery.where
-      ? { AND: [where, tableQuery.where as Prisma.BatchWhereInput] }
-      : where;
+    const { whereSql, orderBySql, params } = buildBatchListQuery(query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const [total, rows] = await Promise.all([
-      this.prisma.client.batch.count({ where: effectiveWhere }),
-      this.prisma.client.batch.findMany({
-        where: effectiveWhere,
-        orderBy: (tableQuery.orderBy as Prisma.BatchOrderByWithRelationInput[] | undefined) ?? [{ receivedAt: 'desc' }, { id: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
+    const offset = (page - 1) * pageSize;
+    interface BatchListRow {
+      id: number;
+      inventoryItemId: number;
+      consumableId: number;
+      consumableName: string;
+      spec: string;
+      warehouseName: string;
+      warehousePath: string;
+      remainingQty: number;
+      unitPrice: Prisma.Decimal | null;
+      receivedAt: Date;
+      createdAt: Date;
+    }
+    const [countRows, rows] = await Promise.all([
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `SELECT COUNT(*)::bigint AS total
+         FROM asset.batches b
+         INNER JOIN asset.inventory_items ii ON ii.id = b.inventory_item_id
+         WHERE ${whereSql}`,
+        ...params,
+      ),
+      this.prisma.client.$queryRawUnsafe<BatchListRow[]>(
+        `SELECT
+          b.id,
+          b.inventory_item_id AS "inventoryItemId",
+          b.consumable_id AS "consumableId",
+          b.consumable_name AS "consumableName",
+          b.spec,
+          b.warehouse_name AS "warehouseName",
+          b.warehouse_path AS "warehousePath",
+          b.remaining_qty AS "remainingQty",
+          b.unit_price AS "unitPrice",
+          b.received_at AS "receivedAt",
+          b.created_at AS "createdAt"
+        FROM asset.batches b
+        INNER JOIN asset.inventory_items ii ON ii.id = b.inventory_item_id
+        WHERE ${whereSql}
+        ${orderBySql}
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        offset,
+      ),
     ]);
     return {
-      total,
+      total: Number(countRows[0]?.total ?? 0),
       items: rows.map((row) => ({
         ...row,
         unitPrice: row.unitPrice !== null ? row.unitPrice.toFixed(2) : null,

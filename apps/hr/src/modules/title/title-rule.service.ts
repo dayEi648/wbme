@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, TITLE_MANAGE_FUNCTION_CODE, TitleRuleQueryDto, frameworkErrors } from '@wbme/contracts';
-import { buildTablePrismaQuery } from '@wbme/server';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, type HrOperationLogOperator } from '../../shared/hr-operation-log.util';
@@ -24,11 +24,13 @@ export class TitleRuleService {
    * @returns items + total
    */
   async list(query: TitleRuleQueryDto): Promise<{ items: unknown[]; total: number }> {
+    // 结构化筛选与具名参数按字段互斥：filters 树中出现的字段以树为准（具名镜像让位）
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.TitleRuleWhereInput = { deletedAt: null };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
-    if (query.keyword) {
+    if (query.keyword && !structuredFields.has('keyword')) {
       where.titleName = { contains: query.keyword };
     }
     const tableQuery = buildTablePrismaQuery(query, {
@@ -41,6 +43,8 @@ export class TitleRuleService {
       sort: { prismaField: 'sort', type: 'number' },
       createdAt: { prismaField: 'createdAt', type: 'date' },
       updatedAt: { prismaField: 'updatedAt', type: 'date' },
+      // 关键字与具名 keyword 同口径：匹配职称名称
+      keyword: { prismaField: 'titleName', type: 'text' },
     });
     const effectiveWhere: Prisma.TitleRuleWhereInput = tableQuery.where
       ? { AND: [where, tableQuery.where as Prisma.TitleRuleWhereInput] }

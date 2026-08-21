@@ -40,9 +40,15 @@
 ## 表格查询通用载荷
 
 所有继承 `PaginationQueryDto` 的列表端点接受可选 `filters` 和 `sorts` JSON：
-简单条件使用 `filters={ logic, conditions: [{ field, operator, value, valueEnd? }] }`；复杂组合使用
-`filters={ logic: 'OR', groups: [{ logic: 'AND', conditions: [...] }] }`。日期区间使用
-`operator: 'BETWEEN'` 与 `value/valueEnd`，`sorts=[{ field, direction }]` 表示按顺序的多级排序。
+`filters` 为树形条件组 `filters={ logic, conditions: [...] }`——`conditions` 的元素为条件
+`{ field, operator, value, valueEnd? }` 或一层嵌套子组 `{ logic, conditions: [...] }`；组内统一
+AND/OR，条件组最多 2 层嵌套。旧版平铺 `{ logic, conditions }` 与条件组
+`{ logic: 'OR', groups: [{ logic: 'AND', conditions: [...] }] }` 形状继续兼容，服务端统一归一化
+为条件树解释。操作符除比较类（`EQUALS`/`NOT_EQUALS`/`CONTAINS`/`NOT_CONTAINS`/大小比较/`BETWEEN`/
+`BEFORE`/`AFTER`）外，还包括空值类（`IS_EMPTY`/`IS_NOT_EMPTY`）、文本首尾匹配（`STARTS_WITH`/
+`ENDS_WITH`）与相对日期（`TODAY`/`THIS_WEEK`/`THIS_MONTH`/`LAST_7_DAYS`/`LAST_30_DAYS`，由服务端
+按 Asia/Shanghai 当天动态求值，无需传值）；日期区间使用 `operator: 'BETWEEN'` 与 `value/valueEnd`。
+`sorts=[{ field, direction }]` 表示按顺序的多级排序。
 服务端仅按该资源已注册的字段白名单解释条件；前端同时传递同名的既有具名查询参数，保证已上线的
 分页、权限与索引约束不被绕过。任何未知字段、SQL 片段或未声明筛选都不会被拼接或执行。
 

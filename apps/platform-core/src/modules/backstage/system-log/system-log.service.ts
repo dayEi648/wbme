@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors, PaginationQueryDto } from '@wbme/contracts';
 import { desensitizeErrorSample } from '@wbme/logging';
-import { buildTableSqlQuery, RedisService, runExport } from '@wbme/server';
+import { buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { SETTING_KEYS, SettingsService } from '../../base/settings/settings.service';
 import { PrismaService } from '../../../prisma.service';
@@ -421,6 +421,7 @@ export class SystemLogService {
   }
 
   private buildErrorWhere(query: ErrorLogQuery): { whereSql: string; params: unknown[] } {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const conditions: string[] = [];
     const params: unknown[] = [];
     const add = (sql: string, value: unknown) => {
@@ -428,11 +429,12 @@ export class SystemLogService {
       conditions.push(sql.replace('?', `$${params.length}`));
     };
     if (query.level) add('level = ?::backstage."LogLevel"', query.level);
-    if (query.service) add('service = ?', query.service);
+    // service/status 已被结构化筛选覆盖时，具名参数让位
+    if (!structuredFields.has('service') && query.service) add('service = ?', query.service);
     if (query.source) add('source = ?', query.source);
     if (query.errorCategory) add('error_category = ?', query.errorCategory);
     if (query.fingerprint) add('fingerprint = ?', query.fingerprint);
-    if (query.status) add('status = ?::backstage."ErrorStatus"', query.status);
+    if (!structuredFields.has('status') && query.status) add('status = ?::backstage."ErrorStatus"', query.status);
     if (query.from) add('last_seen_at >= ?', query.from);
     if (query.to) add('last_seen_at <= ?', query.to);
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -440,16 +442,18 @@ export class SystemLogService {
   }
 
   private buildSecurityWhere(query: SecurityLogQuery): { whereSql: string; params: unknown[] } {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const conditions: string[] = [];
     const params: unknown[] = [];
     const add = (sql: string, value: unknown) => {
       params.push(value);
       conditions.push(sql.replace('?', `$${params.length}`));
     };
-    if (query.eventType) add('event_type = ?::backstage."SecurityEventType"', query.eventType);
-    if (query.actorId !== undefined) add('actor_id = ?', query.actorId);
-    if (query.targetUserId !== undefined) add('target_user_id = ?', query.targetUserId);
-    if (query.result) add('result = ?::backstage."SecurityResult"', query.result);
+    // 以下字段被结构化筛选覆盖时，具名参数让位
+    if (!structuredFields.has('eventType') && query.eventType) add('event_type = ?::backstage."SecurityEventType"', query.eventType);
+    if (!structuredFields.has('actorId') && query.actorId !== undefined) add('actor_id = ?', query.actorId);
+    if (!structuredFields.has('targetUserId') && query.targetUserId !== undefined) add('target_user_id = ?', query.targetUserId);
+    if (!structuredFields.has('result') && query.result) add('result = ?::backstage."SecurityResult"', query.result);
     if (query.from) add('created_at >= ?', query.from);
     if (query.to) add('created_at <= ?', query.to);
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -457,7 +461,8 @@ export class SystemLogService {
   }
 }
 
-/** 错误日志表只读字段白名单；枚举统一转换为 text 后再比较，避免客户端影响 SQL 类型。 */
+/** 错误日志表只读字段白名单；枚举统一转换为 text 后再比较，避免客户端影响 SQL 类型。
+ * 注意：error_logs 无 created_at 列，createdAt 映射到 first_seen_at 以支持按时间排序。 */
 const ERROR_LOG_TABLE_FIELDS = {
   id: { column: 'id', type: 'number' },
   level: { column: 'level::text', type: 'enum' },
@@ -467,6 +472,7 @@ const ERROR_LOG_TABLE_FIELDS = {
   fingerprint: { column: 'fingerprint', type: 'text' },
   status: { column: 'status::text', type: 'enum' },
   occurrenceCount: { column: 'occurrence_count', type: 'number' },
+  createdAt: { column: 'first_seen_at', type: 'date' },
   firstSeenAt: { column: 'first_seen_at', type: 'date' },
   lastSeenAt: { column: 'last_seen_at', type: 'date' },
   handledAt: { column: 'handled_at', type: 'date' },

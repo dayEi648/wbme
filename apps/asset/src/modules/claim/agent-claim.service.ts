@@ -19,6 +19,7 @@ import {
 import { DepartmentClosureService } from '../../shared/department-closure.service';
 import { getFunctionAccess } from '../../shared/cross-schema-auth';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
+import { collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import { AssetApprovalService } from '../approval/asset-approval.service';
 
 /**
@@ -277,8 +278,9 @@ export class AgentClaimService {
    * @returns items + total
    */
   async listMine(operator: AssetOperationLogOperator, query: ConsumableRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = { requestType: 'AGENT_REQUEST', applicantId: operator.id };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
     return this.paginate(where, query);
@@ -292,11 +294,12 @@ export class AgentClaimService {
    * @returns items + total
    */
   async listHistory(query: ConsumableRequestQueryDto, applicantIds?: ReadonlySet<number>): Promise<{ items: unknown[]; total: number }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = { requestType: 'AGENT_REQUEST' };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
-    if (query.applicantName) {
+    if (query.applicantName && !structuredFields.has('applicantName')) {
       where.applicantName = { contains: query.applicantName };
     }
     if (applicantIds !== undefined) {

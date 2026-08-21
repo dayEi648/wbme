@@ -9,8 +9,19 @@ import { buildTablePrismaQuery, type TableQueryInput } from '@wbme/server';
 export function buildAssetApprovalRequestTableQuery(query: TableQueryInput) {
   return buildTablePrismaQuery(query, {
     id: { prismaField: 'id', type: 'number' },
+    keyword: { prismaField: ['applicationNo', 'applicantName', 'processorName'] as const, type: 'text' },
     applicationNo: { prismaField: 'applicationNo', type: 'text' },
-    requestType: { prismaField: 'requestType', type: 'enum' },
+    requestType: {
+      prismaField: 'requestType',
+      type: 'enum',
+      // 代交申领（AGENT_REQUEST）归入「消耗品申领」筛选（asset PRD §9），与具名 requestType 参数同口径
+      compile: ({ condition, value }) => {
+        if (value !== 'CONSUMABLE_REQUEST') return undefined;
+        if (condition.operator === 'EQUALS') return { requestType: { in: ['CONSUMABLE_REQUEST', 'AGENT_REQUEST'] } };
+        if (condition.operator === 'NOT_EQUALS') return { requestType: { notIn: ['CONSUMABLE_REQUEST', 'AGENT_REQUEST'] } };
+        return undefined;
+      },
+    },
     applicantId: { prismaField: 'applicantId', type: 'number' },
     applicantName: { prismaField: 'applicantName', type: 'text' },
     proxyId: { prismaField: 'proxyId', type: 'number' },

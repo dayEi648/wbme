@@ -6,7 +6,7 @@ import {
   INVENTORY_MANAGE_FUNCTION_CODE,
   inventoryErrors,
 } from '@wbme/contracts';
-import { buildTablePrismaQuery } from '@wbme/server';
+import { buildTablePrismaQuery, buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, type TableSqlField } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import {
@@ -14,6 +14,20 @@ import {
   fingerprintPayload,
   type AssetOperationLogOperator,
 } from '../../shared/asset-operation-log.util';
+
+/** 申领目录/可用库存模式的 SQL 筛选字段白名单（与主列表字段语义一致）。 */
+const CONSUMABLE_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'c.id', type: 'number' },
+  keyword: { column: 'c.name', type: 'text' },
+  name: { column: 'c.name', type: 'text' },
+  categoryId: { column: 'c.category_id', type: 'number' },
+  type: { column: 'c.type::text', type: 'enum' },
+  quotaCycle: { column: 'c.quota_cycle::text', type: 'enum' },
+  safetyStock: { column: 'c.safety_stock', type: 'number' },
+  status: { column: 'c.status::text', type: 'enum' },
+  createdAt: { column: 'c.created_at', type: 'date' },
+  updatedAt: { column: 'c.updated_at', type: 'date' },
+};
 
 /** 品种输入（创建/编辑共用字段；类型创建后不可变） */
 export interface ConsumableInput {
@@ -81,18 +95,23 @@ export class ConsumableService {
     if (query.hasAvailableStock) {
       return this.listAvailableConsumables(query);
     }
-    const where: Prisma.ConsumableWhereInput = { status: query.status ?? undefined };
-    if (query.categoryId) {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+    const where: Prisma.ConsumableWhereInput = {};
+    if (query.status && !structuredFields.has('status')) {
+      where.status = query.status;
+    }
+    if (query.categoryId && !structuredFields.has('categoryId')) {
       where.categoryId = query.categoryId;
     }
-    if (query.type) {
+    if (query.type && !structuredFields.has('type')) {
       where.type = query.type;
     }
-    if (query.keyword) {
+    if (query.keyword && !structuredFields.has('keyword')) {
       where.name = { contains: query.keyword, mode: 'insensitive' };
     }
     const tableQuery = buildTablePrismaQuery(query, {
       id: { prismaField: 'id', type: 'number' },
+      keyword: { prismaField: 'name', type: 'text' },
       name: { prismaField: 'name', type: 'text' },
       categoryId: { prismaField: 'categoryId', type: 'number' },
       unitId: { prismaField: 'unitId', type: 'number' },
@@ -128,46 +147,55 @@ export class ConsumableService {
    * @returns 已按申领资格筛选的品种汇总和总数
    */
   private async listAvailableConsumables(query: ConsumableQueryDto): Promise<{ items: ConsumableListItem[]; total: number }> {
-    const conditions: Prisma.Sql[] = [
-      Prisma.sql`c.status = 'ACTIVE'`,
-      Prisma.sql`
-        EXISTS (
-          SELECT 1
-          FROM asset.inventory_items ii
-          WHERE ii.consumable_id = c.id
-            AND ii.book_qty > ii.reserved_qty
-        )
-      `,
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+    const conditions: string[] = [
+      "c.status = 'ACTIVE'",
+      `EXISTS (
+        SELECT 1
+        FROM asset.inventory_items ii
+        WHERE ii.consumable_id = c.id
+          AND ii.book_qty > ii.reserved_qty
+      )`,
     ];
-    if (query.categoryId) {
-      conditions.push(Prisma.sql`c.category_id = ${query.categoryId}`);
+    const params: unknown[] = [];
+    if (query.categoryId && !structuredFields.has('categoryId')) {
+      params.push(query.categoryId);
+      conditions.push(`c.category_id = $${params.length}`);
     }
-    if (query.type) {
-      conditions.push(Prisma.sql`c.type = ${query.type}`);
+    if (query.type && !structuredFields.has('type')) {
+      params.push(query.type);
+      conditions.push(`c.type = $${params.length}`);
     }
-    if (query.status) {
-      conditions.push(Prisma.sql`c.status = ${query.status}`);
+    if (query.status && !structuredFields.has('status')) {
+      params.push(query.status);
+      conditions.push(`c.status = $${params.length}`);
     }
-    if (query.keyword) {
-      conditions.push(Prisma.sql`c.name ILIKE ${`%${query.keyword}%`}`);
+    if (query.keyword && !structuredFields.has('keyword')) {
+      params.push(`%${query.keyword}%`);
+      conditions.push(`c.name ILIKE $${params.length}`);
     }
-    const whereSql = Prisma.join(conditions, ' AND ');
+    if (query.filters) {
+      const compiled = buildTableSqlQuery({ filters: query.filters }, CONSUMABLE_FILTER_FIELDS, { parameterOffset: params.length });
+      if (compiled.whereSql) {
+        conditions.push(compiled.whereSql);
+        params.push(...compiled.params);
+      }
+    }
+    const whereSql = conditions.join(' AND ');
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const offset = (page - 1) * pageSize;
     const [countRows, idRows] = await Promise.all([
-      this.prisma.client.$queryRaw<Array<{ total: bigint }>>`
-        SELECT COUNT(*)::bigint AS total
-        FROM asset.consumables c
-        WHERE ${whereSql}
-      `,
-      this.prisma.client.$queryRaw<Array<{ id: number }>>`
-        SELECT c.id
-        FROM asset.consumables c
-        WHERE ${whereSql}
-        ORDER BY c.id ASC
-        LIMIT ${pageSize} OFFSET ${offset}
-      `,
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `SELECT COUNT(*)::bigint AS total FROM asset.consumables c WHERE ${whereSql}`,
+        ...params,
+      ),
+      this.prisma.client.$queryRawUnsafe<Array<{ id: number }>>(
+        `SELECT c.id FROM asset.consumables c WHERE ${whereSql} ORDER BY c.id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        offset,
+      ),
     ]);
     const ids = idRows.map((row) => row.id);
     const rows = await this.prisma.client.consumable.findMany({ where: { id: { in: ids } } });

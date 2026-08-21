@@ -18,6 +18,7 @@ import {
   type AssetOperationLogOperator,
 } from '../../shared/asset-operation-log.util';
 import { BorrowService } from '../borrow/borrow.service';
+import { buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, type TableSqlField } from '@wbme/server';
 
 /** 待处置借还记录行（listPending SQL 查询行形状） */
 interface PendingBorrowRow {
@@ -38,6 +39,80 @@ interface PendingBorrowRow {
   returned_qty: number;
   written_off_qty: number;
   user_status: string | null;
+}
+
+/** 处置记录列表结构化筛选字段白名单。 */
+const DISPOSAL_RECORD_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'dr.id', type: 'number' },
+  disposalType: { column: 'dr.disposal_type', type: 'enum' },
+  userName: { column: "COALESCE(dr.user_name, ar.applicant_name, '')", type: 'text' },
+  processorName: { column: 'dr.processor_name', type: 'text' },
+  createdAt: { column: 'dr.created_at', type: 'date' },
+};
+
+/**
+ * 编译处置记录列表的 SQL 条件、参数与排序。
+ *
+ * 将具名查询参数、数据范围条件与结构化 filters/sorts 在同一次 buildTableSqlQuery
+ * 调用中编译，保证参数编号连续；orderBySql 仅由记录查询使用，count 查询忽略。
+ */
+export function buildDisposalRecordWhereClause(
+  query: DisposalQueryDto,
+  scope: { kind: 'COMPANY' } | { kind: 'DEPARTMENT'; departmentIds: ReadonlySet<number> },
+): { whereSql: string; params: unknown[]; orderBySql?: string } {
+  const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+  const conditions: string[] = ['TRUE'];
+  const params: unknown[] = [];
+  const add = (sql: string, value: unknown) => {
+    params.push(value);
+    conditions.push(sql.replace(/\?/g, () => `$${params.length}`));
+  };
+  if (query.recordType && !structuredFields.has('recordType')) {
+    add('br.record_type = ?', query.recordType);
+  }
+  if (query.disposalType && !structuredFields.has('disposalType')) {
+    add('dr.disposal_type = ?', query.disposalType);
+  }
+  if (query.processorName && !structuredFields.has('processorName')) {
+    add("dr.processor_name ILIKE '%' || ? || '%'", query.processorName);
+  }
+  if (query.userName && !structuredFields.has('userName')) {
+    add("COALESCE(dr.user_name, ar.applicant_name, '') ILIKE '%' || ? || '%'", query.userName);
+  }
+  if (query.createdAtFrom && !structuredFields.has('createdAt')) {
+    add('dr.created_at >= ?', new Date(query.createdAtFrom));
+  }
+  if (query.createdAtTo && !structuredFields.has('createdAt')) {
+    add('dr.created_at <= ?', new Date(query.createdAtTo));
+  }
+  if (scope.kind === 'DEPARTMENT') {
+    params.push([...scope.departmentIds]);
+    const closureParam = `$${params.length}::int[]`;
+    conditions.push(`(
+      jsonb_typeof(COALESCE(dr.department_snapshot, br.department_snapshot)) IN ('array', 'object')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(
+          CASE
+            WHEN jsonb_typeof(COALESCE(dr.department_snapshot, br.department_snapshot)) = 'array'
+              THEN COALESCE(dr.department_snapshot, br.department_snapshot)
+            ELSE jsonb_build_array(COALESCE(dr.department_snapshot, br.department_snapshot))
+          END
+        ) el
+        WHERE (el->>'id')::int <> ALL(${closureParam})
+      )
+    )`);
+  }
+  let orderBySql: string | undefined;
+  if (query.filters || query.sorts) {
+    const compiled = buildTableSqlQuery({ filters: query.filters, sorts: query.sorts }, DISPOSAL_RECORD_FILTER_FIELDS, { parameterOffset: params.length });
+    if (compiled.whereSql) {
+      conditions.push(compiled.whereSql);
+      params.push(...compiled.params);
+    }
+    orderBySql = compiled.orderBySql;
+  }
+  return { whereSql: conditions.join(' AND '), params, orderBySql };
 }
 
 /** 处置记录行（listRecords JOIN 借还记录取类型与快照后的行形状） */
@@ -280,59 +355,23 @@ export class DisposalService {
   async listRecords(userId: number, query: DisposalQueryDto): Promise<{ items: unknown[]; total: number }> {
     const access = await assertFunctionAccess(this.prisma.client, userId, CONSUMABLE_APPROVAL_FUNCTION_CODE);
     const scope = await this.approverScope(userId, access);
-    const closure = await this.closures.closureOfUser(userId);
     // 所有筛选（含数据范围）下沉 SQL，避免固定 1000 行截断或内存分页失真。
-    const conditions: Prisma.Sql[] = [Prisma.sql`TRUE`];
-    if (query.recordType) {
-      conditions.push(Prisma.sql`br.record_type = ${query.recordType}`);
-    }
-    if (query.disposalType) {
-      conditions.push(Prisma.sql`dr.disposal_type = ${query.disposalType}`);
-    }
-    if (query.processorName) {
-      conditions.push(Prisma.sql`dr.processor_name ILIKE ${`%${query.processorName}%`}`);
-    }
-    if (query.userName) {
-      conditions.push(Prisma.sql`COALESCE(dr.user_name, ar.applicant_name, '') ILIKE ${`%${query.userName}%`}`);
-    }
-    if (query.createdAtFrom) {
-      conditions.push(Prisma.sql`dr.created_at >= ${new Date(query.createdAtFrom)}`);
-    }
-    if (query.createdAtTo) {
-      conditions.push(Prisma.sql`dr.created_at <= ${new Date(query.createdAtTo)}`);
-    }
-    if (scope.kind === 'DEPARTMENT') {
-      // 与待处置列表同一闭包语义：记录对应部门快照全部 ∈ 审批人闭包才可见
-      // （数组=多部门员工全部部门；单对象快照兼容展开；快照缺失不可见）
-      conditions.push(Prisma.sql`
-        jsonb_typeof(COALESCE(dr.department_snapshot, br.department_snapshot)) IN ('array', 'object')
-        AND NOT EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements(
-            CASE
-              WHEN jsonb_typeof(COALESCE(dr.department_snapshot, br.department_snapshot)) = 'array'
-                THEN COALESCE(dr.department_snapshot, br.department_snapshot)
-              ELSE jsonb_build_array(COALESCE(dr.department_snapshot, br.department_snapshot))
-            END
-          ) el
-          WHERE (el->>'id')::int <> ALL(${[...closure] as number[]})
-        )
-      `);
-    }
-    const whereSql = Prisma.join(conditions, ' AND ');
+    const { whereSql, params, orderBySql } = buildDisposalRecordWhereClause(query, scope);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const offset = (page - 1) * pageSize;
+    const orderBy = orderBySql ?? 'dr.created_at DESC, dr.id DESC';
     const [countRows, rows] = await Promise.all([
-      this.prisma.client.$queryRaw<Array<{ total: bigint }>>`
-        SELECT COUNT(*)::bigint AS total
-        FROM asset.direct_disposal_records dr
-        LEFT JOIN asset.borrow_records br ON br.id = dr.borrow_record_id
-        LEFT JOIN asset.approval_requests ar ON ar.id = dr.agent_request_id
-        WHERE ${whereSql}
-      `,
-      this.prisma.client.$queryRaw<DisposalRecordRow[]>`
-        SELECT
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `SELECT COUNT(*)::bigint AS total
+         FROM asset.direct_disposal_records dr
+         LEFT JOIN asset.borrow_records br ON br.id = dr.borrow_record_id
+         LEFT JOIN asset.approval_requests ar ON ar.id = dr.agent_request_id
+         WHERE ${whereSql}`,
+        ...params,
+      ),
+      this.prisma.client.$queryRawUnsafe<DisposalRecordRow[]>(
+        `SELECT
           dr.id, dr.disposal_type AS "disposalType", dr.borrow_record_id AS "borrowRecordId",
           dr.agent_request_id AS "agentRequestId", dr.user_id AS "userId", COALESCE(dr.user_name, ar.applicant_name) AS "userName",
           dr.inventory_item_id AS "inventoryItemId", dr.consumable_name AS "consumableName", dr.spec,
@@ -345,9 +384,12 @@ export class DisposalService {
         LEFT JOIN asset.borrow_records br ON br.id = dr.borrow_record_id
         LEFT JOIN asset.approval_requests ar ON ar.id = dr.agent_request_id
         WHERE ${whereSql}
-        ORDER BY dr.created_at DESC, dr.id DESC
-        LIMIT ${pageSize} OFFSET ${offset}
-      `,
+        ORDER BY ${orderBy}
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        offset,
+      ),
     ]);
     return { items: rows, total: Number(countRows[0]?.total ?? 0) };
   }

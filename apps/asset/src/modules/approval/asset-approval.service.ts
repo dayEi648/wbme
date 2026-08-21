@@ -22,7 +22,7 @@ import {
   frameworkErrors,
   type DataScope,
 } from '@wbme/contracts';
-import { RedisService, runExport } from '@wbme/server';
+import { collectTableFilterFields, normalizeTableFilters, RedisService, runExport } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -633,10 +633,11 @@ export class AssetApprovalService {
     visibleTypes: ReadonlyArray<{ requestType: AssetRequestType; dataScope: DataScope | null }>,
     userId: number,
   ): Promise<Prisma.ApprovalRequestWhereInput> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = {
       requestType: { in: visibleTypes.map((entry) => entry.requestType) },
     };
-    if (query.requestType !== undefined) {
+    if (query.requestType !== undefined && !structuredFields.has('requestType')) {
       if (query.requestType === 'CONSUMABLE_REQUEST') {
         // 代交申领归入「消耗品申领」筛选（asset PRD §9 六类统一展示；代交同为消耗品审批）
         where.requestType = { in: ['CONSUMABLE_REQUEST', 'AGENT_REQUEST'] };
@@ -646,25 +647,27 @@ export class AssetApprovalService {
         where.requestType = query.requestType as AssetRequestType;
       }
     }
-    if (query.status === 'PENDING') {
-      where.status = 'PENDING';
-    } else if (query.status === 'PROCESSED') {
-      where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] };
-    } else if (
-      query.status === 'DRAFT' ||
-      query.status === 'APPROVED' ||
-      query.status === 'REJECTED' ||
-      query.status === 'CANCELLED'
-    ) {
-      where.status = query.status;
+    if (query.status !== undefined && !structuredFields.has('status')) {
+      if (query.status === 'PENDING') {
+        where.status = 'PENDING';
+      } else if (query.status === 'PROCESSED') {
+        where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] };
+      } else if (
+        query.status === 'DRAFT' ||
+        query.status === 'APPROVED' ||
+        query.status === 'REJECTED' ||
+        query.status === 'CANCELLED'
+      ) {
+        where.status = query.status;
+      }
     }
-    if (query.applicantName) {
+    if (query.applicantName !== undefined && !structuredFields.has('applicantName')) {
       where.applicantName = { contains: query.applicantName };
     }
-    if (query.processorName) {
+    if (query.processorName !== undefined && !structuredFields.has('processorName')) {
       where.processorName = { contains: query.processorName };
     }
-    if (query.keyword) {
+    if (query.keyword !== undefined && !structuredFields.has('keyword')) {
       where.OR = [
         { applicationNo: { contains: query.keyword } },
         { applicantName: { contains: query.keyword } },

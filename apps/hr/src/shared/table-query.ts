@@ -20,5 +20,7 @@ export function buildHrApprovalRequestTableQuery(query: TableQueryInput) {
     processorId: { prismaField: 'processorId', type: 'number' },
     processorName: { prismaField: 'processorName', type: 'text' },
     processedAt: { prismaField: 'processedAt', type: 'date' },
+    // 关键字与具名 keyword 同口径：申请编号/申请人/审批人任一匹配
+    keyword: { prismaField: ['applicationNo', 'applicantName', 'processorName'], type: 'text' },
   });
 }

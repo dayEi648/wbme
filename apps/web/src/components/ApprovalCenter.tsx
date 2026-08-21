@@ -249,10 +249,10 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
       endpoint="/approval-requests"
       pageKey={pageKey}
       columns={[
-        { key: 'requestType', title: '申请类型' },
-        { key: 'applicantName', title: '申请人' },
-        { key: 'status', title: '状态', render: (value) => <StatusTag value={value} /> },
-        { key: 'submittedAt', title: '提交时间' },
+        { key: 'requestType', title: '申请类型', sortable: true },
+        { key: 'applicantName', title: '申请人', sortable: service !== 'platform' },
+        { key: 'status', title: '状态', render: (value) => <StatusTag value={value} />, sortable: true },
+        { key: 'submittedAt', title: '提交时间', sortable: service !== 'platform' },
       ]}
       filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待处理', value: 'PENDING' }, { label: '已批准', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }, { label: '已取消', value: 'CANCELLED' }] }, ...(requestTypeOptions.length > 0 ? [{ key: 'requestType', title: '申请类型', type: 'enum' as const, options: requestTypeOptions }] : []), { key: 'keyword', title: '关键字', type: 'text' }]}
       exportConfig={{ allEndpoint: service === 'asset' ? '/approval-requests/export/all' : '/approval-requests/export', filteredEndpoint: service === 'asset' ? '/approval-requests/export/all' : '/approval-requests/export', filename: `${service}-approvals.xlsx`, method: service === 'asset' ? 'GET' : 'POST' }}

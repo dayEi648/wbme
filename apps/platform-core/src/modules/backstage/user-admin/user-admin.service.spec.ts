@@ -3,7 +3,7 @@ import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { getRequestContext, REQUEST_CONTEXT_STORAGE, type RequestContext } from '@wbme/server';
 import { Reflector } from '@nestjs/core';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 // 加载仓库根 .env（集成测试使用真实本地 PostgreSQL；CI 由环境变量注入）
 try {
@@ -162,6 +162,85 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
     await expect(service.getUserDetail(999999999)).rejects.toMatchObject({ entry: { code: 'RESOURCE_NOT_FOUND' } });
   });
 
+  it('结构化筛选：status EQUALS/NOT_EQUALS、keyword 多列 contains、具名参数让位、无 filters 时向后兼容', async () => {
+    const pending = await service.createUser(superOp.id, {
+      name: `${TEST_NAME_PREFIX}结构化待激活`,
+      phone: '13935009903',
+      gender: 'MALE',
+    });
+    const active = await createUser({ name: `${TEST_NAME_PREFIX}结构化正常` });
+    const deactivated = await createUser({ name: `${TEST_NAME_PREFIX}结构化已注销` });
+    await prisma.client.user.update({
+      where: { id: deactivated.id },
+      data: { status: 'DEACTIVATED', deletedAt: new Date(), deletedBy: superOp.id },
+    });
+
+    // status EQUALS 生效（结构化筛选覆盖时不再受默认未注销规则限制）
+    const byStatus = await service.listUsers({
+      page: 1,
+      pageSize: 100,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ field: 'status', operator: 'EQUALS', value: 'DEACTIVATED' }],
+      }),
+    });
+    expect(byStatus.data.map((item) => item.id)).toContain(deactivated.id);
+    expect(byStatus.data.map((item) => item.id)).not.toContain(active.id);
+
+    // status NOT_EQUALS 生效
+    const notDeactivated = await service.listUsers({
+      page: 1,
+      pageSize: 100,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ field: 'status', operator: 'NOT_EQUALS', value: 'DEACTIVATED' }],
+      }),
+    });
+    expect(notDeactivated.data.map((item) => item.id)).toContain(active.id);
+    expect(notDeactivated.data.map((item) => item.id)).not.toContain(deactivated.id);
+
+    // keyword 多列 contains（姓名/手机号）
+    const activeUser = await prisma.client.user.findUniqueOrThrow({ where: { id: active.id } });
+    const byKeyword = await service.listUsers({
+      page: 1,
+      pageSize: 100,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ field: 'keyword', operator: 'CONTAINS', value: activeUser.phone.slice(-8) }],
+      }),
+    });
+    expect(byKeyword.data.map((item) => item.id)).toContain(active.id);
+    expect(byKeyword.data.map((item) => item.id)).not.toContain(pending.id);
+
+    // 具名参数让位：filters 中 status 与 keyword 同时存在时，具名 status/keyword 被忽略
+    const yielded = await service.listUsers({
+      page: 1,
+      pageSize: 100,
+      status: 'PENDING_ACTIVATION',
+      keyword: TEST_NAME_PREFIX,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [
+          { field: 'status', operator: 'EQUALS', value: 'DEACTIVATED' },
+          { field: 'keyword', operator: 'CONTAINS', value: deactivated.name },
+        ],
+      }),
+    });
+    expect(yielded.data.map((item) => item.id)).toContain(deactivated.id);
+    expect(yielded.data.map((item) => item.id)).not.toContain(pending.id);
+    expect(yielded.data.map((item) => item.id)).not.toContain(active.id);
+
+    // 无 filters 时具名参数行为不变
+    const namedOnly = await service.listUsers({
+      page: 1,
+      pageSize: 100,
+      status: 'PENDING_ACTIVATION',
+      keyword: TEST_NAME_PREFIX,
+    });
+    expect(namedOnly.data.map((item) => item.id)).toContain(pending.id);
+    expect(namedOnly.data.map((item) => item.id)).not.toContain(active.id);
+  });
+
   it('编辑基本资料：仅姓名性别生效、写变更前后日志；无变更/已注销/超管目标保护', async () => {
     const target = await createUser({ name: `${TEST_NAME_PREFIX}编辑` });
     const result = await service.updateUser(superOp.id, target.id, {
@@ -231,5 +310,32 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
     await expect(runGuard(userAdmin.id)).resolves.toBe(true);
     await expect(runGuard(superOp.id)).resolves.toBe(true);
     expect(getRequestContext()?.grantedFunction).toBeUndefined(); // 超出上下文 run 外无残留
+  });
+});
+
+describe('用户管理结构化查询白名单（单元）', () => {
+  it('name 筛选与 createdAt 排序进入 Prisma 查询', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const count = vi.fn().mockResolvedValue(0);
+    const prisma = { client: { user: { findMany, count } } } as never;
+    const redis = { exists: vi.fn().mockResolvedValue(0) } as never;
+    const service = new UserAdminService(prisma, redis);
+
+    await service.listUsers({
+      page: 1,
+      pageSize: 20,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ field: 'name', operator: 'EQUALS', value: '张三' }],
+      }),
+      sorts: JSON.stringify([{ field: 'createdAt', direction: 'DESC' }]),
+    });
+
+    const call = findMany.mock.calls[0]![0] as { where: Record<string, unknown>; orderBy: Array<Record<string, string>> };
+    expect(call.orderBy).toEqual([{ createdAt: 'desc' }]);
+    expect(call.where).toMatchObject({
+      deletedAt: null,
+      AND: [{ AND: [{ name: { equals: '张三', mode: 'insensitive' } }] }],
+    });
   });
 });

@@ -13,6 +13,7 @@ import { allocateFifoBatches, cleanupEmptyItem, lockInventoryItems, writeStockFl
 import { attachDeactivatedFlags } from '../../shared/deactivated-flag.util';
 import { acquireQuotaAdvisoryLocks, computeCycleKey } from '../../shared/quota-period';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
+import { collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -337,11 +338,12 @@ export class ClaimService {
    * @returns items + total
    */
   async listMine(operator: AssetOperationLogOperator, query: ConsumableRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = {
       requestType: 'CONSUMABLE_REQUEST',
       applicantId: operator.id,
     };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
     return this.paginate(where, query);
@@ -355,11 +357,12 @@ export class ClaimService {
    * @returns items + total
    */
   async listHistory(query: ConsumableRequestQueryDto, applicantIds?: ReadonlySet<number>): Promise<{ items: unknown[]; total: number }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = { requestType: 'CONSUMABLE_REQUEST' };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
-    if (query.applicantName) {
+    if (query.applicantName && !structuredFields.has('applicantName')) {
       where.applicantName = { contains: query.applicantName };
     }
     if (applicantIds !== undefined) {

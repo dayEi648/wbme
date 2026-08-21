@@ -1,13 +1,79 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Response } from 'express';
 import { INVENTORY_MANAGE_FUNCTION_CODE, StockFlowQueryDto } from '@wbme/contracts';
-import { buildTablePrismaQuery, RedisService, runExport } from '@wbme/server';
+import { buildTablePrismaQuery, buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, RedisService, runExport, type TableSqlField } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { loadAssetOperationLogOperator } from '../../shared/asset-operation-log.util';
 
+/** 库存流水结构化筛选字段（JOIN inventory_items 后支持 consumableId/warehouseId）。 */
+const STOCK_FLOW_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'sf.id', type: 'number' },
+  inventoryItemId: { column: 'sf.inventory_item_id', type: 'number' },
+  consumableId: { column: 'ii.consumable_id', type: 'number' },
+  flowType: { column: 'sf.flow_type::text', type: 'enum' },
+  direction: { column: 'sf.direction::text', type: 'enum' },
+  consumableName: { column: 'sf.consumable_name', type: 'text' },
+  spec: { column: 'sf.spec', type: 'text' },
+  warehouseId: { column: 'ii.warehouse_id', type: 'number' },
+  warehouseName: { column: 'sf.warehouse_name', type: 'text' },
+  qty: { column: 'sf.qty', type: 'number' },
+  refType: { column: 'sf.ref_type', type: 'text' },
+  refId: { column: 'sf.ref_id', type: 'number' },
+  operatorName: { column: 'sf.operator_name', type: 'text' },
+  createdAt: { column: 'sf.created_at', type: 'date' },
+};
+
 /** 库存流水导出行（Prisma 模型行，camelCase） */
 type StockFlowExportRow = Prisma.StockFlowGetPayload<object>;
+
+/**
+ * 构建库存流水列表 SQL 查询条件与排序（纯函数，便于单测）。
+ *
+ * @param query 查询参数
+ * @returns WHERE 子句（不含 WHERE 关键字）、ORDER BY 子句、参数列表
+ */
+export function buildStockFlowListQuery(query: StockFlowQueryDto): {
+  whereSql: string;
+  orderBySql: string;
+  params: unknown[];
+} {
+  const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+  const conditions: string[] = ['TRUE'];
+  const params: unknown[] = [];
+  if (query.inventoryItemId && !structuredFields.has('inventoryItemId')) {
+    params.push(query.inventoryItemId);
+    conditions.push(`sf.inventory_item_id = $${params.length}`);
+  }
+  if (query.consumableId && !structuredFields.has('consumableId')) {
+    params.push(query.consumableId);
+    conditions.push(`ii.consumable_id = $${params.length}`);
+  }
+  if (query.warehouseId && !structuredFields.has('warehouseId')) {
+    params.push(query.warehouseId);
+    conditions.push(`ii.warehouse_id = $${params.length}`);
+  }
+  if (query.flowType && !structuredFields.has('flowType')) {
+    params.push(query.flowType);
+    conditions.push(`sf.flow_type = $${params.length}`);
+  }
+  if (query.refType && !structuredFields.has('refType')) {
+    params.push(query.refType);
+    conditions.push(`sf.ref_type = $${params.length}`);
+  }
+  if (query.refId !== undefined && !structuredFields.has('refId')) {
+    params.push(query.refId);
+    conditions.push(`sf.ref_id = $${params.length}`);
+  }
+  const compiled = buildTableSqlQuery(query, STOCK_FLOW_FILTER_FIELDS, { parameterOffset: params.length });
+  if (compiled.whereSql) {
+    conditions.push(compiled.whereSql);
+    params.push(...compiled.params);
+  }
+  const whereSql = conditions.join(' AND ');
+  const orderBySql = compiled.orderBySql ? `ORDER BY ${compiled.orderBySql}` : 'ORDER BY sf.created_at DESC, sf.id DESC';
+  return { whereSql, orderBySql, params };
+}
 
 /**
  * 库存流水服务（asset PRD §5/§6；A-13 只追加）。
@@ -29,23 +95,67 @@ export class StockFlowService {
    * @returns items + total
    */
   async list(query: StockFlowQueryDto): Promise<{ items: unknown[]; total: number }> {
-    const where = await this.buildWhere(query);
-    const tableQuery = this.tableQuery(query);
-    const effectiveWhere: Prisma.StockFlowWhereInput = tableQuery.where
-      ? { AND: [where, tableQuery.where as Prisma.StockFlowWhereInput] }
-      : where;
+    const { whereSql, orderBySql, params } = buildStockFlowListQuery(query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const [total, rows] = await Promise.all([
-      this.prisma.client.stockFlow.count({ where: effectiveWhere }),
-      this.prisma.client.stockFlow.findMany({
-        where: effectiveWhere,
-        orderBy: (tableQuery.orderBy as Prisma.StockFlowOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
+    const offset = (page - 1) * pageSize;
+    interface StockFlowListRow {
+      id: number;
+      flowType: string;
+      direction: string;
+      inventoryItemId: number;
+      batchId: number | null;
+      consumableName: string;
+      spec: string;
+      warehouseName: string;
+      warehousePath: string;
+      qty: number;
+      bookBefore: number;
+      bookAfter: number;
+      refType: string | null;
+      refId: number | null;
+      operatorId: number;
+      operatorName: string;
+      createdAt: Date;
+    }
+    const [countRows, rows] = await Promise.all([
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `SELECT COUNT(*)::bigint AS total
+         FROM asset.stock_flows sf
+         INNER JOIN asset.inventory_items ii ON ii.id = sf.inventory_item_id
+         WHERE ${whereSql}`,
+        ...params,
+      ),
+      this.prisma.client.$queryRawUnsafe<StockFlowListRow[]>(
+        `SELECT
+          sf.id,
+          sf.flow_type AS "flowType",
+          sf.direction,
+          sf.inventory_item_id AS "inventoryItemId",
+          sf.batch_id AS "batchId",
+          sf.consumable_name AS "consumableName",
+          sf.spec,
+          sf.warehouse_name AS "warehouseName",
+          sf.warehouse_path AS "warehousePath",
+          sf.qty,
+          sf.book_before AS "bookBefore",
+          sf.book_after AS "bookAfter",
+          sf.ref_type AS "refType",
+          sf.ref_id AS "refId",
+          sf.operator_id AS "operatorId",
+          sf.operator_name AS "operatorName",
+          sf.created_at AS "createdAt"
+        FROM asset.stock_flows sf
+        INNER JOIN asset.inventory_items ii ON ii.id = sf.inventory_item_id
+        WHERE ${whereSql}
+        ${orderBySql}
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        offset,
+      ),
     ]);
-    return { total, items: rows };
+    return { total: Number(countRows[0]?.total ?? 0), items: rows };
   }
 
   /**
@@ -113,33 +223,35 @@ export class StockFlowService {
     });
   }
 
-  /** 组装流水查询条件（A-13 无外键关系；品种/库位经条目归属先查 id 集合过滤） */
+  /** 组装流水导出查询条件（A-13 无外键关系；品种/库位经条目归属先查 id 集合过滤）。 */
   private async buildWhere(query: StockFlowQueryDto): Promise<Prisma.StockFlowWhereInput> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.StockFlowWhereInput = {};
     const itemFilter: Prisma.InventoryItemWhereInput = {};
-    if (query.inventoryItemId) {
+    if (query.inventoryItemId && !structuredFields.has('inventoryItemId')) {
       where.inventoryItemId = query.inventoryItemId;
     }
-    if (query.consumableId) {
+    if (query.consumableId && !structuredFields.has('consumableId')) {
       itemFilter.consumableId = query.consumableId;
     }
-    if (query.warehouseId) {
+    if (query.warehouseId && !structuredFields.has('warehouseId')) {
       itemFilter.warehouseId = query.warehouseId;
     }
-    if (query.consumableId !== undefined || query.warehouseId !== undefined) {
+    if ((query.consumableId !== undefined && !structuredFields.has('consumableId')) ||
+        (query.warehouseId !== undefined && !structuredFields.has('warehouseId'))) {
       const itemIds = await this.prisma.client.inventoryItem.findMany({
         where: itemFilter,
         select: { id: true },
       });
       where.inventoryItemId = { in: itemIds.map((item) => item.id) };
     }
-    if (query.flowType) {
+    if (query.flowType && !structuredFields.has('flowType')) {
       where.flowType = query.flowType as Prisma.StockFlowWhereInput['flowType'];
     }
-    if (query.refType) {
+    if (query.refType && !structuredFields.has('refType')) {
       where.refType = query.refType;
     }
-    if (query.refId) {
+    if (query.refId !== undefined && !structuredFields.has('refId')) {
       where.refId = query.refId;
     }
     return where;

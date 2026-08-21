@@ -9,7 +9,7 @@ import {
   USER_MANAGE_FUNCTION_CODE,
   type UserStatus,
 } from '@wbme/contracts';
-import { redisKey, REDIS_CLIENT, REDIS_NAMESPACE } from '@wbme/server';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters, redisKey, REDIS_CLIENT, REDIS_NAMESPACE } from '@wbme/server';
 import type { Redis } from 'ioredis';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
@@ -36,6 +36,14 @@ import type { CreateUserDto, ListUsersDto, UpdateUserDto } from './user-admin.dt
 const IDEMPOTENCY_SCOPE = {
   USER_CREATE: 'users.create',
   USER_UPDATE: 'users.update',
+} as const;
+
+/** 用户列表结构化筛选白名单：keyword 匹配姓名/手机号，name/createdAt 支持页面列排序，status 为枚举。 */
+const USER_FILTER_FIELDS = {
+  keyword: { prismaField: ['name', 'phone'], type: 'text' },
+  name: { prismaField: 'name', type: 'text' },
+  createdAt: { prismaField: 'createdAt', type: 'date' },
+  status: { prismaField: 'status', type: 'enum' },
 } as const;
 
 /** 用户列表/详情展示项 */
@@ -128,29 +136,40 @@ export class UserAdminService {
     data: UserView[];
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.UserWhereInput = {};
-    if (query.status === 'DEACTIVATED') {
-      where.status = 'DEACTIVATED';
-    } else if (query.status) {
-      where.status = query.status;
-      where.deletedAt = null;
-    } else {
-      where.deletedAt = null;
-    }
-    const keyword = query.keyword?.trim();
-    if (keyword) {
-      const conditions: Prisma.UserWhereInput[] = [{ name: { contains: keyword, mode: 'insensitive' } }];
-      const digits = keyword.replace(/\D/g, '');
-      if (digits.length > 0) {
-        conditions.push({ phone: { contains: digits } });
+    // 结构化筛选已覆盖 status 时，具名状态分支让位（含默认未注销规则）
+    if (!structuredFields.has('status')) {
+      if (query.status === 'DEACTIVATED') {
+        where.status = 'DEACTIVATED';
+      } else if (query.status) {
+        where.status = query.status;
+        where.deletedAt = null;
+      } else {
+        where.deletedAt = null;
       }
-      where.OR = conditions;
+    }
+    // 结构化筛选已覆盖 keyword 时，具名检索词让位
+    if (!structuredFields.has('keyword')) {
+      const keyword = query.keyword?.trim();
+      if (keyword) {
+        const conditions: Prisma.UserWhereInput[] = [{ name: { contains: keyword, mode: 'insensitive' } }];
+        const digits = keyword.replace(/\D/g, '');
+        if (digits.length > 0) {
+          conditions.push({ phone: { contains: digits } });
+        }
+        where.OR = conditions;
+      }
+    }
+    const tableQuery = buildTablePrismaQuery(query, USER_FILTER_FIELDS);
+    if (tableQuery.where) {
+      where.AND = [tableQuery.where];
     }
     const [totalItems, users] = await Promise.all([
       this.prisma.client.user.count({ where }),
       this.prisma.client.user.findMany({
         where,
-        orderBy: { id: 'asc' },
+        orderBy: tableQuery.orderBy ?? [{ id: 'asc' }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         select: {

@@ -25,14 +25,10 @@ export class WarehouseController {
     private readonly warehouses: WarehouseService,
   ) {}
 
-  /** 库位树全量列表（状态过滤） */
   @Get('tree')
   async tree(@CurrentUser() userId: number, @Query() query: WarehouseQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, INVENTORY_MANAGE_FUNCTION_CODE);
-    const result = await this.warehouses.tree();
-    if (query.status) {
-      result.items = result.items.filter((node: { status: string }) => node.status === query.status);
-    }
+    const result = await this.warehouses.tree(query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     return createPaginationResponse(result.items.slice((page - 1) * pageSize, page * pageSize), result.items.length, page, pageSize);

@@ -1,4 +1,4 @@
-import { BusinessException } from '@wbme/contracts';
+import { BusinessException, type FinDictItemQueryDto } from '@wbme/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { DictService } from './dict.service';
 
@@ -49,5 +49,74 @@ describe('DictService.deletePreview', () => {
 
     await expect(service.deletePreview([1, 9])).rejects.toBeInstanceOf(BusinessException);
     await expect(service.deletePreview([1, 9])).rejects.toMatchObject({ entry: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+});
+
+describe('DictService.list', () => {
+  function mockListPrisma() {
+    return {
+      client: {
+        financeDictItem: {
+          count: vi.fn().mockResolvedValue(0),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+      },
+    };
+  }
+
+  function filtersPayload(conditions: unknown[]) {
+    return JSON.stringify({ logic: 'AND', conditions });
+  }
+
+  function baseQuery(): Pick<FinDictItemQueryDto, 'page' | 'pageSize'> {
+    return { page: 1, pageSize: 20 };
+  }
+
+  function captureDictFindManyArgs(prisma: ReturnType<typeof mockListPrisma>): { where?: unknown } {
+    return (prisma.client.financeDictItem.findMany as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { where?: unknown };
+  }
+
+  it('无 filters 时具名 dictType/status 生效', async () => {
+    const prisma = mockListPrisma();
+    const service = new DictService(prisma as never);
+    const query: FinDictItemQueryDto = { ...baseQuery(), dictType: 'PROGRESS', status: 'ACTIVE' };
+
+    await service.list(query);
+
+    expect(prisma.client.financeDictItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { dictType: 'PROGRESS', status: 'ACTIVE' },
+      }),
+    );
+  });
+
+  it('filters 树中出现 dictType 时具名 dictType 让位', async () => {
+    const prisma = mockListPrisma();
+    const service = new DictService(prisma as never);
+    const query: FinDictItemQueryDto = {
+      ...baseQuery(),
+      dictType: 'PROGRESS',
+      filters: filtersPayload([{ field: 'dictType', operator: 'EQUALS', value: 'REGION' }]),
+    };
+
+    await service.list(query);
+
+    const callArgs = captureDictFindManyArgs(prisma);
+    expect(callArgs.where).toEqual({ AND: [{}, { AND: [{ dictType: 'REGION' }] }] });
+  });
+
+  it('filters 树中出现 status 时具名 status 让位', async () => {
+    const prisma = mockListPrisma();
+    const service = new DictService(prisma as never);
+    const query: FinDictItemQueryDto = {
+      ...baseQuery(),
+      status: 'ACTIVE',
+      filters: filtersPayload([{ field: 'status', operator: 'EQUALS', value: 'DISABLED' }]),
+    };
+
+    await service.list(query);
+
+    const callArgs = captureDictFindManyArgs(prisma);
+    expect(callArgs.where).toEqual({ AND: [{}, { AND: [{ status: 'DISABLED' }] }] });
   });
 });

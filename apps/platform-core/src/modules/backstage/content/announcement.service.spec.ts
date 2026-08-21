@@ -78,6 +78,74 @@ describe('AnnouncementService', () => {
         expect.objectContaining({ where: { deletedAt: null, status: 'PUBLISHING' } }),
       );
     });
+
+    it('结构化筛选 status EQUALS 与 NOT_EQUALS 生效', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.announcement.findMany).mockResolvedValue([]);
+      vi.mocked(prisma.client.announcement.count).mockResolvedValue(0);
+      await new AnnouncementService(prisma as never).list({
+        page: 1,
+        pageSize: 20,
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [{ field: 'status', operator: 'EQUALS', value: 'DRAFT' }],
+        }),
+      });
+      const call = vi.mocked(prisma.client.announcement.findMany).mock.calls[0]![0] as {
+        where: { deletedAt: null; AND: Array<{ AND: Array<Record<string, unknown>> }> };
+      };
+      expect(call.where).toMatchObject({
+        deletedAt: null,
+        AND: [{ AND: [{ status: 'DRAFT' }] }],
+      });
+    });
+
+    it('结构化筛选覆盖 status 时具名 status 让位', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.announcement.findMany).mockResolvedValue([]);
+      vi.mocked(prisma.client.announcement.count).mockResolvedValue(0);
+      await new AnnouncementService(prisma as never).list({
+        page: 1,
+        pageSize: 20,
+        status: 'PUBLISHING',
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [{ field: 'status', operator: 'EQUALS', value: 'DRAFT' }],
+        }),
+      });
+      const call = vi.mocked(prisma.client.announcement.findMany).mock.calls[0]![0] as {
+        where: { status?: string; deletedAt: null; AND: Array<{ AND: Array<Record<string, unknown>> }> };
+      };
+      expect(call.where.status).toBeUndefined();
+      expect(call.where).toMatchObject({
+        deletedAt: null,
+        AND: [{ AND: [{ status: 'DRAFT' }] }],
+      });
+    });
+
+    it('title 筛选与 publishedAt 排序进入 Prisma 查询', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.announcement.findMany).mockResolvedValue([]);
+      vi.mocked(prisma.client.announcement.count).mockResolvedValue(0);
+      await new AnnouncementService(prisma as never).list({
+        page: 1,
+        pageSize: 20,
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [{ field: 'title', operator: 'CONTAINS', value: '维护' }],
+        }),
+        sorts: JSON.stringify([{ field: 'publishedAt', direction: 'ASC' }]),
+      });
+      const call = vi.mocked(prisma.client.announcement.findMany).mock.calls[0]![0] as {
+        where: Record<string, unknown>;
+        orderBy: Array<Record<string, string>>;
+      };
+      expect(call.orderBy).toEqual([{ publishedAt: 'asc' }]);
+      expect(call.where).toMatchObject({
+        deletedAt: null,
+        AND: [{ AND: [{ title: { contains: '维护', mode: 'insensitive' } }] }],
+      });
+    });
   });
 
   describe('create', () => {

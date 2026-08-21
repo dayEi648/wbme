@@ -246,6 +246,7 @@
                   "LOCATION_INVALID_TARGET",
                   "LOCATION_REFERENCED",
                   "MAINTENANCE_ACTIVE_EXISTS",
+                  "MENU_CONFIG_STRUCTURE_INVALID",
                   "MULTI_DEPARTMENT_APPLY_FORBIDDEN",
                   "NOT_SUPER_ADMIN",
                   "OLD_PASSWORD_INCORRECT",
@@ -951,7 +952,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -1173,7 +1174,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -1483,7 +1484,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -1549,7 +1550,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -2070,7 +2071,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -2306,7 +2307,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -2423,7 +2424,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -2532,7 +2533,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -2672,7 +2673,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -2804,7 +2805,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -3041,7 +3042,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -3328,7 +3329,7 @@
             }
           },
           {
-            "description": "结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] }",
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
             "in": "query",
             "name": "filters",
             "required": false,

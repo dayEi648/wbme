@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OperationLogService } from './operation-log.service';
+import { extractDepartmentConditions, OperationLogService } from './operation-log.service';
 
 /** mock @wbme/server 的模块函数（守卫上下文与导出） */
 vi.mock('@wbme/server', async (importOriginal) => {
@@ -112,6 +112,58 @@ describe('OperationLogService', () => {
       expect(sql).toContain('created_at <= $6');
     });
 
+    it('结构化筛选覆盖 operatorId/system/feature/actionType 时具名参数让位', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0n }]);
+      await makeService(prisma).list({
+        page: 1,
+        pageSize: 20,
+        operatorId: 7,
+        system: 'hr',
+        feature: 'overtime_submit',
+        actionType: 'CREATE',
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [
+            { field: 'operatorId', operator: 'EQUALS', value: '8' },
+            { field: 'system', operator: 'EQUALS', value: 'ASSET' },
+            { field: 'feature', operator: 'EQUALS', value: 'asset_view' },
+            { field: 'actionType', operator: 'EQUALS', value: 'UPDATE' },
+          ],
+        }),
+      });
+      const sql = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]![0] as string;
+      // 结构化筛选参数位置为 $1-$4，说明具名参数未注入
+      expect(sql).toContain('operator_id = $1');
+      expect(sql).toContain('system = $2');
+      // feature 为 text 字段，结构化 EQUALS 按 ILIKE 编译
+      expect(sql).toContain('feature ILIKE $3');
+      expect(sql).toContain('action_type = $4');
+      const args = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]!.slice(1);
+      expect(args[0]).toBe(8);
+      expect(args[1]).toBe('ASSET');
+      expect(args[2]).toBe('asset_view');
+      expect(args[3]).toBe('UPDATE');
+    });
+
+    it('结构化筛选覆盖 departmentId 时具名 departmentId 让位', async () => {
+      const prisma = prismaMock();
+      vi.mocked(prisma.client.$queryRaw).mockResolvedValueOnce([{ descendant_id: 2 }]);
+      vi.mocked(prisma.client.$queryRawUnsafe).mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0n }]);
+      await makeService(prisma).list({
+        page: 1,
+        pageSize: 20,
+        departmentId: 1,
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [{ field: 'departmentId', operator: 'EQUALS', value: '3' }],
+        }),
+      });
+      const args = vi.mocked(prisma.client.$queryRawUnsafe).mock.calls[0]!.slice(1);
+      // 仅结构化筛选中的部门 3 进入闭包过滤，具名 departmentId=1 被忽略
+      expect(args[0]).toEqual([2]);
+    });
+
     it('COMPANY 档不追加数据范围过滤', async () => {
       mockedGranted.mockReturnValue({ code: 'operation_log_view', dataScope: 'COMPANY' });
       const prisma = prismaMock();
@@ -208,6 +260,136 @@ describe('OperationLogService', () => {
       await expect(makeService(prismaMock()).list({ page: 1, pageSize: 20, filters: badFilters })).rejects.toMatchObject({
         name: 'BusinessException',
         entry: expect.objectContaining({ code: 'VALIDATION_FAILED' }),
+      });
+    });
+  });
+
+  describe('extractDepartmentConditions', () => {
+    it('空输入返回空部门条件且无 filters', () => {
+      expect(extractDepartmentConditions(undefined)).toEqual({ departmentConditions: [] });
+      expect(extractDepartmentConditions('')).toEqual({ departmentConditions: [] });
+    });
+
+    it('非法 JSON 保留原样并返回空部门条件', () => {
+      const raw = '{not-json';
+      expect(extractDepartmentConditions(raw)).toEqual({ departmentConditions: [], filters: raw });
+    });
+
+    it('新树形根级剥离 departmentId 并保留其余条件', () => {
+      const raw = JSON.stringify({
+        logic: 'AND',
+        conditions: [
+          { field: 'departmentId', operator: 'EQUALS', value: '1' },
+          { field: 'system', operator: 'EQUALS', value: 'HR' },
+        ],
+      });
+      expect(extractDepartmentConditions(raw)).toEqual({
+        departmentConditions: [{ operator: 'EQUALS', value: '1' }],
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [{ field: 'system', operator: 'EQUALS', value: 'HR' }],
+        }),
+      });
+    });
+
+    it('子组内 departmentId 被剥离并上提为顶层 AND 约束；变空子组被剪除', () => {
+      const raw = JSON.stringify({
+        logic: 'OR',
+        conditions: [
+          {
+            logic: 'AND',
+            conditions: [
+              { field: 'departmentId', operator: 'EQUALS', value: '2' },
+              { field: 'system', operator: 'EQUALS', value: 'HR' },
+            ],
+          },
+          { field: 'summary', operator: 'CONTAINS', value: 'x' },
+        ],
+      });
+      expect(extractDepartmentConditions(raw)).toEqual({
+        departmentConditions: [{ operator: 'EQUALS', value: '2' }],
+        filters: JSON.stringify({
+          logic: 'OR',
+          conditions: [
+            {
+              logic: 'AND',
+              conditions: [{ field: 'system', operator: 'EQUALS', value: 'HR' }],
+            },
+            { field: 'summary', operator: 'CONTAINS', value: 'x' },
+          ],
+        }),
+      });
+    });
+
+    it('子组仅含 departmentId 时整组被剪除，剩余条件保留', () => {
+      const raw = JSON.stringify({
+        logic: 'AND',
+        conditions: [
+          {
+            logic: 'OR',
+            conditions: [{ field: 'departmentId', operator: 'EQUALS', value: '3' }],
+          },
+          { field: 'actionType', operator: 'EQUALS', value: 'CREATE' },
+        ],
+      });
+      expect(extractDepartmentConditions(raw)).toEqual({
+        departmentConditions: [{ operator: 'EQUALS', value: '3' }],
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [{ field: 'actionType', operator: 'EQUALS', value: 'CREATE' }],
+        }),
+      });
+    });
+
+    it('旧 groups 形状兼容剥离并归一化为新树形', () => {
+      const raw = JSON.stringify({
+        logic: 'OR',
+        groups: [
+          {
+            logic: 'AND',
+            conditions: [
+              { field: 'departmentId', operator: 'NOT_EQUALS', value: '4' },
+              { field: 'system', operator: 'EQUALS', value: 'FIN' },
+            ],
+          },
+          {
+            logic: 'AND',
+            conditions: [{ field: 'actionType', operator: 'EQUALS', value: 'UPDATE' }],
+          },
+        ],
+      });
+      expect(extractDepartmentConditions(raw)).toEqual({
+        departmentConditions: [{ operator: 'NOT_EQUALS', value: '4' }],
+        filters: JSON.stringify({
+          logic: 'OR',
+          conditions: [
+            {
+              logic: 'AND',
+              conditions: [{ field: 'system', operator: 'EQUALS', value: 'FIN' }],
+            },
+            {
+              logic: 'AND',
+              conditions: [{ field: 'actionType', operator: 'EQUALS', value: 'UPDATE' }],
+            },
+          ],
+        }),
+      });
+    });
+
+    it('全部条件均为 departmentId 时返回 undefined filters', () => {
+      const raw = JSON.stringify({
+        logic: 'AND',
+        conditions: [
+          { field: 'departmentId', operator: 'EQUALS', value: '1' },
+          { field: 'departmentId', operator: 'NOT_EQUALS', value: '2' },
+        ],
+      });
+      expect(extractDepartmentConditions(raw)).toEqual({
+        departmentConditions: [
+          { operator: 'EQUALS', value: '1' },
+          { operator: 'NOT_EQUALS', value: '2' },
+        ],
+        filters: undefined,
       });
     });
   });

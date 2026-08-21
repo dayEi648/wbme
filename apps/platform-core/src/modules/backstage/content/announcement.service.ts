@@ -5,6 +5,7 @@ import {
   createPaginationResponse,
   frameworkErrors,
 } from '@wbme/contracts';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 import {
@@ -12,7 +13,14 @@ import {
   fingerprintPayload,
   loadOperationLogOperator,
 } from '../permission/operation-log.util';
-import type { BatchDeleteAnnouncementsDto, UpsertAnnouncementDto } from './content.dto';
+import type { BatchDeleteAnnouncementsDto, ListAnnouncementsDto, UpsertAnnouncementDto } from './content.dto';
+
+/** 公告列表结构化筛选白名单：title/publishedAt 支持页面列筛选与排序，status 为枚举。 */
+const ANNOUNCEMENT_FILTER_FIELDS = {
+  title: { prismaField: 'title', type: 'text' },
+  publishedAt: { prismaField: 'publishedAt', type: 'date' },
+  status: { prismaField: 'status', type: 'enum' },
+} as const;
 
 const IDEMPOTENCY_SCOPE = {
   CREATE: 'announcements.create',
@@ -30,17 +38,23 @@ export class AnnouncementService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** 公告列表（不含已软删） */
-  async list(dto: { page: number; pageSize: number; status?: string }): Promise<unknown> {
+  async list(dto: ListAnnouncementsDto): Promise<unknown> {
+    const structuredFields = dto.filters ? collectTableFilterFields(normalizeTableFilters(dto.filters)) : new Set<string>();
     const where: Prisma.AnnouncementWhereInput = { deletedAt: null };
-    if (dto.status) {
+    // 结构化筛选已覆盖 status 时，具名状态让位
+    if (!structuredFields.has('status') && dto.status) {
       where.status = dto.status as Prisma.EnumAnnouncementStatusFilter['equals'];
+    }
+    const tableQuery = buildTablePrismaQuery(dto, ANNOUNCEMENT_FILTER_FIELDS);
+    if (tableQuery.where) {
+      where.AND = [tableQuery.where];
     }
     const skip = (dto.page - 1) * dto.pageSize;
     const [items, total] = await Promise.all([
       this.prisma.client.announcement.findMany({
         where,
         // 次级 id 兜底：同秒更新时分页边界稳定（主 PRD §9.5）
-        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        orderBy: tableQuery.orderBy ?? [{ updatedAt: 'desc' }, { id: 'desc' }],
         skip,
         take: dto.pageSize,
       }),

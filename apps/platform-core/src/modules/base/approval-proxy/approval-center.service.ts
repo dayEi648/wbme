@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ApprovalListQueryDto } from '@wbme/contracts';
 import { BusinessException, createPaginationResponse, frameworkErrors, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
-import { runExport, RedisService } from '@wbme/server';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters, runExport, RedisService } from '@wbme/server';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import type { Response } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
@@ -10,6 +10,13 @@ import {
   loadOperationLogOperator,
   writeBackstageOperationLog,
 } from '../../backstage/permission/operation-log.util';
+
+/** 审批中心结构化筛选白名单：keyword 匹配单号/申请人/处理人，status/requestType 为枚举。 */
+const APPROVAL_REQUEST_TABLE_FIELDS = {
+  keyword: { prismaField: ['applicationNo', 'applicantName', 'processorName'], type: 'text' },
+  status: { prismaField: 'status', type: 'enum' },
+  requestType: { prismaField: 'requestType', type: 'enum' },
+} as const;
 
 /** 审批中心列表项 */
 export interface ApprovalListItem {
@@ -49,14 +56,14 @@ export class ApprovalCenterService {
     data: ApprovalListItem[];
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
-    const where = this.buildWhere(query);
+    const { where, orderBy } = this.buildWhere(query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
       this.prisma.client.approvalRequest.count({ where }),
       this.prisma.client.approvalRequest.findMany({
         where,
-        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+        orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -73,7 +80,7 @@ export class ApprovalCenterService {
    */
   async export(userId: number, query: ApprovalListQueryDto, res: Response): Promise<void> {
     const maxRows = await this.settings.getNumber(SETTING_KEYS.EXPORT_MAX_ROWS);
-    const where = this.buildWhere(query);
+    const { where, orderBy } = this.buildWhere(query);
     await runExport<ApprovalListItem>({
       userId,
       redis: this.redis.redis,
@@ -102,7 +109,7 @@ export class ApprovalCenterService {
         const client = tx as PrismaService['client'];
         const rows = await client.approvalRequest.findMany({
           where,
-          orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+          orderBy,
           skip: offset,
           take: limit,
         });
@@ -220,42 +227,54 @@ export class ApprovalCenterService {
     return { total, byType: { PROFILE_CHANGE: total } };
   }
 
-  /** 构造列表 where */
-  private buildWhere(query: ApprovalListQueryDto): Prisma.ApprovalRequestWhereInput {
+  /** 构造列表 where 与 orderBy；结构化筛选与具名参数按字段让位。 */
+  private buildWhere(query: ApprovalListQueryDto): {
+    where: Prisma.ApprovalRequestWhereInput;
+    orderBy: Array<Record<string, 'asc' | 'desc'>>;
+  } {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = {
-      // backstage 当前承载 PROFILE_CHANGE；非法 requestType 由空结果体现
+      // backstage 当前承载 PROFILE_CHANGE；本模块固定范围不受结构化筛选影响
       requestType: 'PROFILE_CHANGE',
     };
-    if (query.requestType !== undefined && query.requestType !== 'PROFILE_CHANGE') {
+    // requestType 具名参数仅对非本模块类型强制空集；结构化 requestType 由白名单直接映射
+    if (!structuredFields.has('requestType') && query.requestType !== undefined && query.requestType !== 'PROFILE_CHANGE') {
       // 强制无匹配（非本模块类型）
       where.id = -1;
     }
-    if (query.status === 'PENDING') {
-      where.status = 'PENDING';
-    } else if (query.status === 'PROCESSED') {
-      where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] };
-    } else if (
-      query.status === 'DRAFT' ||
-      query.status === 'APPROVED' ||
-      query.status === 'REJECTED' ||
-      query.status === 'CANCELLED'
-    ) {
-      where.status = query.status;
+    // status 具名参数含 PROCESSED 虚拟值；结构化 status 直接映射真实列
+    if (!structuredFields.has('status')) {
+      if (query.status === 'PENDING') {
+        where.status = 'PENDING';
+      } else if (query.status === 'PROCESSED') {
+        where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] };
+      } else if (
+        query.status === 'DRAFT' ||
+        query.status === 'APPROVED' ||
+        query.status === 'REJECTED' ||
+        query.status === 'CANCELLED'
+      ) {
+        where.status = query.status;
+      }
     }
-    if (query.applicantName) {
+    if (!structuredFields.has('applicantName') && query.applicantName) {
       where.applicantName = { contains: query.applicantName };
     }
-    if (query.processorName) {
+    if (!structuredFields.has('processorName') && query.processorName) {
       where.processorName = { contains: query.processorName };
     }
-    if (query.keyword) {
+    if (!structuredFields.has('keyword') && query.keyword) {
       where.OR = [
         { applicationNo: { contains: query.keyword } },
         { applicantName: { contains: query.keyword } },
         { processorName: { contains: query.keyword } },
       ];
     }
-    return where;
+    const tableQuery = buildTablePrismaQuery(query, APPROVAL_REQUEST_TABLE_FIELDS);
+    if (tableQuery.where) {
+      where.AND = [tableQuery.where];
+    }
+    return { where, orderBy: tableQuery.orderBy ?? [{ submittedAt: 'desc' }, { id: 'desc' }] };
   }
 }
 

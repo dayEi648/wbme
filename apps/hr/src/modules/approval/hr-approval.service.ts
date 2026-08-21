@@ -22,7 +22,7 @@ import {
   frameworkErrors,
   type DataScope,
 } from '@wbme/contracts';
-import { RedisService, runExport } from '@wbme/server';
+import { collectTableFilterFields, normalizeTableFilters, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
@@ -775,10 +775,12 @@ export class HrApprovalService {
     visibleTypes: readonly VisibleTypeEntry[],
     userId: number,
   ): Promise<Prisma.HrApprovalRequestWhereInput> {
+    // 结构化筛选与具名参数按字段互斥：filters 树中出现的字段以树为准（具名镜像让位）
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.HrApprovalRequestWhereInput = {
       requestType: { in: visibleTypes.map((entry) => entry.requestType) },
     };
-    if (query.requestType !== undefined) {
+    if (query.requestType !== undefined && !structuredFields.has('requestType')) {
       const known = visibleTypes.some((entry) => entry.requestType === query.requestType);
       if (!known) {
         where.id = -1;
@@ -786,25 +788,27 @@ export class HrApprovalService {
         where.requestType = query.requestType as HrRequestType;
       }
     }
-    if (query.status === 'PENDING') {
-      where.status = 'PENDING';
-    } else if (query.status === 'PROCESSED') {
-      where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] };
-    } else if (
-      query.status === 'DRAFT' ||
-      query.status === 'APPROVED' ||
-      query.status === 'REJECTED' ||
-      query.status === 'CANCELLED'
-    ) {
-      where.status = query.status;
+    if (!structuredFields.has('status')) {
+      if (query.status === 'PENDING') {
+        where.status = 'PENDING';
+      } else if (query.status === 'PROCESSED') {
+        where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] };
+      } else if (
+        query.status === 'DRAFT' ||
+        query.status === 'APPROVED' ||
+        query.status === 'REJECTED' ||
+        query.status === 'CANCELLED'
+      ) {
+        where.status = query.status;
+      }
     }
-    if (query.applicantName) {
+    if (query.applicantName && !structuredFields.has('applicantName')) {
       where.applicantName = { contains: query.applicantName };
     }
-    if (query.processorName) {
+    if (query.processorName && !structuredFields.has('processorName')) {
       where.processorName = { contains: query.processorName };
     }
-    if (query.keyword) {
+    if (query.keyword && !structuredFields.has('keyword')) {
       where.OR = [
         { applicationNo: { contains: query.keyword } },
         { applicantName: { contains: query.keyword } },

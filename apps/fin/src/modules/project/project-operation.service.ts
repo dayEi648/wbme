@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { type ProjectOperationQueryDto } from '@wbme/contracts';
+import { collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
+import { Prisma, type ProjectOperation } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
+import { buildProjectOperationTableQuery } from '../../shared/project-operation-table-query';
 
 /**
  * 项目操作记录服务（fin PRD §5；F-5）。
@@ -19,14 +22,25 @@ export class ProjectOperationService {
    * @returns items + total
    */
   async list(query: ProjectOperationQueryDto): Promise<{ items: unknown[]; total: number }> {
-    const where = query.projectId !== undefined ? { projectId: query.projectId } : {};
+    const structuredFields = query.filters
+      ? collectTableFilterFields(normalizeTableFilters(query.filters))
+      : new Set<string>();
+    const where: Prisma.ProjectOperationWhereInput = {};
+    // filters 树中出现 projectId 时以树为准，具名参数让位
+    if (query.projectId !== undefined && !structuredFields.has('projectId')) {
+      where.projectId = query.projectId;
+    }
+    const tableQuery = buildProjectOperationTableQuery(query);
+    const effectiveWhere: Prisma.ProjectOperationWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.ProjectOperationWhereInput] }
+      : where;
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
-      this.prisma.client.projectOperation.count({ where }),
+      this.prisma.client.projectOperation.count({ where: effectiveWhere }),
       this.prisma.client.projectOperation.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
+        where: effectiveWhere,
+        orderBy: (tableQuery.orderBy as Prisma.ProjectOperationOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
         // 项目列：join 项目名（含已软删项目——操作记录展示删除前名称）
@@ -35,7 +49,7 @@ export class ProjectOperationService {
     ]);
     return {
       total,
-      items: rows.map((row) => ({
+      items: rows.map((row: ProjectOperation & { project?: { name: string } | null }) => ({
         ...row,
         projectName: row.project?.name ?? null,
         project: undefined,

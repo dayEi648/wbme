@@ -15,6 +15,7 @@ import {
   type AssetOperationLogOperator,
 } from '../../shared/asset-operation-log.util';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
+import { collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import { AssetApprovalService } from '../approval/asset-approval.service';
 import { BorrowService, type BorrowRecordLockRow } from './borrow.service';
 
@@ -153,8 +154,9 @@ export class AgentSettlementService {
    * @returns items + total
    */
   async listMine(operator: AssetOperationLogOperator, query: AgentSettlementQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = { requestType: 'AGENT_SETTLEMENT', applicantId: operator.id };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
     return this.paginate(where, query);

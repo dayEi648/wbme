@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma.service';
 import { attachDeactivatedFlags } from '../../shared/deactivated-flag.util';
 import { loadWarehouseWithPath, lockInventoryItems, lockOrCreateItem, writeStockFlow } from '../../shared/inventory-core';
 import { buildAssetApprovalRequestTableQuery } from '../../shared/table-query';
+import { collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -217,11 +218,12 @@ export class StockInService {
    * @returns items + total
    */
   async listHistory(query: StockInRequestQueryDto, applicantIds?: ReadonlySet<number>): Promise<{ items: unknown[]; total: number }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = { requestType: 'STOCK_IN' };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
-    if (query.applicantName) {
+    if (query.applicantName && !structuredFields.has('applicantName')) {
       where.applicantName = { contains: query.applicantName };
     }
     if (applicantIds !== undefined) {
@@ -238,8 +240,9 @@ export class StockInService {
 
   /** 按申请人分页（本人历史） */
   private async listByApplicant(applicantId: number, query: StockInRequestQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.ApprovalRequestWhereInput = { requestType: 'STOCK_IN', applicantId };
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
     return this.paginate(where, query);

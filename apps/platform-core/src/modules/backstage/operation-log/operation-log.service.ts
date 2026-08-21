@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors, OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
-import { buildTableSqlQuery, getGrantedFunction, getRequestContext, RedisService, runExport } from '@wbme/server';
+import { buildTableSqlQuery, collectTableFilterFields, getGrantedFunction, getRequestContext, normalizeTableFilters, RedisService, runExport } from '@wbme/server';
+import type { TableFilterTreeGroup, TableFilterTreeNode } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
@@ -211,22 +212,24 @@ export class OperationLogService {
     query: OperationLogQuery,
     mineOnly: boolean,
   ): Promise<{ whereSql: string; params: unknown[]; filters?: string }> {
+    // 结构化筛选已覆盖的字段，同名具名参数让位（departmentId 单独剥离处理）
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const conditions: string[] = [];
     const params: unknown[] = [];
     const add = (sql: string, value: unknown) => {
       params.push(value);
       conditions.push(sql.replace('?', `$${params.length}`));
     };
-    if (query.operatorId !== undefined) {
+    if (query.operatorId !== undefined && !structuredFields.has('operatorId')) {
       add('operator_id = ?', query.operatorId);
     }
-    if (query.system) {
+    if (query.system && !structuredFields.has('system')) {
       add('system = ?', query.system);
     }
-    if (query.feature) {
+    if (query.feature && !structuredFields.has('feature')) {
       add('feature = ?', query.feature);
     }
-    if (query.actionType) {
+    if (query.actionType && !structuredFields.has('actionType')) {
       add('action_type = ?', query.actionType);
     }
     if (query.from) {
@@ -237,7 +240,7 @@ export class OperationLogService {
     }
     // departmentId 非视图列：从具名参数与结构化筛选负载中汇集后统一按部门快照闭包过滤
     const { departmentConditions, filters } = extractDepartmentConditions(query.filters);
-    if (query.departmentId !== undefined) {
+    if (query.departmentId !== undefined && !structuredFields.has('departmentId')) {
       departmentConditions.push({ operator: 'EQUALS', value: String(query.departmentId) });
     }
     for (const condition of departmentConditions) {
@@ -422,62 +425,54 @@ function appendWhereClause(existing: string, structured?: string): string {
  * 从结构化筛选负载中剥离 departmentId 条件（该字段不是视图列，改由部门快照闭包过滤），
  * 其余条件保持原负载结构留待 buildTableSqlQuery 白名单编译。
  *
+ * 协议已升级为树形条件组：先经 normalizeTableFilters 归一化，再递归剥离任意层级的
+ * departmentId 条件。被剥离的 departmentId 条件统一上提为顶层 AND 约束，与既有行为一致；
+ * 剥离后变空的子组会被剪除。非法 JSON 输入保留原样，由后续编译器统一报校验错误。
+ *
  * @param raw 原始 filters 查询参数
  * @returns 剥离出的部门条件与净化后的 filters 负载；负载无法解析时原样保留，由编译器统一报校验错误
  */
-function extractDepartmentConditions(raw: string | undefined): {
+export function extractDepartmentConditions(raw: string | undefined): {
   departmentConditions: DepartmentFilterCondition[];
   filters?: string;
 } {
   if (!raw) {
     return { departmentConditions: [] };
   }
-  let parsed: unknown;
+  let tree: TableFilterTreeGroup;
   try {
-    parsed = JSON.parse(raw);
+    tree = normalizeTableFilters(raw);
   } catch {
     return { departmentConditions: [], filters: raw };
   }
-  if (!isRecord(parsed)) {
-    return { departmentConditions: [], filters: raw };
-  }
   const departmentConditions: DepartmentFilterCondition[] = [];
-  const split = (conditions: unknown[]): unknown[] =>
-    conditions.filter((condition) => {
-      if (isRecord(condition) && condition.field === 'departmentId') {
-        departmentConditions.push({
-          operator: String(condition.operator ?? ''),
-          value: String(condition.value ?? ''),
-        });
-        return false;
+
+  /** 递归剥离条件中的 departmentId，并剪除变空的子组。 */
+  const transformNode = (node: TableFilterTreeNode): TableFilterTreeNode | undefined => {
+    if (!isTreeGroup(node)) {
+      if (node.field === 'departmentId') {
+        departmentConditions.push({ operator: node.operator, value: node.value });
+        return undefined;
       }
-      return true;
-    });
-  if (Array.isArray(parsed.conditions)) {
-    const rest = split(parsed.conditions);
-    return {
-      departmentConditions,
-      filters: rest.length > 0 ? JSON.stringify({ ...parsed, conditions: rest }) : undefined,
-    };
-  }
-  if (Array.isArray(parsed.groups)) {
-    const groups = parsed.groups
-      .map((group) =>
-        isRecord(group) && Array.isArray(group.conditions)
-          ? { ...group, conditions: split(group.conditions) }
-          : group,
-      )
-      .filter((group) => !isRecord(group) || !Array.isArray(group.conditions) || group.conditions.length > 0);
-    return {
-      departmentConditions,
-      filters: groups.length > 0 ? JSON.stringify({ ...parsed, groups }) : undefined,
-    };
-  }
-  return { departmentConditions: [], filters: raw };
+      return node;
+    }
+    const keptConditions = node.conditions
+      .map(transformNode)
+      .filter((item): item is TableFilterTreeNode => item !== undefined);
+    return keptConditions.length > 0 ? { logic: node.logic, conditions: keptConditions } : undefined;
+  };
+
+  const conditions = tree.conditions
+    .map(transformNode)
+    .filter((item): item is TableFilterTreeNode => item !== undefined);
+  return {
+    departmentConditions,
+    filters: conditions.length > 0 ? JSON.stringify({ logic: tree.logic, conditions }) : undefined,
+  };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function isTreeGroup(node: TableFilterTreeNode): node is TableFilterTreeGroup {
+  return 'conditions' in node;
 }
 
 function mapRow(row: OperationLogRow): OperationLogListItem {

@@ -14,7 +14,7 @@ import {
   assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
-import { buildTablePrismaQuery, RedisService, runExport } from '@wbme/server';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters, RedisService, runExport, type TablePrismaQuery } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -83,18 +83,13 @@ export class AssetService {
     if (!access.registered || !access.systemOpen || !access.allowed) {
       return { items: [], total: 0 };
     }
-    const where: Prisma.AssetWhereInput = { deletedAt: null };
-    if (query.scope === 'OWNED') {
-      where.responsibleUserId = userId;
-    } else if (query.scope === 'USED') {
-      where.currentUserId = userId;
-    } else {
-      where.OR = [{ responsibleUserId: userId }, { currentUserId: userId }];
-    }
-    if (query.usageStatus) {
-      where.usageStatus = query.usageStatus;
-    }
-    return this.paginate(where, query.page ?? 1, query.pageSize ?? 20);
+    const tableQuery = buildMyAssetTableQuery(userId, query);
+    return this.paginate(
+      tableQuery.where as Prisma.AssetWhereInput,
+      query.page ?? 1,
+      query.pageSize ?? 20,
+      (tableQuery.orderBy as Prisma.AssetOrderByWithRelationInput[] | undefined),
+    );
   }
 
   /**
@@ -196,26 +191,27 @@ export class AssetService {
     const scope = available.some((access) => access.dataScope === null)
       ? null
       : widestScope(available.flatMap((access) => (access.dataScope ? [access.dataScope] : [])));
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.AssetWhereInput = { deletedAt: null };
-    if (query.categoryId) {
+    if (query.categoryId && !structuredFields.has('categoryId')) {
       where.categoryId = query.categoryId;
     }
-    if (query.departmentId) {
+    if (query.departmentId && !structuredFields.has('departmentId')) {
       where.departmentId = query.departmentId;
     }
-    if (query.usageStatus) {
+    if (query.usageStatus && !structuredFields.has('usageStatus')) {
       where.usageStatus = query.usageStatus;
     }
-    if (query.ownership) {
+    if (query.ownership && !structuredFields.has('ownership')) {
       where.ownership = query.ownership;
     }
-    if (query.responsibleUserId) {
+    if (query.responsibleUserId && !structuredFields.has('responsibleUserId')) {
       where.responsibleUserId = query.responsibleUserId;
     }
-    if (query.currentUserId) {
+    if (query.currentUserId && !structuredFields.has('currentUserId')) {
       where.currentUserId = query.currentUserId;
     }
-    if (query.keyword) {
+    if (query.keyword && !structuredFields.has('keyword')) {
       where.OR = [
         { name: { contains: query.keyword, mode: 'insensitive' } },
         { specModel: { contains: query.keyword, mode: 'insensitive' } },
@@ -762,6 +758,62 @@ export class AssetService {
       currentUserName: await userName(dto.currentUserId, existing?.currentUserId),
     };
   }
+}
+
+/**
+ * 编译「我的资产」结构化筛选与排序。
+ *
+ * - scope 为纯 compile 字段：OWNED/USED/ALL 分别映射为责任人/使用者/两者任一；
+ *   EQUALS/NOT_EQUALS 之外的操作符以及非法 value 均显式抛 validationError。
+ * - filters 树中出现 scope 时，具名 query.scope 让位；usageStatus 同规则。
+ * - 开放 name / updatedAt 排序供页面抽屉使用。
+ */
+export function buildMyAssetTableQuery(userId: number, query: MyAssetQueryDto): TablePrismaQuery {
+  const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+  const where: Prisma.AssetWhereInput = { deletedAt: null };
+  if (query.scope && !structuredFields.has('scope')) {
+    if (query.scope === 'OWNED') {
+      where.responsibleUserId = userId;
+    } else if (query.scope === 'USED') {
+      where.currentUserId = userId;
+    } else {
+      where.OR = [{ responsibleUserId: userId }, { currentUserId: userId }];
+    }
+  }
+  if (query.usageStatus && !structuredFields.has('usageStatus')) {
+    where.usageStatus = query.usageStatus;
+  }
+  const tableQuery = buildTablePrismaQuery(query, {
+    scope: {
+      type: 'enum',
+      compile: ({ condition, value }) => {
+        if (value !== 'OWNED' && value !== 'USED' && value !== 'ALL') {
+          throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+            fields: [{ field: 'filters', reason: 'scope 筛选值必须是 OWNED、USED 或 ALL' }],
+          });
+        }
+        if (condition.operator === 'EQUALS') {
+          if (value === 'OWNED') return { responsibleUserId: userId };
+          if (value === 'USED') return { currentUserId: userId };
+          return { OR: [{ responsibleUserId: userId }, { currentUserId: userId }] };
+        }
+        if (condition.operator === 'NOT_EQUALS') {
+          if (value === 'OWNED') return { NOT: { responsibleUserId: userId } };
+          if (value === 'USED') return { NOT: { currentUserId: userId } };
+          return { AND: [{ responsibleUserId: { not: userId } }, { currentUserId: { not: userId } }] };
+        }
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+          fields: [{ field: 'filters', reason: `字段 scope 不支持 ${condition.operator} 操作符` }],
+        });
+      },
+    },
+    usageStatus: { prismaField: 'usageStatus', type: 'enum' },
+    name: { prismaField: 'name', type: 'text' },
+    updatedAt: { prismaField: 'updatedAt', type: 'date' },
+  });
+  return tableQuery.where
+    ? { ...tableQuery, where: { AND: [where, tableQuery.where as Prisma.AssetWhereInput] } }
+    : { ...tableQuery, where };
 }
 
 /** YYYY-MM-DD → Date（@db.Date 日历值，Date.UTC 构造避免时区偏移） */

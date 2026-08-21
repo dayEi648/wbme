@@ -10,11 +10,11 @@ export function OperationLogsSection() {
       endpoint="/me/operation-logs"
       pageKey="me-operation-logs"
       columns={[
-        { key: 'createdAt', title: '时间' },
-        { key: 'system', title: '系统' },
-        { key: 'feature', title: '功能' },
-        { key: 'actionType', title: '操作' },
-        { key: 'summary', title: '摘要' },
+        { key: 'createdAt', title: '时间', sortable: true },
+        { key: 'system', title: '系统', sortable: true },
+        { key: 'feature', title: '功能', sortable: true },
+        { key: 'actionType', title: '操作', sortable: true },
+        { key: 'summary', title: '摘要', sortable: true },
       ]}
       filterFields={[
         {

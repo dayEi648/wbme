@@ -34,6 +34,103 @@ describe('PaginationQueryDto（结构化表格查询）', () => {
     }
   });
 
+  it('接受树形条件组（根组内混合条件与直接子组）', async () => {
+    const dto = plainToInstance(PaginationQueryDto, {
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [
+          { field: 'name', operator: 'STARTS_WITH', value: '设备' },
+          {
+            logic: 'OR',
+            conditions: [
+              { field: 'status', operator: 'EQUALS', value: 'IDLE' },
+              { field: 'purchaseAt', operator: 'BETWEEN', value: '2026-01-01', valueEnd: '2026-01-31' },
+            ],
+          },
+        ],
+      }),
+    });
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('兼容旧平铺与旧条件组两种历史形状', async () => {
+    const legacyPayloads = [
+      { logic: 'OR', conditions: [{ field: 'name', operator: 'CONTAINS', value: '设备' }] },
+      {
+        logic: 'OR',
+        groups: [{ logic: 'AND', conditions: [{ field: 'name', operator: 'ENDS_WITH', value: '号' }] }],
+      },
+    ];
+    for (const filters of legacyPayloads) {
+      const dto = plainToInstance(PaginationQueryDto, { filters: JSON.stringify(filters) });
+      expect(await validate(dto)).toHaveLength(0);
+    }
+  });
+
+  it('接受无值操作符传空字符串的载荷', async () => {
+    for (const operator of ['IS_EMPTY', 'IS_NOT_EMPTY', 'TODAY', 'THIS_WEEK', 'THIS_MONTH', 'LAST_7_DAYS', 'LAST_30_DAYS']) {
+      const dto = plainToInstance(PaginationQueryDto, {
+        filters: JSON.stringify({ logic: 'AND', conditions: [{ field: 'createdAt', operator, value: '' }] }),
+      });
+      expect(await validate(dto)).toHaveLength(0);
+    }
+  });
+
+  it('拒绝三层组嵌套（子组内再含子组）', async () => {
+    const dto = plainToInstance(PaginationQueryDto, {
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [
+          {
+            logic: 'OR',
+            conditions: [{ logic: 'AND', conditions: [{ field: 'name', operator: 'EQUALS', value: 'x' }] }],
+          },
+        ],
+      }),
+    });
+
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('拒绝子组内的未知操作符', async () => {
+    const dto = plainToInstance(PaginationQueryDto, {
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ logic: 'OR', conditions: [{ field: 'name', operator: 'RAW_SQL', value: 'x' }] }],
+      }),
+    });
+
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('拒绝子组数量超过上限的树形载荷', async () => {
+    const conditions = Array.from({ length: 11 }, () => ({
+      logic: 'AND',
+      conditions: [{ field: 'name', operator: 'EQUALS', value: 'x' }],
+    }));
+    const dto = plainToInstance(PaginationQueryDto, { filters: JSON.stringify({ logic: 'AND', conditions }) });
+
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('拒绝总条件数超过上限的载荷', async () => {
+    const overLimitPayloads = [
+      { logic: 'AND', conditions: Array.from({ length: 101 }, (_, index) => ({ field: `f${index}`, operator: 'EQUALS', value: 'x' })) },
+      {
+        logic: 'AND',
+        conditions: [
+          { field: 'name', operator: 'EQUALS', value: 'x' },
+          { logic: 'OR', conditions: Array.from({ length: 100 }, (_, index) => ({ field: `f${index}`, operator: 'EQUALS', value: 'x' })) },
+        ],
+      },
+    ];
+    for (const filters of overLimitPayloads) {
+      const dto = plainToInstance(PaginationQueryDto, { filters: JSON.stringify(filters) });
+      expect(await validate(dto)).not.toHaveLength(0);
+    }
+  });
+
   it('拒绝错误排序方向与空排序列表', async () => {
     for (const sorts of [[], [{ field: 'id', direction: 'DROP' }]]) {
       const dto = plainToInstance(PaginationQueryDto, { sorts: JSON.stringify(sorts) });

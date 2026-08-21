@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { loadEnvFile } from 'node:process';
 import { resolve } from 'node:path';
 import { BusinessException } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // 加载仓库根 .env（集成测试使用真实本地 PostgreSQL；CI 由环境变量注入）
@@ -13,7 +14,7 @@ try {
 import { PrismaService } from '../../../prisma.service';
 import { ensurePermissionCatalog } from '../../../test-support/ensure-permission-catalog';
 import { AuthorizationService } from './authorization.service';
-import { GrantService } from './grant.service';
+import { EMPLOYEE_FILTER_FIELDS, GrantService } from './grant.service';
 import { FunctionPermissionGuard, REQUIRED_FUNCTION_KEY } from './function-permission.guard';
 import { Reflector } from '@nestjs/core';
 import { SessionService, REQUEST_CONTEXT_STORAGE, getRequestContext, type RequestContext } from '@wbme/server';
@@ -415,6 +416,53 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)('员工授权 CRUD（T3-2 版本/�
     expect(all.data.map((item) => item.id)).not.toContain(missed.id);
   });
 
+  it('员工检索结构化筛选：keyword contains 姓名/手机号、具名参数让位、无 filters 时向后兼容', async () => {
+    const found = await createUser({ name: `${TEST_NAME_PREFIX}筛选命中` });
+    const missed = await createUser({ name: `${TEST_NAME_PREFIX}筛选排除` });
+
+    // keyword contains 姓名
+    const byName = await service.searchEmployees({
+      page: 1,
+      pageSize: 100,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ field: 'keyword', operator: 'CONTAINS', value: '筛选命中' }],
+      }),
+    });
+    expect(byName.data.map((item) => item.id)).toContain(found.id);
+    expect(byName.data.map((item) => item.id)).not.toContain(missed.id);
+
+    // keyword contains 手机号片段
+    const foundUser = await prisma.client.user.findUniqueOrThrow({ where: { id: found.id } });
+    const byPhone = await service.searchEmployees({
+      page: 1,
+      pageSize: 100,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ field: 'keyword', operator: 'CONTAINS', value: foundUser.phone.slice(-8) }],
+      }),
+    });
+    expect(byPhone.data.map((item) => item.id)).toContain(found.id);
+    expect(byPhone.data.map((item) => item.id)).not.toContain(missed.id);
+
+    // 具名参数让位：filters 含 keyword 时具名 keyword 被忽略
+    const yielded = await service.searchEmployees({
+      page: 1,
+      pageSize: 100,
+      keyword: missed.name,
+      filters: JSON.stringify({
+        logic: 'AND',
+        conditions: [{ field: 'keyword', operator: 'CONTAINS', value: found.name }],
+      }),
+    });
+    expect(yielded.data.map((item) => item.id)).toContain(found.id);
+    expect(yielded.data.map((item) => item.id)).not.toContain(missed.id);
+
+    // 无 filters 时具名 keyword 行为不变
+    const namedOnly = await service.searchEmployees({ keyword: found.name, page: 1, pageSize: 100 });
+    expect(namedOnly.data.map((item) => item.id)).toContain(found.id);
+  });
+
   it('员工检索 systems：授权涉及系统按目录顺序去重，目录外授权不归纳，无授权为空数组', async () => {
     const multi = await createUser({ name: `${TEST_NAME_PREFIX}多系统` });
     await prisma.client.employeeGrant.createMany({
@@ -542,5 +590,22 @@ describe.skipIf(!DATABASE_URL || !REDIS_URL)('员工授权 CRUD（T3-2 版本/�
       grants: [{ functionCode: 'permission_manage', dataScope: 'COMPANY' }],
     });
     expect(await elevationMarkedAt(targetB.id)).toBeNull();
+  });
+});
+
+describe('人员权限员工列表结构化查询白名单（单元）', () => {
+  it('name 筛选与排序正确编译', () => {
+    const query = buildTablePrismaQuery(
+      {
+        filters: JSON.stringify({
+          logic: 'AND',
+          conditions: [{ field: 'name', operator: 'CONTAINS', value: '张' }],
+        }),
+        sorts: JSON.stringify([{ field: 'name', direction: 'ASC' }]),
+      },
+      EMPLOYEE_FILTER_FIELDS,
+    );
+    expect(query.orderBy).toEqual([{ name: 'asc' }]);
+    expect(query.where).toEqual({ AND: [{ name: { contains: '张', mode: 'insensitive' } }] });
   });
 });

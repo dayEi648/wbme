@@ -26,11 +26,17 @@ test.describe('核心业务链路', () => {
     await page.getByText('操作日志').first().click();
     await expect(page).toHaveURL(/\/backstage\/operation-logs/);
     await expect(page.getByRole('heading', { name: '操作日志' })).toBeVisible({ timeout: 15_000 });
-    // 筛选契约（与用例名对齐）：抽屉快捷筛选含「操作者」字段，不依赖表格是否有行。
-    // 勿用 getByText('暂无数据')：Ant Empty 的 SVG <title> 同文案但不可见，.first() 会命中 hidden 节点。
+    // 筛选契约（与用例名对齐）：工具栏「筛选」打开「高级筛选」弹窗（桌面视口为 Modal）。
     // accessible name 形如「filter 筛选」或「filter 筛选（n）」；须锚定开头，避免命中「导出已筛选」。
     await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /^(filter\s+)?筛\s*选/ }).click();
-    await expect(page.locator('.ant-drawer').getByText('操作者').first()).toBeVisible({ timeout: 15_000 });
+    const dialog = page.locator('.ant-modal');
+    await expect(dialog.getByText('高级筛选')).toBeVisible({ timeout: 15_000 });
+    // 等待 Modal 打开动画（缩放）结束：动画期间点击 Select 会按缩放中的尺寸测量下拉位置。
+    await page.waitForTimeout(400);
+    // 打开字段下拉，断言选项含「操作者」；必须锚定非隐藏的 .ant-select-dropdown——
+    // 「操作者」同时是表格列标题，裸 getByText 会命中表头而假通过。
+    await dialog.locator('.ant-select').first().click();
+    await expect(page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByText('操作者', { exact: true })).toBeVisible({ timeout: 15_000 });
   });
 
   test('资产台账页面加载（表格契约可用）', async ({ page }) => {
@@ -105,6 +111,38 @@ test.describe('核心业务链路', () => {
     // 删除走 API 直连，UI 无自动刷新：reload 后断言行已消失（数据清理生效）
     await page.reload();
     await expect(page.locator('tr', { hasText: title })).toHaveCount(0, { timeout: 15_000 });
+  });
+
+  test('我的资产排序抽屉仅列出声明为可排序的列', async ({ page }) => {
+    await login(page);
+    await page.getByText('资产').first().click();
+    await expect(page).toHaveURL(/\/asset/);
+    await page.getByText('固定资产').click();
+    await expect(page.getByText('我的资产').first()).toBeVisible({ timeout: 15_000 });
+    await page.getByText('我的资产').first().click();
+    await expect(page.getByRole('heading', { name: '我的资产' })).toBeVisible({ timeout: 15_000 });
+
+    // 打开排序抽屉并添加一条排序
+    await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /^(sort-ascending\s+)?排\s*序/ }).click();
+    const drawer = page.locator('.ant-drawer');
+    await expect(drawer.getByText('排序', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await drawer.getByRole('button', { name: '添加排序字段' }).click();
+
+    // 等待字段 Select 渲染并打开下拉
+    const fieldSelect = drawer.locator('.ant-select').first();
+    await fieldSelect.click();
+    const dropdown = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+    await expect(dropdown).toBeVisible({ timeout: 15_000 });
+
+    // 可排序列应出现在下拉中
+    await expect(dropdown.getByText('资产名称', { exact: true })).toBeVisible();
+    await expect(dropdown.getByText('状态', { exact: true })).toBeVisible();
+    await expect(dropdown.getByText('更新时间', { exact: true })).toBeVisible();
+
+    // 未声明可排序的列不应出现
+    await expect(dropdown.getByText('分类', { exact: true })).toHaveCount(0);
+    await expect(dropdown.getByText('所属部门', { exact: true })).toHaveCount(0);
+    await expect(dropdown.getByText('责任人', { exact: true })).toHaveCount(0);
   });
 
   test('未登录访问受保护页面跳转登录', async ({ page }) => {

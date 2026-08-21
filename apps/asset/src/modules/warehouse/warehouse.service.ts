@@ -8,6 +8,7 @@ import {
 // 库位删除/停用错误码见 inventoryErrors（INVENTORY 域）
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import {
   executeIdempotentOperation,
   fingerprintPayload,
@@ -37,12 +38,32 @@ export class WarehouseService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
-   * 库位树全量列表。
+   * 库位树全量列表（支持 status 结构化筛选与排序）。
    *
+   * @param query 查询参数（含 filters/sorts/status）
    * @returns 树形结构（根 → 全部子孙）
    */
-  async tree(): Promise<{ items: WarehouseTreeNode[] }> {
-    const rows = await this.prisma.client.warehouse.findMany({ orderBy: [{ sort: 'asc' }, { id: 'asc' }] });
+  async tree(query?: { filters?: string; sorts?: string; status?: 'ACTIVE' | 'DISABLED' }): Promise<{ items: WarehouseTreeNode[] }> {
+    const structuredFields = query?.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+    const where: Prisma.WarehouseWhereInput = {};
+    if (query?.status && !structuredFields.has('status')) {
+      where.status = query.status;
+    }
+    const tableQuery = buildTablePrismaQuery(query ?? {}, {
+      id: { prismaField: 'id', type: 'number' },
+      name: { prismaField: 'name', type: 'text' },
+      status: { prismaField: 'status', type: 'enum' },
+      sort: { prismaField: 'sort', type: 'number' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+      updatedAt: { prismaField: 'updatedAt', type: 'date' },
+    });
+    const effectiveWhere: Prisma.WarehouseWhereInput = tableQuery.where
+      ? { AND: [where, tableQuery.where as Prisma.WarehouseWhereInput] }
+      : where;
+    const rows = await this.prisma.client.warehouse.findMany({
+      where: effectiveWhere,
+      orderBy: (tableQuery.orderBy as Prisma.WarehouseOrderByWithRelationInput[] | undefined) ?? [{ sort: 'asc' }, { id: 'asc' }],
+    });
     return { items: buildTree(rows as unknown as WarehouseTreeNode[]) };
   }
 

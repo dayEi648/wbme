@@ -7,6 +7,7 @@ import {
   type ProjectCreateDto,
   type ProjectQueryDto,
 } from '@wbme/contracts';
+import { collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import { Prisma, type FinanceDictItem, type Project } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
@@ -310,26 +311,29 @@ export class ProjectService {
    * @returns items（项目字段与自动字段展平的列表行）+ total
    */
   async list(query: ProjectQueryDto, includeDeleted: boolean): Promise<{ items: Array<Project & ProjectCalcResult>; total: number }> {
+    const structuredFields = query.filters
+      ? collectTableFilterFields(normalizeTableFilters(query.filters))
+      : new Set<string>();
     const where: Prisma.ProjectWhereInput = includeDeleted
       ? { deletedAt: { not: null } }
       : { deletedAt: null };
-    if (query.name) {
-      // 名称按规范化规则模糊匹配（fin PRD §3：页面与导入使用完全相同规则）
+    // filters 树中出现的字段以树为准，具名参数让位；具名 name 仍按业务键规范化模糊匹配
+    if (query.name && !structuredFields.has('name')) {
       where.businessKey = { contains: normalizeProjectName(query.name) };
     }
-    if (query.partyA) {
+    if (query.partyA && !structuredFields.has('partyA')) {
       where.partyA = { contains: query.partyA };
     }
-    if (query.year !== undefined) {
+    if (query.year !== undefined && !structuredFields.has('year')) {
       where.year = query.year;
     }
-    if (query.regionId !== undefined) {
+    if (query.regionId !== undefined && !structuredFields.has('regionId')) {
       where.regionId = query.regionId;
     }
-    if (query.bizCategoryId !== undefined) {
+    if (query.bizCategoryId !== undefined && !structuredFields.has('bizCategoryId')) {
       where.bizCategoryId = query.bizCategoryId;
     }
-    if (query.progressId !== undefined) {
+    if (query.progressId !== undefined && !structuredFields.has('progressId')) {
       where.progressId = query.progressId;
     }
     const tableQuery = buildProjectTableQuery(query);

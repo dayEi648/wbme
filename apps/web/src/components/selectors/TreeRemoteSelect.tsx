@@ -4,7 +4,11 @@ import { loadRemoteTreeOptions, resolveRemoteEndpoint, type RemoteOptionSource, 
 
 interface TreeRemoteSelectProps {
   value?: string | number | Array<string | number> | null;
-  onChange?: (value: string | number | Array<string | number> | null) => void;
+  /**
+   * 单选时透传第二个参数 label（选中节点标题为 string 才回传），
+   * 供高级筛选条件标签栏回显远程选项的可读名称；既有调用方不受影响。
+   */
+  onChange?: (value: string | number | Array<string | number> | null, label?: string) => void;
   source: RemoteOptionSource;
   multiple?: boolean;
   placeholder?: string;
@@ -81,7 +85,11 @@ export function TreeRemoteSelect({
       onDropdownVisibleChange={(open) => {
         if (open) void ensureLoaded();
       }}
-      onChange={(next) => onChange?.(next ?? null)}
+      onChange={(next, labelList) => {
+        // TreeSelect 第二参为选中节点标题列表；取第一项且为 string 时透传
+        const label = typeof labelList?.[0] === 'string' ? labelList[0] : undefined;
+        onChange?.(next ?? null, label);
+      }}
       notFoundContent={loading ? <Spin size="small" /> : error ?? '暂无选项'}
     />
   );

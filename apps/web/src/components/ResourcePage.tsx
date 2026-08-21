@@ -1,7 +1,8 @@
 import { Button, Descriptions, Modal, Popconfirm, Space, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useState, type ReactNode } from 'react';
-import { DataTable, type DataColumn, type FilterField } from './DataTable';
+import { DataTable, type DataColumn } from './DataTable';
+import type { FilterField } from './advanced-filter';
 import { ResourceFormModal, type FormField } from './ResourceFormModal';
 import { useFeedback } from '../request/feedback';
 import { http, type ApiService } from '../request/http';

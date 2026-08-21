@@ -55,14 +55,14 @@ export function canMountProfitAnalysis(can: (permission: string) => boolean): bo
 }
 
 const PROJECT_COLUMNS = [
-  { key: 'name', title: '项目名称' },
-  { key: 'year', title: '年度', type: 'number' as const },
-  { key: 'partyA', title: '甲方' },
+  { key: 'name', title: '项目名称', sortable: true },
+  { key: 'year', title: '年度', type: 'number' as const, sortable: true },
+  { key: 'partyA', title: '甲方', sortable: true },
   // 金额为精确十进制字符串，显式声明 number 使等宽数字字体生效（L29）
   { key: 'contractAmount', title: '合同金额', type: 'number' as const },
   { key: 'tentativeAuditedAmount', title: '暂定/审定金额', type: 'number' as const },
   { key: 'totalReceived', title: '累计收款', type: 'number' as const },
-  { key: 'updatedAt', title: '更新时间' },
+  { key: 'updatedAt', title: '更新时间', sortable: true },
 ];
 
 const PROJECT_FORM_FIELDS: FormField[] = [
@@ -393,7 +393,7 @@ function ProjectOperations() {
     })();
   }, [detailTarget, feedback]);
   return <>
-    <DataTable title="项目操作记录" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'projectName', title: '项目' }, { key: 'action', title: '操作' }, { key: 'operatorName', title: '操作者' }, { key: 'createdAt', title: '时间' }]} filterFields={[{ key: 'projectId', title: '项目', type: 'remote', remote: finProjectsSource }]} onRowClick={(row) => setDetailTarget({ id: Number(row.id), projectName: typeof row.projectName === 'string' ? row.projectName : null })} />
+    <DataTable title="项目操作记录" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'projectName', title: '项目' }, { key: 'action', title: '操作', sortable: true }, { key: 'operatorName', title: '操作者', sortable: true }, { key: 'createdAt', title: '时间', sortable: true }]} filterFields={[{ key: 'projectId', title: '项目', type: 'remote', remote: finProjectsSource }]} onRowClick={(row) => setDetailTarget({ id: Number(row.id), projectName: typeof row.projectName === 'string' ? row.projectName : null })} />
     <Drawer title="操作记录详情" open={detailTarget !== null} onClose={() => setDetailTarget(null)} width="min(92vw, 720px)">
       {detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Descriptions bordered column={1} size="small" items={[
@@ -1064,7 +1064,7 @@ function FinanceConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
     <Tabs items={[
       { key: 'params', label: '运行参数', children: <JsonDetails title="财务运行参数" service="fin" endpoint="/finance-settings" labelMap={FIN_SETTINGS_LABELS} /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="FIN" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
-      { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'dictType', title: '类型' }, { key: 'name', title: '名称' }, { key: 'semantic', title: '金额语义' }, { key: 'status', title: '状态' }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids', previewEndpoint: '/finance-dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `被工程合同引用 ${String(item.referencedCount ?? 0)} 处（${FIN_DICT_TYPE_LABELS[String(item.dictType ?? '')] ?? String(item.dictType ?? '未知类型')}）` }) }} /> },
+      { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'dictType', title: '类型', sortable: true }, { key: 'name', title: '名称', sortable: true }, { key: 'semantic', title: '金额语义', sortable: true }, { key: 'status', title: '状态', sortable: true }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids', previewEndpoint: '/finance-dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `被工程合同引用 ${String(item.referencedCount ?? 0)} 处（${FIN_DICT_TYPE_LABELS[String(item.dictType ?? '')] ?? String(item.dictType ?? '未知类型')}）` }) }} /> },
     ]} />
   </Card>;
 }

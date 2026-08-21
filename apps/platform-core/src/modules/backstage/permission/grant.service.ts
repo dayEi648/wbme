@@ -8,7 +8,7 @@ import {
   permissionErrors,
   type UserStatus,
 } from '@wbme/contracts';
-import { SessionService } from '@wbme/server';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters, SessionService } from '@wbme/server';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma.service';
 import {
@@ -57,6 +57,12 @@ const IDEMPOTENCY_SCOPE = {
   GRANTS_SAVE: 'permission.grants.save',
   BATCH_GRANT: 'permission.grants.batch-grant',
   BATCH_REVOKE: 'permission.grants.batch-revoke',
+} as const;
+
+/** 人员权限员工列表结构化筛选白名单：keyword 匹配姓名/手机号，name 支持页面列排序。 */
+export const EMPLOYEE_FILTER_FIELDS = {
+  keyword: { prismaField: ['name', 'phone'], type: 'text' },
+  name: { prismaField: 'name', type: 'text' },
 } as const;
 
 /** 批量校验逐人阻塞原因编码（写入 GRANT_BATCH_BLOCKED 的 details.failures[].code；API 文档同步） */
@@ -123,21 +129,29 @@ export class GrantService {
     }>;
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }> {
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: Prisma.UserWhereInput = { deletedAt: null, status: { in: ['ACTIVE', 'PENDING_ACTIVATION'] } };
-    const keyword = query.keyword?.trim();
-    if (keyword) {
-      const conditions: Prisma.UserWhereInput[] = [{ name: { contains: keyword, mode: 'insensitive' } }];
-      const digits = keyword.replace(/\D/g, '');
-      if (digits.length > 0) {
-        conditions.push({ phone: { contains: digits } });
+    // 结构化筛选已覆盖 keyword 时，具名检索词让位
+    if (!structuredFields.has('keyword')) {
+      const keyword = query.keyword?.trim();
+      if (keyword) {
+        const conditions: Prisma.UserWhereInput[] = [{ name: { contains: keyword, mode: 'insensitive' } }];
+        const digits = keyword.replace(/\D/g, '');
+        if (digits.length > 0) {
+          conditions.push({ phone: { contains: digits } });
+        }
+        where.OR = conditions;
       }
-      where.OR = conditions;
+    }
+    const tableQuery = buildTablePrismaQuery(query, EMPLOYEE_FILTER_FIELDS);
+    if (tableQuery.where) {
+      where.AND = [tableQuery.where];
     }
     const [totalItems, users] = await Promise.all([
       this.prisma.client.user.count({ where }),
       this.prisma.client.user.findMany({
         where,
-        orderBy: { id: 'asc' },
+        orderBy: tableQuery.orderBy ?? [{ id: 'asc' }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         select: { id: true, name: true, phone: true, status: true, isSuperAdmin: true },

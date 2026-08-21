@@ -1,9 +1,48 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, ORG_STRUCTURE_FUNCTION_CODE, OrgEmployeeQueryDto, frameworkErrors, hrErrors } from '@wbme/contracts';
+import { buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, type TableSqlConditionContext, type TableSqlField } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, type HrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { bumpUserOrgVersion } from '../../shared/org-version.service';
+
+/**
+ * 员工列表结构化筛选白名单：keyword/name/status 走列表达式；
+ * 部门/岗位是关联表成员关系（一人多部门），无独立列可映射，走 EXISTS 自定义谓词。
+ *
+ * 导出供单元测试验证字段注册与编译行为。
+ */
+export const ORG_EMPLOYEE_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  keyword: { column: 'ua.name', type: 'text' },
+  name: { column: 'ua.name', type: 'text' },
+  status: { column: 'ua.status::text', type: 'enum' },
+  departmentId: { type: 'number', compile: existsMembershipCompiler('hr.user_org', 'uo', 'department_id') },
+  positionId: { type: 'number', compile: existsMembershipCompiler('hr.user_positions', 'up', 'position_id') },
+};
+
+/**
+ * 生成「当前用户存在/不存在某关联行」的 EXISTS 谓词编译器。
+ * 仅支持等于/不等于/为空/不为空；其余操作符返回 undefined，由编译器统一抛校验错误。
+ *
+ * @param table 关联表（带 schema 前缀）
+ * @param alias 关联表别名
+ * @param idColumn 关联表中的目标 id 列
+ */
+function existsMembershipCompiler(table: string, alias: string, idColumn: string) {
+  return (context: TableSqlConditionContext): string | undefined => {
+    const membership = (match?: string): string =>
+      `EXISTS (SELECT 1 FROM ${table} ${alias} WHERE ${alias}.user_id = ua.user_id${match ? ` AND ${match}` : ''})`;
+    const { condition, value, nextParam } = context;
+    if (condition.operator === 'IS_EMPTY') return `NOT ${membership()}`;
+    if (condition.operator === 'IS_NOT_EMPTY') return membership();
+    if (condition.operator === 'EQUALS' || condition.operator === 'NOT_EQUALS') {
+      if (typeof value !== 'number') return undefined;
+      const predicate = membership(`${alias}.${idColumn} = ${nextParam(value)}`);
+      return condition.operator === 'EQUALS' ? predicate : `NOT ${predicate}`;
+    }
+    return undefined;
+  };
+}
 
 /** 组织架构员工行（经只读视图组装） */
 export interface OrgEmployeeRow {
@@ -32,29 +71,44 @@ export class OrgStructureService {
   /**
    * 员工列表（分页；关键字/部门/岗位筛选；职称经 hr.user_titles 视图实时派生）。
    *
+   * 结构化筛选（filters）与具名参数按字段互斥：树中出现的字段以树为准，
+   * 未出现的字段保持具名兼容（RemoteSelect 等直连调用方仍用具名参数）。
+   *
    * @param query 查询参数
    * @returns items + total
    */
   async listEmployees(query: OrgEmployeeQueryDto): Promise<{ items: OrgEmployeeRow[]; total: number }> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
     const where: string[] = ['ua.deleted_at IS NULL'];
     const params: unknown[] = [];
-    if (query.keyword) {
+    if (query.keyword && !structuredFields.has('keyword')) {
       params.push(`%${escapeLike(query.keyword)}%`);
       where.push(`ua.name ILIKE $${params.length} ESCAPE '\\'`);
     }
-    if (query.departmentId !== undefined) {
+    if (query.departmentId !== undefined && !structuredFields.has('departmentId')) {
       params.push(query.departmentId);
       where.push(`EXISTS (SELECT 1 FROM hr.user_org uo WHERE uo.user_id = ua.user_id AND uo.department_id = $${params.length})`);
     }
-    if (query.positionId !== undefined) {
+    if (query.positionId !== undefined && !structuredFields.has('positionId')) {
       params.push(query.positionId);
       // 岗位独立走 user_positions（无部门员工的岗位在 user_org 视图中无行，B4 修复）
       where.push(`EXISTS (SELECT 1 FROM hr.user_positions up WHERE up.user_id = ua.user_id AND up.position_id = $${params.length})`);
     }
-    params.push(query.status ?? 'ACTIVE');
-    where.push(`ua.status::text = $${params.length}`);
+    if (!structuredFields.has('status')) {
+      params.push(query.status ?? 'ACTIVE');
+      where.push(`ua.status::text = $${params.length}`);
+    }
+    let orderBySql: string | undefined;
+    if (query.filters || query.sorts) {
+      const compiled = buildTableSqlQuery({ filters: query.filters, sorts: query.sorts }, ORG_EMPLOYEE_FILTER_FIELDS, { parameterOffset: params.length });
+      if (compiled.whereSql) {
+        where.push(compiled.whereSql);
+        params.push(...compiled.params);
+      }
+      orderBySql = compiled.orderBySql;
+    }
     const whereSql = where.join(' AND ');
     const totalSql = `
       SELECT COUNT(*)::int AS c
@@ -78,7 +132,7 @@ export class OrgStructureService {
       LEFT JOIN hr.positions p ON p.id = up.position_id
       WHERE ${whereSql}
       GROUP BY ua.user_id, ua.name, ua.status, ut.title_name
-      ORDER BY ua.user_id
+      ORDER BY ${orderBySql ?? 'ua.user_id'}
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
     const [totalRows, rows] = await Promise.all([

@@ -268,4 +268,71 @@ describeDb('组织模块（T6-1/T6-2/T6-3）', () => {
       await prisma.client.$executeRaw`DELETE FROM base.users WHERE id = ${employeeId}`;
     }
   });
+
+  it('员工列表结构化筛选：EXISTS 谓词、树形 OR 组合与具名参数让位', async () => {
+    const deptA = await departments.create(admin, { name: '筛选部门A' });
+    const deptB = await departments.create(admin, { name: '筛选部门B' });
+    createdDepartmentIds.push(deptA.id, deptB.id);
+    const position = await positions.create(admin, { name: '筛选岗位Y', departmentIds: [deptA.id] });
+    createdPositionIds.push(position.id);
+
+    // 员工甲：部门 A + 岗位 Y；员工乙：无部门无岗位（姓名前缀独立于其他用例，便于收敛断言范围）
+    const createEmployee = async (tag: string, seq: number): Promise<number> => {
+      const phone = `+8613900000${String(BASE_ID + seq).slice(-4)}`;
+      await prisma.client.$executeRaw`DELETE FROM base.users WHERE phone = ${phone}`;
+      const inserted = await prisma.client.$queryRaw<Array<{ id: number }>>`
+        INSERT INTO base.users (name, gender, phone, status, is_super_admin, password_hash, created_at, updated_at)
+        VALUES (${tag}, 'MALE', ${phone}, 'ACTIVE', false, 'test-hash', NOW(), NOW())
+        RETURNING id
+      `;
+      return inserted[0]!.id;
+    };
+    const employeeAId = await createEmployee('org筛选员工甲', 5);
+    const employeeBId = await createEmployee('org筛选员工乙', 6);
+    const scopeCondition = { field: 'keyword', operator: 'CONTAINS', value: 'org筛选员工' };
+    const queryWith = (filters: object) => ({ page: 1, pageSize: 50, filters: JSON.stringify(filters) });
+    try {
+      await org.assignDepartments(admin, employeeAId, [deptA.id]);
+      await org.assignPosition(admin, employeeAId, position.id);
+
+      // 部门「等于」命中甲；「不等于」命中乙（NOT EXISTS：无部门员工也算不等于）
+      const equalsDept = await org.listEmployees(queryWith({ logic: 'AND', conditions: [scopeCondition, { field: 'departmentId', operator: 'EQUALS', value: String(deptA.id) }] }));
+      expect(equalsDept.items.map((item) => item.userId)).toEqual([employeeAId]);
+      const notEqualsDept = await org.listEmployees(queryWith({ logic: 'AND', conditions: [scopeCondition, { field: 'departmentId', operator: 'NOT_EQUALS', value: String(deptA.id) }] }));
+      expect(notEqualsDept.items.map((item) => item.userId)).toEqual([employeeBId]);
+
+      // 部门「为空」命中乙；岗位「不为空」命中甲
+      const emptyDept = await org.listEmployees(queryWith({ logic: 'AND', conditions: [scopeCondition, { field: 'departmentId', operator: 'IS_EMPTY', value: '' }] }));
+      expect(emptyDept.items.map((item) => item.userId)).toEqual([employeeBId]);
+      const hasPosition = await org.listEmployees(queryWith({ logic: 'AND', conditions: [scopeCondition, { field: 'positionId', operator: 'IS_NOT_EMPTY', value: '' }] }));
+      expect(hasPosition.items.map((item) => item.userId)).toEqual([employeeAId]);
+
+      // 树形 OR：部门等于 B（无人） OR（姓名前缀 AND 岗位等于 Y）→ 仅甲
+      const orTree = await org.listEmployees(queryWith({
+        logic: 'OR',
+        conditions: [
+          { field: 'departmentId', operator: 'EQUALS', value: String(deptB.id) },
+          { logic: 'AND', conditions: [scopeCondition, { field: 'positionId', operator: 'EQUALS', value: String(position.id) }] },
+        ],
+      }));
+      expect(orTree.items.map((item) => item.userId)).toEqual([employeeAId]);
+
+      // 具名让位：filters 已含 departmentId 条件时具名 departmentId 不再叠加（否则与「不等于」自相矛盾得空集）
+      const namedYield = await org.listEmployees({
+        page: 1,
+        pageSize: 50,
+        departmentId: deptA.id,
+        filters: JSON.stringify({ logic: 'AND', conditions: [scopeCondition, { field: 'departmentId', operator: 'NOT_EQUALS', value: String(deptA.id) }] }),
+      });
+      expect(namedYield.items.map((item) => item.userId)).toEqual([employeeBId]);
+
+      // 树中未出现的字段保持具名兼容：具名 keyword 仍按包含匹配
+      const namedKeyword = await org.listEmployees({ page: 1, pageSize: 50, keyword: 'org筛选员工甲' });
+      expect(namedKeyword.items.map((item) => item.userId)).toEqual([employeeAId]);
+    } finally {
+      await prisma.client.userDepartment.deleteMany({ where: { userId: { in: [employeeAId, employeeBId] } } });
+      await prisma.client.userPosition.deleteMany({ where: { userId: { in: [employeeAId, employeeBId] } } });
+      await prisma.client.$executeRaw`DELETE FROM base.users WHERE id = ANY(${[employeeAId, employeeBId] as number[]})`;
+    }
+  });
 });

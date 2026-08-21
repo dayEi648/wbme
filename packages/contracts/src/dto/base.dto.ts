@@ -45,6 +45,15 @@ const TABLE_FILTER_OPERATORS = new Set([
   'BEFORE',
   'AFTER',
   'BETWEEN',
+  'IS_EMPTY',
+  'IS_NOT_EMPTY',
+  'STARTS_WITH',
+  'ENDS_WITH',
+  'TODAY',
+  'THIS_WEEK',
+  'THIS_MONTH',
+  'LAST_7_DAYS',
+  'LAST_30_DAYS',
 ]);
 
 const TABLE_FILTER_MAX_GROUPS = 10;
@@ -91,23 +100,88 @@ function isFilterCondition(value: unknown): boolean {
   return value.valueEnd === undefined;
 }
 
-function isConditionGroup(value: unknown): boolean {
+/** 旧条件组协议中的组形状（logic AND + 纯条件数组）。 */
+interface LegacyConditionGroup {
+  logic: 'AND';
+  conditions: unknown[];
+}
+
+function isConditionGroup(value: unknown): value is LegacyConditionGroup {
   if (!isJsonRecord(value) || value.logic !== 'AND' || !Array.isArray(value.conditions)) {
     return false;
   }
   return value.conditions.length >= 1 && value.conditions.length <= TABLE_FILTER_MAX_CONDITIONS && value.conditions.every(isFilterCondition);
 }
 
-/** 解析并验证简单 AND/OR 条件或“组内 AND、组间 OR”的结构化筛选载荷。 */
+/** 树形协议中根组的直接子组形状（logic AND/OR + 纯条件数组）。 */
+interface FilterSubGroup {
+  logic: 'AND' | 'OR';
+  conditions: unknown[];
+}
+
+/**
+ * 验证树形协议的直接子组。
+ *
+ * 注意：子组内每项必须都是合法条件，嵌套子组因缺少 field/operator 会被
+ * isFilterCondition 拒绝，从而保证组嵌套硬上限为 2 层。
+ */
+function isFilterSubGroup(value: unknown): value is FilterSubGroup {
+  if (!isJsonRecord(value) || (value.logic !== 'AND' && value.logic !== 'OR') || !Array.isArray(value.conditions)) {
+    return false;
+  }
+  return value.conditions.length >= 1 && value.conditions.length <= TABLE_FILTER_MAX_CONDITIONS && value.conditions.every(isFilterCondition);
+}
+
+/**
+ * 验证树形条件组协议：根组 conditions 允许合法条件与直接子组混合。
+ *
+ * 约束：子组数量不超过 TABLE_FILTER_MAX_GROUPS，总条件数（含子组内）不超过
+ * TABLE_FILTER_MAX_CONDITIONS，防止深层/超宽载荷造成资源消耗。
+ */
+function isFilterTree(parsed: JsonRecord): boolean {
+  if ((parsed.logic !== 'AND' && parsed.logic !== 'OR') || !Array.isArray(parsed.conditions) || parsed.conditions.length < 1) {
+    return false;
+  }
+  let subGroupCount = 0;
+  let conditionCount = 0;
+  for (const item of parsed.conditions) {
+    if (isFilterCondition(item)) {
+      conditionCount += 1;
+      continue;
+    }
+    if (!isFilterSubGroup(item)) return false;
+    subGroupCount += 1;
+    conditionCount += item.conditions.length;
+  }
+  return subGroupCount <= TABLE_FILTER_MAX_GROUPS && conditionCount <= TABLE_FILTER_MAX_CONDITIONS;
+}
+
+/** 验证旧条件组协议：logic 必须 OR、groups 数量受限、每组 logic AND，且总条件数受限。 */
+function isLegacyConditionGroups(parsed: JsonRecord): boolean {
+  if (parsed.logic !== 'OR' || !Array.isArray(parsed.groups) || parsed.conditions !== undefined) {
+    return false;
+  }
+  if (parsed.groups.length < 1 || parsed.groups.length > TABLE_FILTER_MAX_GROUPS || !parsed.groups.every(isConditionGroup)) {
+    return false;
+  }
+  const conditionCount = parsed.groups.reduce((total: number, group) => total + group.conditions.length, 0);
+  return conditionCount <= TABLE_FILTER_MAX_CONDITIONS;
+}
+
+/**
+ * 解析并验证结构化筛选载荷。
+ *
+ * 支持三种形状：树形条件组（根组 conditions 内可含直接子组，组嵌套最多 2 层）、
+ * 旧平铺（与无子组的树形同构，自然兼容）与旧条件组（groups 键，组内 AND、组间 OR）。
+ */
 function isStructuredFiltersJson(value: string): boolean {
   try {
     const parsed: unknown = JSON.parse(value);
     if (!isJsonRecord(parsed)) return false;
-    if (Array.isArray(parsed.conditions) && (parsed.logic === 'AND' || parsed.logic === 'OR') && parsed.groups === undefined) {
-      return parsed.conditions.length >= 1 && parsed.conditions.length <= TABLE_FILTER_MAX_CONDITIONS && parsed.conditions.every(isFilterCondition);
+    if (parsed.groups !== undefined) {
+      return isLegacyConditionGroups(parsed);
     }
-    return parsed.logic === 'OR' && Array.isArray(parsed.groups) && parsed.conditions === undefined
-      && parsed.groups.length >= 1 && parsed.groups.length <= TABLE_FILTER_MAX_GROUPS && parsed.groups.every(isConditionGroup);
+    return isFilterTree(parsed);
   } catch {
     return false;
   }
@@ -164,7 +238,7 @@ export class PaginationQueryDto {
    * 不接受任意 Prisma 字段或 SQL 片段。
    */
   @ApiProperty({
-    description: '结构化筛选条件 JSON：简单条件为 { logic, conditions: [{ field, operator, value, valueEnd? }] }；条件组为 { logic: "OR", groups: [{ logic: "AND", conditions: [...] }] }',
+    description: '结构化筛选条件 JSON：树形条件组 { logic: "AND"|"OR", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: "AND"|"OR", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: "OR", groups: [{ logic: "AND", conditions: [...] }] } 形状',
     required: false,
     maxLength: 16000,
   })

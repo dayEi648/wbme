@@ -8,7 +8,7 @@ import {
   type FinDictItemQueryDto,
   type FinDictItemUpdateDto,
 } from '@wbme/contracts';
-import { buildTablePrismaQuery } from '@wbme/server';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import { Prisma, type FinanceDictItem } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
@@ -35,11 +35,15 @@ export class DictService {
    * @returns items + total
    */
   async list(query: FinDictItemQueryDto): Promise<{ items: FinanceDictItem[]; total: number }> {
+    const structuredFields = query.filters
+      ? collectTableFilterFields(normalizeTableFilters(query.filters))
+      : new Set<string>();
     const where: Prisma.FinanceDictItemWhereInput = {};
-    if (query.dictType) {
+    // filters 树中出现 dictType/status 时以树为准，具名参数让位
+    if (query.dictType && !structuredFields.has('dictType')) {
       where.dictType = query.dictType;
     }
-    if (query.status) {
+    if (query.status && !structuredFields.has('status')) {
       where.status = query.status;
     }
     const tableQuery = buildTablePrismaQuery(query, {

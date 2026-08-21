@@ -4,7 +4,11 @@ import { loadRemoteOptions, resolveRemoteEndpoint, type RemoteOptionSource, type
 
 interface RemoteSelectProps {
   value?: string | number | Array<string | number> | null;
-  onChange?: (value: string | number | Array<string | number> | null) => void;
+  /**
+   * 单选时透传第二个参数 label（选项 label 为 string 才回传），
+   * 供高级筛选条件标签栏回显远程选项的可读名称；既有调用方不受影响。
+   */
+  onChange?: (value: string | number | Array<string | number> | null, label?: string) => void;
   source: RemoteOptionSource;
   mode?: 'multiple';
   placeholder?: string;
@@ -94,7 +98,11 @@ export function RemoteSelect({
       onDropdownVisibleChange={(open) => {
         if (open) void ensureLoaded();
       }}
-      onChange={(next) => onChange?.(next ?? null)}
+      onChange={(next, option) => {
+        // antd Select 第二参：单选为选项对象、多选为数组；label 仅在为 string 时透传
+        const label = !Array.isArray(option) && typeof option?.label === 'string' ? option.label : undefined;
+        onChange?.(next ?? null, label);
+      }}
       notFoundContent={loading ? <Spin size="small" /> : error ?? '暂无选项'}
     />
   );

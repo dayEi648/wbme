@@ -20,6 +20,7 @@ import { DepartmentClosureService } from '../../shared/department-closure.servic
 import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { HolidayAdapter } from '../holiday/holiday.adapter';
 import { HrApprovalService } from '../approval/hr-approval.service';
+import { assertMonthEqualsOnly, extractMonthEqualsValue } from './month-filter';
 import { OvertimeExportService } from './overtime-export.service';
 import { OvertimeSubmissionService } from './overtime-submission.service';
 import { OvertimeSummaryService } from './overtime-summary.service';
@@ -132,40 +133,54 @@ export class OvertimeController {
     };
   }
 
-  /** 个人视图：本人已批准加班记录（隐含本人历史；分页） */
+  /**
+   * 个人视图：本人已批准加班记录（隐含本人历史；分页）。
+   *
+   * month 是由 overtimeDate 派生的文本字段，全部文本操作符经内存编译器解释；
+   * 个人明细量级小，权限约束（本人 + 已批准）与默认排序仍在数据库层完成。
+   * filters 存在时以树为准、具名 month 让位；否则具名 month 合成为「等于」条件。
+   */
   @Get('mine')
   async mine(@CurrentUser() userId: number, @Query() query: OvertimeMineQueryDto): Promise<unknown> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const monthFilter = query.month ? monthRangeOf(query.month) : null;
-    const where: Prisma.OvertimeItemWhereInput = {
-      userId,
-      request: { status: 'APPROVED' },
-      ...(monthFilter ? { overtimeDate: { gte: monthFilter.start, lt: monthFilter.end } } : {}),
-    };
-    const [total, rows] = await Promise.all([
-      this.prisma.client.overtimeItem.count({ where }),
-      this.prisma.client.overtimeItem.findMany({
-        where,
-        orderBy: [{ overtimeDate: 'desc' }, { id: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        // 申请编号取审批头（与提交/导出/审批中心口径一致；row.requestId 为数字批次 id）
-        include: { request: { select: { applicationNo: true } } },
-      }),
-    ]);
+    const rows = await this.prisma.client.overtimeItem.findMany({
+      where: { userId, request: { status: 'APPROVED' } },
+      orderBy: [{ overtimeDate: 'desc' }, { id: 'desc' }],
+      // 申请编号取审批头（与提交/导出/审批中心口径一致；row.requestId 为数字批次 id）
+      include: { request: { select: { applicationNo: true } } },
+    });
+    const items = rows.map((row) => ({
+      id: row.id,
+      overtimeDate: formatDate(row.overtimeDate),
+      month: formatDate(row.overtimeDate).slice(0, 7),
+      startMinute: row.startMinute,
+      endMinute: row.endMinute,
+      minutes: row.endMinute - row.startMinute,
+      hours: Math.round(((row.endMinute - row.startMinute) / 60) * 100) / 100,
+      reason: row.reason,
+      dateType: (row.holidaySnapshot as { dateType?: string })?.dateType ?? null,
+      applicationNo: row.request?.applicationNo ?? String(row.requestId),
+    }));
+    const filtered = filterAndSortTableRows(
+      items,
+      {
+        filters: query.filters ?? (query.month
+          ? JSON.stringify({ logic: 'AND', conditions: [{ field: 'month', operator: 'EQUALS', value: query.month }] })
+          : undefined),
+        sorts: query.sorts,
+      },
+      {
+        month: { type: 'text', value: (item) => item.month },
+        overtimeDate: { type: 'date', value: (item) => item.overtimeDate },
+        minutes: { type: 'number', value: (item) => item.minutes },
+        hours: { type: 'number', value: (item) => item.hours },
+      },
+    );
+    const total = filtered.length;
     return {
-      data: rows.map((row) => ({
-        id: row.id,
-        overtimeDate: formatDate(row.overtimeDate),
-        startMinute: row.startMinute,
-        endMinute: row.endMinute,
-        minutes: row.endMinute - row.startMinute,
-        hours: Math.round(((row.endMinute - row.startMinute) / 60) * 100) / 100,
-        reason: row.reason,
-        dateType: (row.holidaySnapshot as { dateType?: string })?.dateType ?? null,
-        applicationNo: row.request?.applicationNo ?? String(row.requestId),
-      })),
+      // month 是筛选辅助字段，不出现在响应中
+      data: filtered.slice((page - 1) * pageSize, page * pageSize).map(({ month: _month, ...item }) => item),
       pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) },
     };
   }
@@ -182,7 +197,12 @@ export class OvertimeController {
     const userIds = await this.filterHistoryScopeByDepartment(await this.resolveHistoryScope(userId), query.departmentId);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const stats = await this.summary.statsForUsers(userIds, query.month);
+    // 月份是单月聚合维度：树中月份条件必须是唯一「等于」；有效月份树优先、具名让位
+    if (query.filters) {
+      assertMonthEqualsOnly(query.filters);
+    }
+    const month = (query.filters ? extractMonthEqualsValue(query.filters) : undefined) ?? query.month;
+    const stats = await this.summary.statsForUsers(userIds, month);
     const filtered = filterAndSortTableRows(
       stats,
       query.filters ? query : {
@@ -196,7 +216,7 @@ export class OvertimeController {
         userId: { type: 'number', value: (item) => item.userId },
         name: { type: 'text', value: (item) => item.name },
         keyword: { type: 'text', value: (item) => item.name },
-        month: { type: 'text', value: () => query.month ?? '' },
+        month: { type: 'text', value: () => month ?? '' },
         minutes: { type: 'number', value: (item) => item.minutes },
         hours: { type: 'number', value: (item) => item.hours },
         count: { type: 'number', value: (item) => item.count },
@@ -205,7 +225,7 @@ export class OvertimeController {
     const total = filtered.length;
     const items = filtered.slice((page - 1) * pageSize, page * pageSize);
     return {
-      data: items.map((item) => ({ ...item, id: item.userId, month: query.month ?? null })),
+      data: items.map((item) => ({ ...item, id: item.userId, month: month ?? null })),
       pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) },
     };
   }
@@ -228,7 +248,7 @@ export class OvertimeController {
     @Res() res: Response,
   ): Promise<void> {
     const userIds = await this.filterHistoryScopeByDepartment(await this.resolveHistoryScope(userId), query.departmentId);
-    await this.exportService.export(userId, userIds, query.month, query.keyword, res);
+    await this.exportService.export(userId, userIds, { month: query.month, keyword: query.keyword, filters: query.filters }, res);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
     await this.prisma.client.hrOperationLog.create({
       data: {

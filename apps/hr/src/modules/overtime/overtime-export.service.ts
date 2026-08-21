@@ -1,11 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors } from '@wbme/contracts';
-import { RedisService, runExport } from '@wbme/server';
+import { buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, RedisService, runExport, type TableSqlField } from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
+import { assertMonthEqualsOnly } from './month-filter';
 import { formatTime } from './overtime-submission.service';
 import { minutesToHours } from './overtime-summary.service';
+
+/** 导出结构化筛选白名单：month 映射为加班日期的 YYYY-MM 格式化表达式；keyword 匹配员工姓名。 */
+const OVERTIME_EXPORT_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  month: { column: `TO_CHAR(oi.overtime_date, 'YYYY-MM')`, type: 'text' },
+  keyword: { column: 'oi.user_name', type: 'text' },
+};
 
 /** 导出行 */
 export interface OvertimeExportRow {
@@ -41,26 +48,52 @@ export class OvertimeExportService {
   /**
    * 导出范围内已批准加班明细。
    *
+   * 结构化筛选（filters）与具名参数按字段互斥：树中出现的字段以树为准，
+   * 未出现的字段保持具名兼容（month 缺省 = 本月）。月份与管理列表同口径：仅支持「等于」。
+   *
    * @param exporterUserId 导出会话用户（单用户并发互斥键）
    * @param userIds 范围内员工 id 集合（空 = 导出空表）
-   * @param month YYYY-MM（缺省=本月）
-   * @param keyword 员工姓名关键字（可选；与管理列表同口径）
+   * @param query 月份/关键字具名参数与结构化筛选 JSON
    * @param res Express 响应（流式写回）
    */
   async export(
     exporterUserId: number,
     userIds: ReadonlySet<number>,
-    month: string | undefined,
-    keyword: string | undefined,
+    query: { month?: string; keyword?: string; filters?: string },
     res: Response,
   ): Promise<void> {
     const maxRows = await this.readExportMaxRows();
-    const { start, end } = monthRange(month);
     const userIdArray = [...userIds];
-    const whereSql = userIdArray.length > 0
-      ? `WHERE r.status = 'APPROVED' AND oi.user_id = ANY($1) AND oi.overtime_date >= $2::date AND oi.overtime_date < $3::date${keyword ? " AND oi.user_name ILIKE $4 ESCAPE '\\'" : ''}`
-      : `WHERE r.status = 'APPROVED' AND 1 = 0`;
-    const params: unknown[] = userIdArray.length > 0 ? [userIdArray, start, end, ...(keyword ? [`%${escapeLike(keyword)}%`] : [])] : [];
+    const where: string[] = [`r.status = 'APPROVED'`];
+    const params: unknown[] = [];
+    if (userIdArray.length === 0) {
+      // 空范围短路：不编译 filters，避免参数占位与空参数列表错位
+      where.push('1 = 0');
+    } else {
+      params.push(userIdArray);
+      where.push(`oi.user_id = ANY($${params.length})`);
+      const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+      if (query.filters) {
+        assertMonthEqualsOnly(query.filters);
+      }
+      if (!structuredFields.has('month')) {
+        const { start, end } = monthRange(query.month);
+        params.push(start, end);
+        where.push(`oi.overtime_date >= $${params.length - 1}::date AND oi.overtime_date < $${params.length}::date`);
+      }
+      if (query.keyword && !structuredFields.has('keyword')) {
+        params.push(`%${escapeLike(query.keyword)}%`);
+        where.push(`oi.user_name ILIKE $${params.length} ESCAPE '\\'`);
+      }
+      if (query.filters) {
+        const compiled = buildTableSqlQuery({ filters: query.filters }, OVERTIME_EXPORT_FILTER_FIELDS, { parameterOffset: params.length });
+        if (compiled.whereSql) {
+          where.push(compiled.whereSql);
+          params.push(...compiled.params);
+        }
+      }
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
     await runExport<OvertimeExportRow>({
       userId: exporterUserId,
       redis: this.redis.redis,

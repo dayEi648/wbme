@@ -9,6 +9,13 @@ import {
   frameworkErrors,
   inventoryErrors,
 } from '@wbme/contracts';
+import {
+  buildTableSqlQuery,
+  collectTableFilterFields,
+  normalizeTableFilters,
+  type TableOperator,
+  type TableSqlField,
+} from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { attachDeactivatedFlags } from '../../shared/deactivated-flag.util';
@@ -63,17 +70,28 @@ export class BorrowService {
    * @returns items（个人借还）+ agentShared（受领的代领清单）+ total
    */
   async listMine(userId: number, query: MyBorrowQueryDto): Promise<{ items: unknown[]; agentShared: unknown[]; total: number }> {
-    const whereSql = buildBorrowWhereSql({ userId, settlementStatus: query.settlementStatus, overdueOnly: query.overdueOnly, recordType: 'PERSONAL' });
+    const { whereSql, params, orderBySql } = buildBorrowWhereClause({
+      userId,
+      settlementStatus: query.settlementStatus,
+      overdueOnly: query.overdueOnly,
+      recordType: 'PERSONAL',
+      filters: query.filters,
+      sorts: query.sorts,
+    });
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const orderBy = orderBySql ?? 'created_at DESC, id DESC';
     const [totalRow, rows] = await Promise.all([
-      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(`SELECT COUNT(*)::bigint AS total FROM asset.borrow_records ${whereSql}`),
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(`SELECT COUNT(*)::bigint AS total FROM asset.borrow_records ${whereSql}`, ...params),
       this.prisma.client.$queryRawUnsafe<unknown[]>(
         `SELECT id, record_type, user_id, user_name, request_id, inventory_item_id, consumable_name, spec,
                 warehouse_name, warehouse_path, qty, borrowed_at, due_at, returned_qty, written_off_qty, created_at
          FROM asset.borrow_records ${whereSql}
-         ORDER BY created_at DESC, id DESC
-         LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
+         ORDER BY ${orderBy}
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        (page - 1) * pageSize,
       ),
     ]);
     // 本人作为受领人的代领共享清单（只读且不计个人持有）
@@ -326,7 +344,7 @@ export class BorrowService {
    * @returns items + total
    */
   async listHistory(query: BorrowHistoryQueryDto, departmentIds?: ReadonlySet<number>): Promise<{ items: unknown[]; total: number }> {
-    const whereSql = buildBorrowWhereSql({
+    const { whereSql, params, orderBySql } = buildBorrowWhereClause({
       recordType: query.recordType,
       userId: query.userId,
       recipientId: query.recipientId,
@@ -335,18 +353,24 @@ export class BorrowService {
       settlementStatus: query.settlementStatus,
       overdueOnly: query.overdueOnly,
       keyword: query.keyword,
+      filters: query.filters,
+      sorts: query.sorts,
     });
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const orderBy = orderBySql ?? 'created_at DESC, id DESC';
     const [totalRow, rows] = await Promise.all([
-      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(`SELECT COUNT(*)::bigint AS total FROM asset.borrow_records ${whereSql}`),
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(`SELECT COUNT(*)::bigint AS total FROM asset.borrow_records ${whereSql}`, ...params),
       this.prisma.client.$queryRawUnsafe<unknown[]>(
         `SELECT id, record_type, user_id, user_name, request_id, agent_request_id, inventory_item_id,
                 consumable_name, spec, warehouse_name, warehouse_path, qty, borrowed_at, due_at,
                 returned_qty, written_off_qty, created_at
          FROM asset.borrow_records ${whereSql}
-         ORDER BY created_at DESC, id DESC
-         LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
+         ORDER BY ${orderBy}
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        (page - 1) * pageSize,
       ),
     ]);
     const items = rows as Array<Record<string, unknown>>;
@@ -488,8 +512,82 @@ export class BorrowService {
   }
 }
 
-/** 借还记录查询条件（SQL 片段；只接受白名单参数；外层 FROM 必须为不带别名的 asset.borrow_records——EXISTS 子查询经 borrow_records.xxx 显式关联外层，未限定的列名会错误绑定到子查询表） */
-export function buildBorrowWhereSql(options: {
+/** 借还记录结构化筛选字段：keyword 为跨列文本匹配；settlementStatus 为派生表达式。 */
+const BORROW_RECORD_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  keyword: {
+    type: 'text',
+    compile: (context) => {
+      const { condition, value, nextParam } = context;
+      const predicate = compileBorrowKeywordPredicate(condition.operator, value, nextParam);
+      return predicate ? `(${predicate})` : undefined;
+    },
+  },
+  settlementStatus: {
+    type: 'enum',
+    compile: (context) => {
+      const { condition, value } = context;
+      if (condition.operator === 'EQUALS') {
+        if (value === 'OPEN') return '(qty - returned_qty - written_off_qty) > 0';
+        if (value === 'SETTLED') return '(qty - returned_qty - written_off_qty) = 0';
+      }
+      if (condition.operator === 'NOT_EQUALS') {
+        if (value === 'OPEN') return '(qty - returned_qty - written_off_qty) = 0';
+        if (value === 'SETTLED') return '(qty - returned_qty - written_off_qty) > 0';
+      }
+      return undefined;
+    },
+  },
+  createdAt: { column: 'created_at', type: 'date' },
+  dueAt: { column: 'due_at', type: 'date' },
+  qty: { column: 'qty', type: 'number' },
+  consumableName: { column: 'consumable_name', type: 'text' },
+  userName: { column: 'user_name', type: 'text' },
+};
+
+const BORROW_KEYWORD_COLUMNS = ['consumable_name', 'user_name'] as const;
+
+/**
+ * 编译 keyword 条件为多列文本谓词（文本全操作符）。
+ *
+ * 多列匹配约定：正向匹配（EQUALS/CONTAINS/STARTS_WITH/ENDS_WITH/IS_EMPTY）按 OR 组合；
+ * 否定匹配（NOT_EQUALS/NOT_CONTAINS/IS_NOT_EMPTY）按 AND 组合，与 table-query.ts 编译器一致。
+ */
+function compileBorrowKeywordPredicate(
+  operator: TableOperator,
+  value: string | number | Date | null,
+  nextParam: (value: string | number | Date) => string,
+): string | undefined {
+  const columns = BORROW_KEYWORD_COLUMNS;
+  if (operator === 'IS_EMPTY') {
+    return columns.map((column) => `(${column} IS NULL OR ${column} = '')`).join(' AND ');
+  }
+  if (operator === 'IS_NOT_EMPTY') {
+    return columns.map((column) => `(${column} IS NOT NULL AND ${column} <> '')`).join(' AND ');
+  }
+  if (value === null || typeof value !== 'string') return undefined;
+  const parameter = nextParam(value);
+  const columnPredicates: Record<string, (column: string, param: string) => string> = {
+    EQUALS: (column, param) => `${column} ILIKE ${param}`,
+    NOT_EQUALS: (column, param) => `${column} NOT ILIKE ${param}`,
+    CONTAINS: (column, param) => `${column} ILIKE '%' || ${param} || '%'`,
+    NOT_CONTAINS: (column, param) => `${column} NOT ILIKE '%' || ${param} || '%'`,
+    STARTS_WITH: (column, param) => `${column} ILIKE ${param} || '%'`,
+    ENDS_WITH: (column, param) => `${column} ILIKE '%' || ${param}`,
+  };
+  const build = columnPredicates[operator];
+  if (!build) return undefined;
+  const results = columns.map((column) => build(column, parameter));
+  const joiner = operator.startsWith('NOT_') ? ' AND ' : ' OR ';
+  return results.join(joiner);
+}
+
+/**
+ * 借还记录查询条件（参数化 SQL 片段）。
+ *
+ * 外层 FROM 必须为不带别名的 asset.borrow_records——EXISTS 子查询经 borrow_records.xxx 显式关联外层，
+ * 未限定的列名会错误绑定到子查询表。
+ */
+export function buildBorrowWhereClause(options: {
   userId?: number;
   recipientId?: number;
   recordType?: 'PERSONAL' | 'AGENT';
@@ -498,38 +596,19 @@ export function buildBorrowWhereSql(options: {
   settlementStatus?: 'OPEN' | 'SETTLED';
   overdueOnly?: boolean;
   keyword?: string;
-}): string {
+  filters?: string;
+  sorts?: string;
+}): { whereSql: string; params: unknown[]; orderBySql?: string } {
+  const structuredFields = options.filters ? collectTableFilterFields(normalizeTableFilters(options.filters)) : new Set<string>();
+  const params: unknown[] = [];
   const clauses: string[] = [];
-  if (options.recordType) {
-    clauses.push(`record_type = '${options.recordType}'`);
-  }
-  if (options.userId !== undefined) {
-    // userId 语义（borrow.dto.ts）：PERSONAL = 借用人（user_id）；
-    // AGENT 记录 user_id 恒为 null，发起人存审批头 proxy_id（代交人）/applicant_id
-    clauses.push(`(user_id = ${options.userId} OR (record_type = 'AGENT' AND EXISTS (
-      SELECT 1 FROM asset.approval_requests ar
-      WHERE ar.id = borrow_records.request_id AND (ar.proxy_id = ${options.userId} OR ar.applicant_id = ${options.userId})
-    )))`);
-  }
-  if (options.recipientId !== undefined) {
-    // 受领人筛选仅对 AGENT 记录生效（个人记录无受领人）：匹配代领申请的受领人名单
-    clauses.push(`record_type = 'AGENT' AND EXISTS (
-      SELECT 1 FROM asset.agent_recipients arp
-      WHERE arp.request_id = borrow_records.request_id AND arp.user_id = ${options.recipientId}
-    )`);
-  }
-  if (options.departmentId !== undefined) {
-    // 借出时部门快照包含该部门（兼容数组与单对象形状，L6：单对象快照不再被 @> 数组匹配静默漏过）
-    clauses.push(`EXISTS (
-      SELECT 1 FROM jsonb_array_elements(
-        CASE WHEN jsonb_typeof(department_snapshot) = 'array' THEN department_snapshot
-             ELSE jsonb_build_array(department_snapshot) END
-      ) el WHERE el->>'id' = '${options.departmentId}'
-    )`);
-  }
+  const add = (sql: string, value: unknown) => {
+    params.push(value);
+    clauses.push(sql.replace(/\?/g, () => `$${params.length}`));
+  };
   if (options.departmentIds !== undefined) {
     if (options.departmentIds.size === 0) {
-      return 'WHERE 1 = 0';
+      return { whereSql: 'WHERE 1 = 0', params: [] };
     }
     const ids = [...options.departmentIds].join(',');
     // 快照兼容数组与单对象形状（L6）：jsonb_array_elements 直接作用于单对象快照会抛错，
@@ -566,18 +645,70 @@ export function buildBorrowWhereSql(options: {
       ))
     )`);
   }
-  if (options.settlementStatus === 'OPEN') {
-    clauses.push('(qty - returned_qty - written_off_qty) > 0');
-  } else if (options.settlementStatus === 'SETTLED') {
-    clauses.push('(qty - returned_qty - written_off_qty) = 0');
+  if (options.recordType) {
+    clauses.push(`record_type = '${options.recordType}'`);
+  }
+  if (options.userId !== undefined) {
+    // userId 语义（borrow.dto.ts）：PERSONAL = 借用人（user_id）；
+    // AGENT 记录 user_id 恒为 null，发起人存审批头 proxy_id（代交人）/applicant_id
+    add(`(user_id = ? OR (record_type = 'AGENT' AND EXISTS (
+      SELECT 1 FROM asset.approval_requests ar
+      WHERE ar.id = borrow_records.request_id AND (ar.proxy_id = ? OR ar.applicant_id = ?)
+    )))`, options.userId);
+  }
+  if (options.recipientId !== undefined) {
+    // 受领人筛选仅对 AGENT 记录生效（个人记录无受领人）：匹配代领申请的受领人名单
+    add(`record_type = 'AGENT' AND EXISTS (
+      SELECT 1 FROM asset.agent_recipients arp
+      WHERE arp.request_id = borrow_records.request_id AND arp.user_id = ?
+    )`, options.recipientId);
+  }
+  if (options.departmentId !== undefined) {
+    // 借出时部门快照包含该部门（兼容数组与单对象形状，L6：单对象快照不再被 @> 数组匹配静默漏过）
+    add(`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(
+        CASE WHEN jsonb_typeof(department_snapshot) = 'array' THEN department_snapshot
+             ELSE jsonb_build_array(department_snapshot) END
+      ) el WHERE el->>'id' = ?
+    )`, options.departmentId);
+  }
+  if (options.settlementStatus !== undefined && !structuredFields.has('settlementStatus')) {
+    if (options.settlementStatus === 'OPEN') {
+      clauses.push('(qty - returned_qty - written_off_qty) > 0');
+    } else if (options.settlementStatus === 'SETTLED') {
+      clauses.push('(qty - returned_qty - written_off_qty) = 0');
+    }
   }
   if (options.overdueOnly) {
-    clauses.push("due_at < now() AND (qty - returned_qty - written_off_qty) > 0");
+    clauses.push('due_at < now() AND (qty - returned_qty - written_off_qty) > 0');
   }
-  if (options.keyword) {
-    // $queryRawUnsafe 字符串拼接：关键字内单引号必须转义（'' 为 SQL 字面量转义）
-    const escaped = options.keyword.replace(/'/g, "''");
-    clauses.push(`(consumable_name ILIKE '%${escaped}%' OR user_name ILIKE '%${escaped}%')`);
+  if (options.keyword !== undefined && !structuredFields.has('keyword')) {
+    // 具名 keyword 兼容旧行为：按 CONTAINS 模糊匹配 consumable_name / user_name
+    add(`((consumable_name ILIKE '%' || ? || '%') OR (user_name ILIKE '%' || ? || '%'))`, options.keyword);
   }
-  return clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  let orderBySql: string | undefined;
+  if (options.filters || options.sorts) {
+    const compiled = buildTableSqlQuery({ filters: options.filters, sorts: options.sorts }, BORROW_RECORD_FILTER_FIELDS, { parameterOffset: params.length });
+    if (compiled.whereSql) {
+      clauses.push(compiled.whereSql);
+      params.push(...compiled.params);
+    }
+    orderBySql = compiled.orderBySql;
+  }
+  return clauses.length > 0 ? { whereSql: `WHERE ${clauses.join(' AND ')}`, params, orderBySql } : { whereSql: '', params, orderBySql };
+}
+
+/** 旧版字符串拼接谓词（仅保留给历史单测做回归断言；新代码请使用 buildBorrowWhereClause）。 */
+export function buildBorrowWhereSql(options: {
+  userId?: number;
+  recipientId?: number;
+  recordType?: 'PERSONAL' | 'AGENT';
+  departmentId?: number;
+  departmentIds?: ReadonlySet<number>;
+  settlementStatus?: 'OPEN' | 'SETTLED';
+  overdueOnly?: boolean;
+  keyword?: string;
+}): string {
+  const { whereSql } = buildBorrowWhereClause({ ...options, filters: undefined });
+  return whereSql;
 }

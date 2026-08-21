@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   BusinessException,
+  DataScope,
   FIXED_ASSET_MAINTAIN_FUNCTION_CODE,
   RepairCompleteDto,
   RepairOrderCreateDto,
@@ -8,7 +9,7 @@ import {
   assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
-import { buildTablePrismaQuery } from '@wbme/server';
+import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -33,6 +34,33 @@ const TRANSITIONS: Readonly<
   START: { from: 'PENDING', to: 'REPAIRING', assetStatus: 'REPAIRING' },
   COMPLETE: { from: 'REPAIRING', to: 'COMPLETED', assetStatus: null }, // 恢复 post_status
 };
+
+/**
+ * 构建维修单列表 Prisma 查询条件（纯函数，便于单测）。
+ *
+ * @param query 查询参数
+ * @param dataScope 当前用户数据范围（null = 公司档）
+ * @param closureIds DEPARTMENT 档时的部门闭包 id 集合
+ * @returns 维修单 where 输入
+ */
+export function buildRepairListWhere(
+  query: RepairOrderQueryDto,
+  dataScope: DataScope | null,
+  closureIds?: ReadonlySet<number>,
+): Prisma.RepairOrderWhereInput {
+  const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+  const where: Prisma.RepairOrderWhereInput = {};
+  if (dataScope !== null && dataScope !== 'COMPANY' && closureIds !== undefined) {
+    where.asset = { departmentId: { in: [...closureIds] } };
+  }
+  if (query.assetId && !structuredFields.has('assetId')) {
+    where.assetId = query.assetId;
+  }
+  if (query.status && !structuredFields.has('status')) {
+    where.status = query.status;
+  }
+  return where;
+}
 
 /**
  * 固定资产维修管理服务（asset PRD §4；A-6/A-7）。
@@ -310,18 +338,11 @@ export class RepairService {
    */
   async list(userId: number, query: RepairOrderQueryDto): Promise<{ items: unknown[]; total: number }> {
     const access = await this.requireMaintainAccess(userId);
-    const where: Prisma.RepairOrderWhereInput = {};
     // DEPARTMENT 档：按资产所属部门闭包裁剪（与台账列表一致，防闭包外维修单泄露）
-    if (access.dataScope !== null && access.dataScope !== 'COMPANY') {
-      const closure = await this.closures.closureOfUser(userId);
-      where.asset = { departmentId: { in: [...closure] } };
-    }
-    if (query.assetId) {
-      where.assetId = query.assetId;
-    }
-    if (query.status) {
-      where.status = query.status;
-    }
+    const closure = access.dataScope !== null && access.dataScope !== 'COMPANY'
+      ? await this.closures.closureOfUser(userId)
+      : undefined;
+    const where = buildRepairListWhere(query, access.dataScope, closure);
     const tableQuery = buildTablePrismaQuery(query, {
       id: { prismaField: 'id', type: 'number' },
       assetId: { prismaField: 'assetId', type: 'number' },
