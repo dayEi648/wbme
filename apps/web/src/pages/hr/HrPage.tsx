@@ -10,6 +10,8 @@ import { ResourcePage } from '../../components/ResourcePage';
 import { ResourceFormModal, type FormField } from '../../components/ResourceFormModal';
 import { SettingsEditor } from '../../components/SettingsEditor';
 import { SystemHome } from '../../components/SystemHome';
+import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
+import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { RemoteSelect } from '../../components/selectors/RemoteSelect';
 import { departmentLeaderEmployeesSource, departmentTreeSource, overtimeEmployeesSource, positionsSource } from '../../components/selectors';
 import { useFeedback } from '../../request/feedback';
@@ -19,13 +21,13 @@ import { useSession } from '../../request/session';
 type RecordValue = Record<string, unknown>;
 
 const NAVIGATION: NavigationItem[] = [
+  { key: 'overtime', label: '加班申请', path: '/hr/overtime', permission: ['overtime_apply', 'proxy_overtime', 'overtime_history'] },
+  { key: 'approval', label: '审批中心', path: '/hr/approval', permission: ['overtime_approval', 'org_structure'] },
+  { key: 'settings', label: '系统设置', path: '/hr/settings', permission: 'hr_config' },
   { key: 'employees', label: '组织成员', path: '/hr/employees', permission: 'org_structure', group: '组织架构' },
   { key: 'departments', label: '部门管理', path: '/hr/departments', permission: 'department_manage', group: '组织架构' },
   { key: 'positions', label: '岗位管理', path: '/hr/positions', permission: 'position_manage', group: '组织架构' },
   { key: 'titles', label: '职称管理', path: '/hr/titles', permission: 'title_manage', group: '组织架构' },
-  { key: 'overtime', label: '加班申请', path: '/hr/overtime', permission: ['overtime_apply', 'proxy_overtime', 'overtime_history'] },
-  { key: 'approval', label: '审批中心', path: '/hr/approval', permission: ['overtime_approval', 'org_structure'] },
-  { key: 'settings', label: '系统设置', path: '/hr/settings', permission: 'hr_config' },
 ];
 
 const COMMON_COLUMNS = [
@@ -81,6 +83,7 @@ const POSITION_EDIT_FIELDS: FormField[] = [
 export default function HrPage() {
   const { pathname } = useLocation();
   const section = pathname.split('/')[2] ?? '';
+  const { items: navigationItems, reload: reloadMenuConfig } = useSystemMenuConfig('HR', NAVIGATION);
   const body = useMemo(() => {
     switch (section) {
       case 'employees':
@@ -106,12 +109,12 @@ export default function HrPage() {
       case 'approval':
         return <ApprovalCenter title="人事审批中心" service="hr" pageKey="hr-approval" />;
       case 'settings':
-        return <HrSettings />;
+        return <HrSettings onMenuSaved={reloadMenuConfig} />;
       default:
-        return <SystemHome systemName="人事系统" welcome="办理组织架构、岗位职称、加班申请与人事审批。" items={NAVIGATION} />;
+        return <SystemHome systemName="人事系统" welcome="办理组织架构、岗位职称、加班申请与人事审批。" items={navigationItems} />;
     }
-  }, [section]);
-  return <AppShell systemName="人事系统" homePath="/hr" items={NAVIGATION}>{body}</AppShell>;
+  }, [section, navigationItems, reloadMenuConfig]);
+  return <AppShell systemName="人事系统" homePath="/hr" items={navigationItems}>{body}</AppShell>;
 }
 
 /** 部门管理：编辑表单需将列表中的负责人对象映射为 id 数组。 */
@@ -331,10 +334,11 @@ function OvertimeMine() {
   </Space>;
 }
 
-function HrSettings() {
+function HrSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
       { key: 'params', label: '运行参数', children: <SettingsEditor title="人事运行参数" service="hr" endpoint="/hr-settings" save={async (item, value) => { await http.put(`/hr-settings/${item.key}`, { value }, { service: 'hr' }); }} /> },
+      { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="HR" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'dicts', label: '人事字典', children: <ResourcePage title="人事字典" service="hr" endpoint="/dicts" pageKey="hr-dicts" columns={[...COMMON_COLUMNS, { key: 'dictType', title: '类型', render: (value: unknown) => displayDictType(value) }]} create={{ title: '新建字典项', endpoint: '/dicts', fields: [{ key: 'dictType', label: '字典类型', type: 'select' as const, options: HR_DICT_TYPE_OPTIONS, required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' as const, width: 'narrow' as const }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dicts/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dicts/delete', bodyKey: 'ids', previewEndpoint: '/dicts/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 条` }) }} /> },
     ]} />
   </Card>;

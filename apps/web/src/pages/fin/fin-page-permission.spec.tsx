@@ -52,6 +52,8 @@ describe('FinPage 权限挂载', () => {
       </MemoryRouter>,
     );
 
-    expect(http.get).not.toHaveBeenCalled();
+    // 页面挂载即拉取菜单展示配置（菜单管理）；断言利润分析接口仍不请求
+    const calledPaths = vi.mocked(http.get).mock.calls.map((call) => String(call[0]));
+    expect(calledPaths.every((path) => !path.startsWith('/profit'))).toBe(true);
   });
 });

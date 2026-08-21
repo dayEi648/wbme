@@ -7,6 +7,8 @@ import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { ResourceFormModal } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
+import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
+import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { deactivatedUsersSource, permissionEmployeesSource, permissionGroupsSource, PermissionGrantDrawer, type GrantItem, type RemoteOptionSource } from '../../components/selectors';
 import { EllipsisLines } from '../../components/EllipsisLines';
 import { displayLabel, formatBeijingDateTime, formatDetailValue, formatMoney } from '../../components/display-format';
@@ -18,10 +20,10 @@ import { useSession } from '../../request/session';
 type RecordValue = Record<string, unknown>;
 
 const NAVIGATION: NavigationItem[] = [
+  { key: 'approval', label: '审批中心', path: '/backstage/approval', permission: 'user_manage' },
   { key: 'users', label: '用户管理', path: '/backstage/users', permission: 'user_manage', group: '用户与权限' },
   { key: 'permissions', label: '人员权限', path: '/backstage/permissions', permission: 'permission_manage', group: '用户与权限' },
   { key: 'groups', label: '权限组', path: '/backstage/permission-groups', permission: 'permission_manage', group: '用户与权限' },
-  { key: 'approval', label: '审批中心', path: '/backstage/approval', permission: 'user_manage' },
   { key: 'settings', label: '系统设置', path: '/backstage/settings', permission: 'system_settings', group: '内容与配置' },
   { key: 'announcements', label: '系统公告', path: '/backstage/announcements', permission: 'announcement_manage', group: '内容与配置' },
   { key: 'operations', label: '操作日志', path: '/backstage/operation-logs', permission: 'operation_log_view', group: '运维监控' },
@@ -203,6 +205,7 @@ function errorLogDetailItems(detail: RecordValue): Array<{ key: string; label: s
 export default function BackstagePage() {
   const { pathname } = useLocation();
   const section = pathname.split('/')[2] ?? '';
+  const { items: navigationItems, reload: reloadMenuConfig } = useSystemMenuConfig('BACKSTAGE', NAVIGATION);
   const body = useMemo(() => {
     switch (section) {
       case 'users':
@@ -214,7 +217,7 @@ export default function BackstagePage() {
       case 'permission-groups':
         return <PermissionGroups />;
       case 'settings':
-        return <PlatformSettings />;
+        return <PlatformSettings onMenuSaved={reloadMenuConfig} />;
       case 'operation-logs':
         return <OperationLogs />;
       case 'system-logs':
@@ -228,10 +231,10 @@ export default function BackstagePage() {
       case 'health':
         return <HealthStatusPage />;
       default:
-        return <SystemHome systemName="管理后台" welcome="管理平台用户、权限、系统配置与运维状态。" items={NAVIGATION} />;
+        return <SystemHome systemName="管理后台" welcome="管理平台用户、权限、系统配置与运维状态。" items={navigationItems} />;
     }
-  }, [section]);
-  return <AppShell systemName="管理后台" homePath="/backstage" items={NAVIGATION}>{body}</AppShell>;
+  }, [section, navigationItems, reloadMenuConfig]);
+  return <AppShell systemName="管理后台" homePath="/backstage" items={navigationItems}>{body}</AppShell>;
 }
 
 /** 用户详情字段（中文标签 + 值映射）。 */
@@ -571,7 +574,7 @@ function PermissionGroups() {
 }
 
 /** 系统设置书签：运行参数 / 系统状态（系统状态切换自「系统与业务结构」迁移，仅状态不保留说明编辑）。 */
-function PlatformSettings() {
+function PlatformSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
   const feedback = useFeedback();
   const [settings, setSettings] = useState<Array<{ key: string; label: string; value: number; min: number; max: number }>>([]);
   const [loading, setLoading] = useState(true);
@@ -593,6 +596,7 @@ function PlatformSettings() {
           </Form>
         </Card> },
         { key: 'status', label: '系统状态', children: <SystemStatusTab /> },
+        { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="BACKSTAGE" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       ]}
     />
   </Card>;

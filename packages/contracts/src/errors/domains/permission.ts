@@ -108,4 +108,13 @@ export const permissionErrors = {
     message: '部分权限组无法删除，整批未生效',
     detailsFields: ['failures'],
   },
+  /** 菜单配置结构不合法：重复标识、悬空分组引用、超出资源上限等（主 PRD §2.1 菜单管理） */
+  MENU_CONFIG_STRUCTURE_INVALID: {
+    code: 'MENU_CONFIG_STRUCTURE_INVALID',
+    type: 'BUSINESS',
+    domain: 'PERMISSION',
+    httpStatus: 422,
+    message: '菜单配置结构不合法',
+    detailsFields: ['reason'],
+  },
 } as const satisfies Readonly<Record<string, ErrorEntry>>;

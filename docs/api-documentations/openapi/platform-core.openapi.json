@@ -411,6 +411,7 @@
                   "LOCATION_INVALID_TARGET",
                   "LOCATION_REFERENCED",
                   "MAINTENANCE_ACTIVE_EXISTS",
+                  "MENU_CONFIG_STRUCTURE_INVALID",
                   "MULTI_DEPARTMENT_APPLY_FORBIDDEN",
                   "NOT_SUPER_ADMIN",
                   "OLD_PASSWORD_INCORRECT",
@@ -634,6 +635,68 @@
         "required": [
           "phone",
           "password"
+        ],
+        "type": "object"
+      },
+      "MenuGroupConfigRowDto": {
+        "properties": {
+          "nameOverride": {
+            "description": "中文名覆盖；null/缺省 = 使用代码默认名",
+            "maxLength": 50,
+            "nullable": true,
+            "type": "string"
+          },
+          "nodeKey": {
+            "description": "稳定标识：代码默认名按层级用 `/` 连接",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "parentKey": {
+            "description": "父分组 nodeKey；null/缺省 = 顶层分组（分组可嵌套到任意深度，禁止引用自身或形成环）",
+            "maxLength": 100,
+            "nullable": true,
+            "type": "string"
+          },
+          "sortOrder": {
+            "description": "同级范围内顺序（从 0 起）",
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "nodeKey",
+          "sortOrder"
+        ],
+        "type": "object"
+      },
+      "MenuItemConfigRowDto": {
+        "properties": {
+          "itemKey": {
+            "description": "菜单项稳定标识（前端 NavigationItem.key）",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "nameOverride": {
+            "description": "中文名覆盖；null/缺省 = 使用代码默认名",
+            "maxLength": 50,
+            "nullable": true,
+            "type": "string"
+          },
+          "parentKey": {
+            "description": "直接父分组 nodeKey；null/缺省 = 顶层叶子（顶层叶子与分组共享同一顺序轴）",
+            "maxLength": 100,
+            "nullable": true,
+            "type": "string"
+          },
+          "sortOrder": {
+            "description": "所属父节点范围内顺序（从 0 起）",
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemKey",
+          "sortOrder"
         ],
         "type": "object"
       },
@@ -881,6 +944,34 @@
         "required": [
           "permissionVersion",
           "grants"
+        ],
+        "type": "object"
+      },
+      "SaveSystemMenuConfigDto": {
+        "properties": {
+          "groups": {
+            "description": "分组行（最多 50 行）",
+            "items": {
+              "$ref": "#/components/schemas/MenuGroupConfigRowDto"
+            },
+            "type": "array"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "items": {
+            "description": "菜单项行（最多 200 行）",
+            "items": {
+              "$ref": "#/components/schemas/MenuItemConfigRowDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "groups",
+          "items"
         ],
         "type": "object"
       },
@@ -4364,6 +4455,115 @@
         "summary": "安全日志导出（字段白名单，含来源 IP）",
         "tags": [
           "系统日志"
+        ]
+      }
+    },
+    "/api/v1/system-menu-configs/{systemCode}": {
+      "delete": {
+        "operationId": "MenuConfigController_reset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "systemCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdempotentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "恢复默认：清空该系统展示配置行",
+        "tags": [
+          "菜单管理"
+        ]
+      },
+      "get": {
+        "operationId": "MenuConfigController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "systemCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "读取某系统菜单展示配置（空集合 = 未配置，前端使用代码默认菜单）",
+        "tags": [
+          "菜单管理"
+        ]
+      },
+      "put": {
+        "operationId": "MenuConfigController_save",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "systemCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSystemMenuConfigDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "整树替换保存某系统菜单展示配置",
+        "tags": [
+          "菜单管理"
         ]
       }
     },

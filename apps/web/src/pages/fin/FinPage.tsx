@@ -8,6 +8,8 @@ import { JsonDetails } from '../../components/JsonDetails';
 import { ResourcePage } from '../../components/ResourcePage';
 import { ResourceFormModal, type FormField } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
+import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
+import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { formatDisplayValue, formatMoney } from '../../components/display-format';
 import { financeDictSource, finProjectsSource, RemoteSelect } from '../../components/selectors';
 import { useFeedback } from '../../request/feedback';
@@ -36,10 +38,10 @@ function formatPercentage(value: unknown): string {
 }
 
 const NAVIGATION: NavigationItem[] = [
+  { key: 'config', label: '系统设置', path: '/fin/config', permission: 'finance_config' },
   { key: 'projects', label: '工程合同', path: '/fin/projects', permission: 'finance_view', group: '业务' },
   { key: 'profit', label: '利润分析', path: '/fin/profit', permission: 'finance_view', group: '业务' },
   { key: 'operations', label: '项目操作记录', path: '/fin/operations', permission: 'finance_view', group: '业务' },
-  { key: 'config', label: '系统设置', path: '/fin/config', permission: 'finance_config' },
 ];
 
 /**
@@ -238,6 +240,7 @@ export default function FinPage() {
   const { pathname } = useLocation();
   const { can } = useSession();
   const section = pathname.split('/')[2] ?? '';
+  const { items: navigationItems, reload: reloadMenuConfig } = useSystemMenuConfig('FIN', NAVIGATION);
   const body = useMemo(() => {
     switch (section) {
       case 'projects':
@@ -245,16 +248,16 @@ export default function FinPage() {
       case 'operations':
         return <ProjectOperations />;
       case 'config':
-        return <FinanceConfig />;
+        return <FinanceConfig onMenuSaved={reloadMenuConfig} />;
       // 利润分析常驻渲染（见下方 display:none 容器），body 不再重复挂载，避免
       // 与 SystemHome 欢迎页叠放（M22 复核回归：缺该分支时 /fin/profit 命中 default）
       case 'profit':
         return null;
       default:
-        return <SystemHome systemName="财务系统" welcome="维护工程合同、金额明细、利润分析和财务配置。" items={NAVIGATION} />;
+        return <SystemHome systemName="财务系统" welcome="维护工程合同、金额明细、利润分析和财务配置。" items={navigationItems} />;
     }
-  }, [section]);
-  return <AppShell systemName="财务系统" homePath="/fin" items={NAVIGATION}>
+  }, [section, navigationItems, reloadMenuConfig]);
+  return <AppShell systemName="财务系统" homePath="/fin" items={navigationItems}>
     {body}
     {/* 利润分析常驻渲染（M22 复核修复）：离开保护基于 location 变化检测，
         若组件随 section 切换卸载，卸载与导航发生在同一 commit，确认弹窗永远不出现；
@@ -1056,10 +1059,11 @@ const FIN_SETTINGS_LABELS: Readonly<Record<string, string>> = {
   updatedBy: '更新人 ID',
 };
 
-function FinanceConfig() {
+function FinanceConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
       { key: 'params', label: '运行参数', children: <JsonDetails title="财务运行参数" service="fin" endpoint="/finance-settings" labelMap={FIN_SETTINGS_LABELS} /> },
+      { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="FIN" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'dictType', title: '类型' }, { key: 'name', title: '名称' }, { key: 'semantic', title: '金额语义' }, { key: 'status', title: '状态' }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids', previewEndpoint: '/finance-dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `被工程合同引用 ${String(item.referencedCount ?? 0)} 处（${FIN_DICT_TYPE_LABELS[String(item.dictType ?? '')] ?? String(item.dictType ?? '未知类型')}）` }) }} /> },
     ]} />
   </Card>;

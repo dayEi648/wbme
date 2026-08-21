@@ -35,6 +35,8 @@ import {
 } from '../../components/selectors';
 import { SettingsEditor } from '../../components/SettingsEditor';
 import { SystemHome } from '../../components/SystemHome';
+import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
+import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { formatBeijingDateTime } from '../../components/display-format';
 import { openQrPrintWindow } from '../../components/qr-print';
 import { useFeedback } from '../../request/feedback';
@@ -44,6 +46,8 @@ import { useSession } from '../../request/session';
 type RecordValue = Record<string, unknown>;
 
 const NAVIGATION: NavigationItem[] = [
+  { key: 'approval', label: '审批中心', path: '/asset/approval', permission: 'consumable_approval' },
+  { key: 'config', label: '系统设置', path: '/asset/config', permission: 'asset_config' },
   { key: 'my-assets', label: '我的资产', path: '/asset/my-assets', permission: 'my_assets', group: '固定资产' },
   { key: 'assets', label: '固定资产台账', path: '/asset/assets', permission: ['fixed_asset_view', 'fixed_asset_maintain'], group: '固定资产' },
   { key: 'repairs', label: '维修管理', path: '/asset/repairs', permission: 'fixed_asset_maintain', group: '固定资产' },
@@ -61,8 +65,6 @@ const NAVIGATION: NavigationItem[] = [
   { key: 'stock-change', label: '库存变更申请', path: '/asset/stock-change', permission: ['stock_change_apply', 'stock_change_history'], group: '消耗品', subGroup: '库存申请' },
   { key: 'disposals-pending', label: '待处置', path: '/asset/disposals-pending', permission: 'consumable_approval', group: '消耗品', subGroup: '处置管理' },
   { key: 'disposals-records', label: '处置记录', path: '/asset/disposals-records', permission: 'consumable_approval', group: '消耗品', subGroup: '处置管理' },
-  { key: 'approval', label: '审批中心', path: '/asset/approval', permission: 'consumable_approval' },
-  { key: 'config', label: '系统设置', path: '/asset/config', permission: 'asset_config' },
 ];
 
 const ASSET_COLUMNS = [
@@ -226,6 +228,7 @@ const OWNERSHIP_LABELS: Readonly<Record<string, string>> = { COMPANY: '公司', 
 export default function AssetPage() {
   const { pathname } = useLocation();
   const section = pathname.split('/')[2] ?? '';
+  const { items: navigationItems, reload: reloadMenuConfig } = useSystemMenuConfig('ASSET', NAVIGATION);
   const body = useMemo(() => {
     switch (section) {
       case 'my-assets':
@@ -294,12 +297,12 @@ export default function AssetPage() {
       case 'approval':
         return <ApprovalPage />;
       case 'config':
-        return <AssetConfig />;
+        return <AssetConfig onMenuSaved={reloadMenuConfig} />;
       default:
-        return <SystemHome systemName="资产系统" welcome="办理资产台账、消耗品库存、申领审批与资产配置。" items={NAVIGATION} />;
+        return <SystemHome systemName="资产系统" welcome="办理资产台账、消耗品库存、申领审批与资产配置。" items={navigationItems} />;
     }
-  }, [section]);
-  return <AppShell systemName="资产系统" homePath="/asset" items={NAVIGATION}>{body}</AppShell>;
+  }, [section, navigationItems, reloadMenuConfig]);
+  return <AppShell systemName="资产系统" homePath="/asset" items={navigationItems}>{body}</AppShell>;
 }
 
 /** 我的资产：点行打开资产详情（asset PRD §4：详情/主图/二维码/历史）；扫码以 ?assetId= 直达详情。 */
@@ -923,7 +926,7 @@ function ApprovalPage() {
 }
 
 /** 系统设置书签：运行参数 / 资产分类 / 业务字典（分类与字典删除为两段式引用确认）。 */
-function AssetConfig() {
+function AssetConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
       { key: 'params', label: '运行参数', children: <SettingsEditor title="资产运行参数" service="asset" endpoint="/asset-settings" save={async (item, value) => {
@@ -937,6 +940,7 @@ function AssetConfig() {
         }
         throw new Error('未知的资产设置键');
       }} /> },
+      { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="ASSET" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'categories', label: '资产分类', children: <ResourcePage title="资产分类" service="asset" endpoint="/categories" pageKey="asset-categories" columns={COMMON_COLUMNS} create={{ title: '新建分类', endpoint: '/categories', fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'parentId', label: '父分类', type: 'tree-select', remote: assetCategoryTreeSource, required: true }] }} edit={{ title: '编辑资产分类', endpoint: (id) => `/categories/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/categories/batch', bodyKey: 'ids', previewEndpoint: '/categories/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `现存资产 ${String(item.assetCount ?? 0)} 个；消耗品品种 ${String(item.consumableCount ?? 0)} 个` }) }} /> },
       { key: 'dicts', label: '业务字典', children: <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={[...COMMON_COLUMNS, { key: 'dictType', title: '类型' }]} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids', previewEndpoint: '/dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 处` }) }} /> },
     ]} />

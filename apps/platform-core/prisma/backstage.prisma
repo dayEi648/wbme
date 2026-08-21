@@ -1,4 +1,4 @@
-// backstage 模块表设计（docs/database-design/backstage.md：S-1 ~ S-19；S-20 引用 base 表不建表）
+// backstage 模块表设计（docs/database-design/backstage.md：S-1 ~ S-19；S-20 引用 base 表不建表；S-21/S-22 系统菜单配置）
 
 enum ProductStatus {
   OPEN
@@ -549,5 +549,44 @@ model BackstageOperationLog {
   @@index([system, createdAt])
   @@index([operatorId, createdAt])
   @@map("operation_logs")
+  @@schema("backstage")
+}
+
+/// S-21 system_menu_groups 系统导航分组展示配置（每个分组节点一行，主 PRD §2.1 菜单管理）
+/// nodeKey 为稳定标识 = 代码默认名按层级用 `/` 连接（如 `用户与权限` 或 `用户与权限/组织架构`）；
+/// parentKey 引用父分组 nodeKey（顶层分组为 NULL），分组可自由嵌套；
+/// 改名只写 nameOverride，不影响菜单项关联。
+model SystemMenuGroup {
+  id           Int      @id @default(autoincrement())
+  systemCode   String   @map("system_code")
+  nodeKey      String   @map("node_key")
+  parentKey    String?  @map("parent_key")
+  nameOverride String?  @map("name_override")
+  sortOrder    Int      @map("sort_order")
+  updatedBy    Int?     @map("updated_by")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([systemCode, nodeKey])
+  @@map("system_menu_groups")
+  @@schema("backstage")
+}
+
+/// S-22 system_menu_items 系统导航菜单项展示配置（每菜单项一行）
+/// itemKey = 前端 NavigationItem.key；path/permission/默认名仍由代码定义，本表仅存展示层配置。
+/// parentKey 引用直接父分组 nodeKey（顶层叶子为 NULL）；应用层维护，不建外键；整树单事务替换。
+model SystemMenuItem {
+  id           Int      @id @default(autoincrement())
+  systemCode   String   @map("system_code")
+  itemKey      String   @map("item_key")
+  parentKey    String?  @map("parent_key")
+  nameOverride String?  @map("name_override")
+  sortOrder    Int      @map("sort_order")
+  updatedBy    Int?     @map("updated_by")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([systemCode, itemKey])
+  @@map("system_menu_items")
   @@schema("backstage")
 }

@@ -356,7 +356,43 @@ MVP 不自动清理、不提供删除接口。
 
 **表间关系**：`systems` 1—N `business_sections` 1—N `functions`；`permission_groups` 1—N `permission_group_items`；`approval_requests` 1—N `approval_actions`、1—1 `profile_change_requests`；`backups`/`restores` 关联 `background_tasks`；表格偏好引用 `base.user_table_prefs`（B-5）。
 
-## 11. 只读视图（Migration Runner 迁移后统一执行，脚本见 `scripts/db-views/`）
+## 11. 系统菜单配置
+
+### S-21 `system_menu_groups` 系统导航分组展示配置（每分组一行）
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `integer` | PK，serial4 自增 | |
+| `system_code` | `text` | NOT NULL | 所属系统（`BACKSTAGE / ASSET / HR / FIN`） |
+| `node_key` | `text` | NOT NULL | 分组稳定标识 = 代码默认名按层级用 `/` 连接（如 `消耗品`、`消耗品/消耗品申领`）；改名与层级调整均不改变标识 |
+| `parent_key` | `text` | NULL | 直接父分组 `node_key`（NULL = 顶层分组；分组可嵌套到任意深度，唯一限制是不成环；应用层引用，不建外键） |
+| `name_override` | `text` | NULL | 显示名覆盖；NULL 表示使用代码默认名 |
+| `sort_order` | `integer` | NOT NULL | 同级排序序号 |
+| `updated_by` | `integer` | NULL | |
+| `updated_at` | `timestamptz` | NOT NULL | |
+| `created_at` | `timestamptz` | NOT NULL `DEFAULT now()` | |
+
+- 唯一约束：`(system_code, node_key)`
+
+### S-22 `system_menu_items` 系统导航菜单项展示配置（每菜单项一行）
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `integer` | PK，serial4 自增 | |
+| `system_code` | `text` | NOT NULL | 所属系统 |
+| `item_key` | `text` | NOT NULL | 菜单项标识（前端导航项 key）；路径、权限与默认名仍由代码定义，本表仅存展示层配置 |
+| `parent_key` | `text` | NULL | 直接父分组 `node_key`（NULL = 顶层叶子，顶层叶子与分组共享同一顺序轴；菜单项可挂在任意层级的分组下；应用层引用，不建外键） |
+| `name_override` | `text` | NULL | 显示名覆盖；NULL 表示使用代码默认名 |
+| `sort_order` | `integer` | NOT NULL | 同级排序序号 |
+| `updated_by` | `integer` | NULL | |
+| `updated_at` | `timestamptz` | NOT NULL | |
+| `created_at` | `timestamptz` | NOT NULL `DEFAULT now()` | |
+
+- 唯一约束：`(system_code, item_key)`
+- 两表按系统整树单事务替换，不增删分组与菜单项本身；某系统无任何配置行时前端回退代码默认导航，「恢复默认」即删除该系统全部配置行。
+- 显示名按字符串渲染聚合：两个同级分组解析出同名（改名撞名或移动后默认名撞车）会在侧边导航视觉上合并为一个菜单，通过改名解消；跨分支同名分组互不影响。
+
+## 12. 只读视图（Migration Runner 迁移后统一执行，脚本见 `scripts/db-views/`）
 
 - **`backstage.site_roles`**（01-site-roles.sql，主 PRD §9.4、backstage PRD §8）：站点角色最小只读视图 = `base.users` 的 `user_id / name / is_super_admin / status`（`deleted_at IS NULL`）；hr 等其它部署单元经此视图读取站点角色，不直连 users 表。
 - **`backstage.operation_logs_union`**（02-operation-logs-union.sql，主 PRD §3.3）：base/backstage/asset/hr/fin 各 schema 同构 `operation_logs` 的联合视图，`action_type` 统一转 `text`；新增模块时必须同步扩展。

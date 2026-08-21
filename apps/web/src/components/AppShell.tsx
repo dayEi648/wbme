@@ -12,10 +12,15 @@ export interface NavigationItem {
   key: string;
   label: string;
   path: string;
-  /** 一级业务分组（如"消耗品"）；未声明时作为顶层叶子项（紧跟"系统首页"之后）。 */
+  /** 一级业务分组（如"消耗品"）；未声明时作为顶层叶子项。顶层叶子与分组块按数组顺序混排渲染。 */
   group?: string;
   /** 二级业务分组（如"消耗品申领"），仅在声明 group 时生效。 */
   subGroup?: string;
+  /**
+   * 祖先分组显示名路径（菜单管理归并产物；优先于 group/subGroup）。
+   * 长度任意：分组可自由嵌套；同名同级合并、跨分支独立。
+   */
+  groupPath?: string[];
   /** 单个功能或"具备任一即可"的功能集合；仅用于体验层菜单显隐。 */
   permission?: string | string[];
 }
@@ -34,15 +39,22 @@ interface MenuNode {
   children?: MenuNode[];
 }
 
-const groupKeyOf = (item: NavigationItem) => `group:${item.group ?? ''}`;
-const subGroupKeyOf = (item: NavigationItem) => `group:${item.group ?? ''}/sub:${item.subGroup ?? ''}`;
+/**
+ * 菜单项的祖先分组显示名路径：菜单管理归并产物 groupPath 优先，
+ * 代码默认声明回退 group/subGroup 两段式（二者等价于 path = [group, subGroup] 过滤空值）。
+ */
+const groupPathOf = (item: NavigationItem): string[] =>
+  item.groupPath ?? [item.group, item.subGroup].filter((name): name is string => Boolean(name));
+
+/** 分组节点的菜单 key = 显示名路径（同名同级合并、跨分支独立） */
+const groupMenuKey = (path: string[]): string => `group:${path.join('/')}`;
 
 /**
  * 业务系统与管理后台共用的响应式页面壳。
  *
- * 菜单支持三级结构：一级业务分组（group）→ 二级业务分组（subGroup）→ 页面；
+ * 菜单按祖先分组路径递归渲染：分组可自由嵌套（代码默认最多两级，菜单管理可突破）；
  * 未分组的项作为顶层叶子。提供菜单内搜索；Header 左侧为全站统一的回退/前进/刷新，
- * Header 下方提供面包屑（系统名 → 分组 → 二级分组 → 页面）。
+ * Header 下方提供面包屑（系统名 → 各级分组 → 页面）。
  * 菜单只渲染当前会话被授予的功能；路由及接口的最终访问控制仍由服务端负责。
  */
 export function AppShell({ systemName, homePath, items, children }: AppShellProps) {
@@ -70,7 +82,7 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
     return nested;
   }, [location.pathname, visibleItems]);
 
-  /** 菜单结构：首页 + 顶层叶子 + 按业务分组收拢的子菜单（分组内可再含二级分组）；搜索关键字非空时扁平显示命中项。 */
+  /** 菜单结构：首页 + 按数组序混排的顶层叶子与分组子菜单（分组按 groupPath 任意嵌套，空分组不渲染）；搜索关键字非空时扁平显示命中项。 */
   const menuItems = useMemo<MenuProps['items']>(() => {
     const homeItem: MenuNode = { key: homePath, label: '系统首页', icon: <AppstoreOutlined /> };
     if (searchKeyword.trim()) {
@@ -78,50 +90,40 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
       const matched = visibleItems.filter((item) => item.label.includes(keyword) || item.path.includes(keyword));
       return [homeItem, ...matched.map((item) => ({ key: item.path, label: item.label }))];
     }
-    const topLevelLeaves: MenuNode[] = [];
-    const groups = new Map<string, { children: MenuNode[]; subIndex: Map<string, MenuNode> }>();
+    const topLevel: MenuNode[] = [];
+    // 已创建的分组节点索引（key = 显示名路径）；同名同级合并、跨分支独立
+    const groupIndex = new Map<string, MenuNode>();
     for (const item of visibleItems) {
       const leaf: MenuNode = { key: item.path, label: item.label };
-      if (!item.group) {
-        topLevelLeaves.push(leaf);
+      const path = groupPathOf(item);
+      if (path.length === 0) {
+        topLevel.push(leaf);
         continue;
       }
-      let group = groups.get(item.group);
-      if (!group) {
-        group = { children: [], subIndex: new Map() };
-        groups.set(item.group, group);
+      let siblings = topLevel;
+      for (let depth = 0; depth < path.length; depth += 1) {
+        const key = groupMenuKey(path.slice(0, depth + 1));
+        let group = groupIndex.get(key);
+        if (!group) {
+          group = { key, label: path[depth] ?? '', children: [] };
+          groupIndex.set(key, group);
+          siblings.push(group);
+        }
+        siblings = group.children ?? [];
       }
-      if (!item.subGroup) {
-        group.children.push(leaf);
-        continue;
-      }
-      const sub = group.subIndex.get(item.subGroup);
-      if (sub) {
-        sub.children?.push(leaf);
-      } else {
-        const node: MenuNode = { key: subGroupKeyOf(item), label: item.subGroup, children: [leaf] };
-        group.subIndex.set(item.subGroup, node);
-        group.children.push(node);
-      }
+      siblings.push(leaf);
     }
-    return [
-      homeItem,
-      ...topLevelLeaves,
-      ...[...groups.entries()].map(([group, { children: groupChildren }]) => ({
-        key: `group:${group}`,
-        label: group,
-        children: groupChildren,
-      })),
-    ];
+    return [homeItem, ...topLevel];
   }, [homePath, searchKeyword, visibleItems]);
 
   const selectedKeys = useMemo(() => [current?.path ?? homePath], [current, homePath]);
   /** 当前页祖先分组 key（直链/刷新时自动展开）；用户手动折叠由受控 openKeys 保留。 */
   const currentAncestorKeys = useMemo(() => {
-    if (!current?.group) {
+    if (!current) {
       return [];
     }
-    return current.subGroup ? [groupKeyOf(current), subGroupKeyOf(current)] : [groupKeyOf(current)];
+    const path = groupPathOf(current);
+    return path.map((_, depth) => groupMenuKey(path.slice(0, depth + 1)));
   }, [current]);
   const [openKeys, setOpenKeys] = useState<string[]>(currentAncestorKeys);
   useEffect(() => {
@@ -141,8 +143,7 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
 
   const breadcrumbItems = [
     { title: systemName },
-    ...(current?.group ? [{ title: current.group }] : []),
-    ...(current?.subGroup ? [{ title: current.subGroup }] : []),
+    ...(current ? groupPathOf(current).map((name) => ({ title: name })) : []),
     ...(current ? [{ title: current.label }] : []),
   ];
 

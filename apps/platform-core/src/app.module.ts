@@ -29,6 +29,7 @@ import { PermissionModule } from './modules/backstage/permission/permission.modu
 import { UserAdminModule } from './modules/backstage/user-admin/user-admin.module';
 import { SystemStructureModule } from './modules/backstage/system-structure/system-structure.module';
 import { SystemSettingsModule } from './modules/backstage/system-settings/system-settings.module';
+import { MenuConfigModule } from './modules/backstage/menu-config/menu-config.module';
 import { OperationLogModule } from './modules/backstage/operation-log/operation-log.module';
 import { SystemLogModule } from './modules/backstage/system-log/system-log.module';
 import { ContentModule } from './modules/backstage/content/content.module';
@@ -73,6 +74,7 @@ export class AppModule {
         UserAdminModule,
         SystemStructureModule,
         SystemSettingsModule,
+        MenuConfigModule,
         OperationLogModule,
         SystemLogModule,
         ContentModule,
