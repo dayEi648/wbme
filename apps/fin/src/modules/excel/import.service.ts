@@ -261,7 +261,9 @@ export class ImportService {
       checkTimeout();
       const { inputs } = await this.buildRowInputsWithGroups(parsed.rows, parsed.errors);
       checkTimeout();
-      return executeIdempotentOperation(this.prisma.client, {
+      // 必须 return await：finally 的 await release() 会让本函数挂起，裸 return 的 Promise
+      // 在该窗口内被拒绝时处理器尚未挂接，Node 触发 unhandledRejection（vitest 计为未处理错误）
+      return await executeIdempotentOperation(this.prisma.client, {
         operator,
         feature: FINANCE_MAINTAIN_FUNCTION_CODE,
         scope: 'fin.import.confirm',
