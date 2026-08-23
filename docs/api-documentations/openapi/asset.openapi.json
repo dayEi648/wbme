@@ -5650,6 +5650,19 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "description": "视图：mine=我的借还（默认），shared=代领共享清单",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "mine",
+                "shared"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {

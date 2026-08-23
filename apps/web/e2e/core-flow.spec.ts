@@ -113,7 +113,7 @@ test.describe('核心业务链路', () => {
     await expect(page.locator('tr', { hasText: title })).toHaveCount(0, { timeout: 15_000 });
   });
 
-  test('我的资产排序抽屉仅列出声明为可排序的列', async ({ page }) => {
+  test('我的资产排序面板仅列出声明为可排序的列', async ({ page }) => {
     await login(page);
     await page.getByText('资产').first().click();
     await expect(page).toHaveURL(/\/asset/);
@@ -122,14 +122,14 @@ test.describe('核心业务链路', () => {
     await page.getByText('我的资产').first().click();
     await expect(page.locator('.ant-breadcrumb').getByText('我的资产')).toBeVisible({ timeout: 15_000 });
 
-    // 打开排序抽屉并添加一条排序
+    // 打开排序面板（桌面端为 Modal）并添加一条排序
     await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /^(sort-ascending\s+)?排\s*序/ }).click();
-    const drawer = page.locator('.ant-drawer');
-    await expect(drawer.getByText('排序', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-    await drawer.getByRole('button', { name: '添加排序字段' }).click();
+    const sortDialog = page.locator('.ant-modal');
+    await expect(sortDialog.getByText('排序', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await sortDialog.getByRole('button', { name: '添加排序字段' }).click();
 
     // 等待字段 Select 渲染并打开下拉
-    const fieldSelect = drawer.locator('.ant-select').first();
+    const fieldSelect = sortDialog.locator('.ant-select').first();
     await fieldSelect.click();
     const dropdown = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
     await expect(dropdown).toBeVisible({ timeout: 15_000 });
