@@ -1,4 +1,4 @@
-import { Button, Card, Descriptions, Drawer, Empty, Form, Image, Modal, Pagination, Popconfirm, Select, Space, Spin, Table, Tabs, Tag, Typography } from 'antd';
+import { Button, Card, Descriptions, Drawer, Form, Image, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -679,20 +679,22 @@ function MyBorrow() {
 
 /** 代领共享清单（受领人查看整张共享清单；归还与结清只能由代领发起人完成）。 */
 function AgentSharedList() {
-  const feedback = useFeedback();
-  const [agentShared, setAgentShared] = useState<Array<RecordValue>>([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    void http.get<{ agentShared?: Array<RecordValue> }>('/my-borrow?page=1&pageSize=20', { service: 'asset', active: true })
-      .then((result) => setAgentShared(result.agentShared ?? []))
-      .catch((error) => feedback.error(error, '代领共享清单加载失败'))
-      .finally(() => setLoading(false));
-  }, [feedback]);
-  if (loading) return <Spin tip="正在加载..." />;
-  return <Card title="代领共享清单" size="small">
-    {/* 只读台账清单：无行内交互与分页，窄屏保留全部列、横向滚动查看（不丢列）。 */}
-    <Table<RecordValue> rowKey={(row) => String(row.id)} size="small" pagination={false} scroll={{ x: 'max-content' }} dataSource={agentShared} locale={{ emptyText: '暂无代领共享清单' }} columns={[{ key: 'proxyName', title: '代领人', dataIndex: 'proxyName' }, { key: 'consumableName', title: '物品', dataIndex: 'consumableName' }, { key: 'qty', title: '共享数量', dataIndex: 'qty' }, { key: 'dueAt', title: '到期时间', dataIndex: 'dueAt' }, { key: 'returnedQty', title: '已归还', dataIndex: 'returnedQty' }, { key: 'writtenOffQty', title: '已核销', dataIndex: 'writtenOffQty' }]} />
-  </Card>;
+  return (
+    <DataTable
+      title="代领共享清单"
+      service="asset"
+      endpoint="/my-borrow?view=shared"
+      pageKey="asset-borrow-shared"
+      columns={[
+        { key: 'proxyName', title: '代领人' },
+        { key: 'consumableName', title: '物品' },
+        { key: 'qty', title: '共享数量' },
+        { key: 'dueAt', title: '到期时间' },
+        { key: 'returnedQty', title: '已归还' },
+        { key: 'writtenOffQty', title: '已核销' },
+      ]}
+    />
+  );
 }
 
 /** 二维码管理专属页：卡片网格 + 查看/打印 + 停用/恢复/重新生成（asset PRD §11）。 */
@@ -701,27 +703,9 @@ const QR_STATUS_LABELS: Readonly<Record<string, string>> = { ACTIVE: '有效', D
 
 function QrCodeManagement() {
   const feedback = useFeedback();
-  const [rows, setRows] = useState<RecordValue[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [version, setVersion] = useState(0);
   const [preview, setPreview] = useState<RecordValue | null>(null);
-  const load = async () => {
-    setLoading(true);
-    try {
-      const result = await http.get<{ data?: Array<RecordValue>; pagination?: { totalItems?: number } }>(`/qr-codes?page=${page}&pageSize=${pageSize}`, { service: 'asset', active: true });
-      setRows(result.data ?? []);
-      setTotal(result.pagination?.totalItems ?? 0);
-    } catch (error) {
-      feedback.error(error, '二维码列表加载失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { void load(); }, [page, pageSize, version]);
   const perform = async (id: number, action: 'DISABLE' | 'ENABLE' | 'REGENERATE') => {
     try {
       await http.post(`/qr-codes/${id}/action`, { action }, { service: 'asset' });
@@ -731,43 +715,47 @@ function QrCodeManagement() {
       feedback.error(error, '二维码操作失败');
     }
   };
+  const columns: DataColumn[] = [
+    {
+      key: 'publicId',
+      title: '二维码',
+      width: 90,
+      render: (value, row) => (typeof value === 'string' && value
+        ? <QRCodeCanvas value={`${window.location.origin}/scan#${value}`} size={48} aria-label={`二维码 ${String(row.targetName ?? row.id)}`} />
+        : '—'),
+    },
+    { key: 'targetName', title: '目标' },
+    { key: 'targetType', title: '类型', sortable: true, render: (value) => QR_TARGET_TYPE_LABELS[String(value ?? '')] ?? String(value ?? '—') },
+    { key: 'status', title: '状态', sortable: true, render: (value) => <Tag color={value === 'ACTIVE' ? 'green' : value === 'DISABLED' ? 'orange' : 'default'}>{QR_STATUS_LABELS[String(value ?? '')] ?? String(value ?? '—')}</Tag> },
+    { key: 'createdAt', title: '创建时间', sortable: true, render: (value) => value ? formatBeijingDateTime(String(value)) : '—' },
+  ];
   return <>
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Space>
-        <Button type="primary" onClick={() => setCreateOpen(true)}>生成二维码</Button>
-      </Space>
-      {loading ? <Spin tip="正在加载..." /> : rows.length === 0 ? <Empty description="暂无二维码" /> : (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
-            {rows.map((row) => {
-              const status = String(row.status ?? '');
-              const publicId = typeof row.publicId === 'string' ? row.publicId : '';
-              return <Card key={String(row.id)} size="small" title={<Space direction="vertical" size={0}><Typography.Text strong>{String(row.targetName ?? '—')}</Typography.Text><Typography.Text type="secondary" style={{ fontSize: 12 }}>{QR_TARGET_TYPE_LABELS[String(row.targetType ?? '')] ?? String(row.targetType ?? '—')}</Typography.Text></Space>}>
-                <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: 8, background: 'rgba(0,0,0,0.02)', borderRadius: 6 }}>
-                    <QRCodeCanvas value={`${window.location.origin}/scan#${publicId}`} size={120} aria-label={`二维码 ${String(row.targetName ?? row.id)}`} />
-                  </div>
-                  <Space wrap>
-                    <Tag color={status === 'ACTIVE' ? 'green' : status === 'DISABLED' ? 'orange' : 'default'}>{QR_STATUS_LABELS[status] ?? status}</Tag>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.createdAt ? formatBeijingDateTime(String(row.createdAt)) : ''}</Typography.Text>
-                  </Space>
-                  <Space wrap>
-                    <Button size="small" onClick={() => setPreview(row)}>查看</Button>
-                    <PrintQrButton value={`${window.location.origin}/scan#${publicId}`} label={String(row.targetName ?? row.id ?? '')} />
-                    {status === 'ACTIVE' ? <Popconfirm title="确认停用二维码？" description="停用期间扫码无效，恢复后同一张二维码重新生效。" okText="停用" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void perform(Number(row.id), 'DISABLE')}><Button size="small" danger>停用</Button></Popconfirm> : null}
-                    {status === 'DISABLED' ? <Popconfirm title="确认恢复二维码？" onConfirm={() => void perform(Number(row.id), 'ENABLE')}><Button size="small">恢复</Button></Popconfirm> : null}
-                    <Popconfirm title="确认作废当前二维码并重新生成？" description="旧二维码永久失效，不能恢复；业务数据不受影响。" okText="重新生成" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void perform(Number(row.id), 'REGENERATE')}><Button size="small" danger>重新生成</Button></Popconfirm>
-                  </Space>
-                </Space>
-              </Card>;
-            })}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Pagination current={page} pageSize={pageSize} total={total} showSizeChanger pageSizeOptions={[10, 20, 50, 100]} showTotal={(count) => `共 ${count} 条`} onChange={(nextPage, nextPageSize) => { setPage(nextPage); setPageSize(nextPageSize); }} />
-          </div>
-        </>
-      )}
-    </Space>
+    <DataTable
+      key={version}
+      title="二维码管理"
+      service="asset"
+      endpoint="/qr-codes"
+      pageKey="asset-qr-codes"
+      columns={columns}
+      filterFields={[
+        { key: 'targetType', title: '目标类型', type: 'enum', options: [{ label: '固定资产', value: 'ASSET' }, { label: '库存条目', value: 'INVENTORY_ITEM' }, { label: '长期申领目录', value: 'SCAN_CATALOG' }] },
+        { key: 'status', title: '状态', type: 'enum', options: [{ label: '有效', value: 'ACTIVE' }, { label: '已停用', value: 'DISABLED' }, { label: '已作废', value: 'REVOKED' }] },
+      ]}
+      actions={<Button type="primary" onClick={() => setCreateOpen(true)}>生成二维码</Button>}
+      rowActions={(row) => {
+        const status = String(row.status ?? '');
+        const publicId = typeof row.publicId === 'string' ? row.publicId : '';
+        return (
+          <Space wrap>
+            <Button size="small" onClick={() => setPreview(row)}>查看</Button>
+            <PrintQrButton value={`${window.location.origin}/scan#${publicId}`} label={String(row.targetName ?? row.id ?? '')} />
+            {status === 'ACTIVE' ? <Popconfirm title="确认停用二维码？" description="停用期间扫码无效，恢复后同一张二维码重新生效。" okText="停用" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void perform(Number(row.id), 'DISABLE')}><Button size="small" danger>停用</Button></Popconfirm> : null}
+            {status === 'DISABLED' ? <Popconfirm title="确认恢复二维码？" onConfirm={() => void perform(Number(row.id), 'ENABLE')}><Button size="small">恢复</Button></Popconfirm> : null}
+            <Popconfirm title="确认作废当前二维码并重新生成？" description="旧二维码永久失效，不能恢复；业务数据不受影响。" okText="重新生成" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => void perform(Number(row.id), 'REGENERATE')}><Button size="small" danger>重新生成</Button></Popconfirm>
+          </Space>
+        );
+      }}
+    />
     <QrCreateModal
       open={createOpen}
       onCancel={() => setCreateOpen(false)}

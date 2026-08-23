@@ -1,9 +1,11 @@
 import { Button, Card, Checkbox, Descriptions, Drawer, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Table, Tabs, Typography, Upload, theme, type UploadFile } from 'antd';
-import { DownloadOutlined, ExportOutlined, ImportOutlined, RedoOutlined, UndoOutlined } from '@ant-design/icons';
+import { DownloadOutlined, ExportOutlined, FilterOutlined, ImportOutlined, RedoOutlined, SortAscendingOutlined, UndoOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { AdvancedFilter } from '../../components/AdvancedFilter';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
 import { DataTable } from '../../components/DataTable';
+import { SortPanel } from '../../components/SortPanel';
 import { JsonDetails } from '../../components/JsonDetails';
 import { ResourcePage } from '../../components/ResourcePage';
 import { ResourceFormModal, type FormField } from '../../components/ResourceFormModal';
@@ -11,7 +13,15 @@ import { SystemHome } from '../../components/SystemHome';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { formatDisplayValue, formatMoney } from '../../components/display-format';
-import { financeDictSource, finProjectsSource, RemoteSelect } from '../../components/selectors';
+import {
+  buildFilterTreePayload,
+  flattenConditions,
+  isConditionPopulated,
+  type FilterConditionGroup,
+  type FilterField,
+  type SortCondition,
+} from '../../components/advanced-filter';
+import { financeDictSource, finProjectsSource } from '../../components/selectors';
 import { useFeedback } from '../../request/feedback';
 import { download, http, upload } from '../../request/http';
 import { useSession } from '../../request/session';
@@ -88,15 +98,6 @@ const PROJECT_FORM_FIELDS: FormField[] = [
 
 const MONEY_FIELDS = new Set(['contractAmount', 'tentativeAuditedAmount', 'settlement', 'miscExpense']);
 
-/** 利润分析筛选条件（fin PRD §4：按项目、年度、地区、业务分类和进度筛选）。 */
-interface ProfitFilters {
-  name?: string;
-  year?: number;
-  regionId?: number;
-  bizCategoryId?: number;
-  progressId?: number;
-}
-
 /** 撤销/重做条目：已保存成功的单字段编辑（字段、编辑前值、编辑后值）。 */
 interface UndoEntry {
   projectId: number;
@@ -147,18 +148,49 @@ const PROFIT_REGION_SOURCE = financeDictSource('REGION');
 const PROFIT_CATEGORY_SOURCE = financeDictSource('BIZ_CATEGORY');
 const PROFIT_PROGRESS_SOURCE = financeDictSource('PROGRESS');
 
-/** 构建利润分析查询串（筛选 + 可选分页；空筛选返回空串）。 */
-function buildProfitQuery(filters: ProfitFilters, page?: number, pageSize?: number): string {
+/** 利润分析统一筛选字段（fin PRD §4；与后端 buildProjectTableQuery 白名单对齐）。 */
+const PROFIT_FILTER_FIELDS: FilterField[] = [
+  { key: 'name', title: '项目名称', type: 'text' },
+  { key: 'year', title: '年度', type: 'number' },
+  { key: 'partyA', title: '甲方', type: 'text' },
+  { key: 'regionId', title: '地区', type: 'remote', remote: PROFIT_REGION_SOURCE },
+  { key: 'bizCategoryId', title: '业务分类', type: 'remote', remote: PROFIT_CATEGORY_SOURCE },
+  { key: 'progressId', title: '项目进度', type: 'remote', remote: PROFIT_PROGRESS_SOURCE },
+];
+
+/** 利润分析可排序字段（与后端 buildProjectTableQuery 白名单对齐）。 */
+const PROFIT_SORTABLE_COLUMNS: Array<{ key: string; title: string }> = [
+  { key: 'id', title: 'ID' },
+  { key: 'name', title: '项目名称' },
+  { key: 'year', title: '年度' },
+  { key: 'partyA', title: '甲方' },
+  { key: 'regionId', title: '地区' },
+  { key: 'bizCategoryId', title: '业务分类' },
+  { key: 'progressId', title: '项目进度' },
+  { key: 'contractStartDate', title: '合同开始日期' },
+  { key: 'contractEndDate', title: '合同完工日期' },
+  { key: 'updatedAt', title: '更新时间' },
+];
+
+/** 构建利润分析查询串（统一 filters/sorts + 可选分页；空条件不输出对应参数）。 */
+function buildProfitQuery(tree: FilterConditionGroup, sorts: SortCondition[], page?: number, pageSize?: number): string {
   const params = new URLSearchParams();
-  if (filters.name) params.set('name', filters.name);
-  if (filters.year !== undefined) params.set('year', String(filters.year));
-  if (filters.regionId !== undefined) params.set('regionId', String(filters.regionId));
-  if (filters.bizCategoryId !== undefined) params.set('bizCategoryId', String(filters.bizCategoryId));
-  if (filters.progressId !== undefined) params.set('progressId', String(filters.progressId));
+  const filterPayload = buildFilterTreePayload(tree);
+  if (filterPayload) {
+    params.set('filters', JSON.stringify(filterPayload));
+  }
+  if (sorts.length > 0) {
+    params.set('sorts', JSON.stringify(sorts));
+  }
   if (page !== undefined) params.set('page', String(page));
   if (pageSize !== undefined) params.set('pageSize', String(pageSize));
   const query = params.toString();
   return query ? `?${query}` : '';
+}
+
+/** 创建空的利润分析筛选树。 */
+function createEmptyProfitFilterTree(): FilterConditionGroup {
+  return { id: crypto.randomUUID(), logic: 'AND', children: [] };
 }
 
 /** 项目资料中文标签（金额列保持十进制字符串展示，列表内已格式化）。 */
@@ -506,11 +538,17 @@ export function ProfitAnalysis() {
   const [loading, setLoading] = useState(true);
   // 单元格草稿（金额/文本统一；key = 行ID:字段），提交发生于失焦，避免每个字符都发起写请求
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  // 筛选：filters 为已应用条件（请求使用），filterDraft 为表单编辑中条件（应用前不触发请求）
-  const [filters, setFilters] = useState<ProfitFilters>({});
-  const [filterDraft, setFilterDraft] = useState<ProfitFilters>({});
+  // 统一筛选/排序：已生效条件由 AdvancedFilter/SortPanel 编辑，应用后触发重新加载
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [appliedFilterTree, setAppliedFilterTree] = useState<FilterConditionGroup>(() => createEmptyProfitFilterTree());
+  const [appliedSorts, setAppliedSorts] = useState<SortCondition[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const appliedFilterCount = useMemo(
+    () => flattenConditions(appliedFilterTree).filter(isConditionPopulated).length,
+    [appliedFilterTree],
+  );
   // 撤销/重做栈（fin PRD §4：最多保留最近 50 次；新编辑提交后清空重做栈）
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([]);
@@ -583,12 +621,12 @@ export function ProfitAnalysis() {
   };
 
   /** 加载列表与总计（总计随筛选实时计算；fin PRD §4：总计不受当前页分页影响）。 */
-  const load = async (nextPage: number, nextPageSize: number, nextFilters: ProfitFilters) => {
+  const load = async (nextPage: number, nextPageSize: number, nextFilterTree: FilterConditionGroup, nextSorts: SortCondition[]) => {
     setLoading(true);
     try {
       const [list, total] = await Promise.all([
-        http.get<{ data: RecordValue[]; pagination?: { totalItems: number } }>(`/profit/projects${buildProfitQuery(nextFilters, nextPage, nextPageSize)}`, { service: 'fin', active: true }),
-        http.get<RecordValue>(`/profit/totals${buildProfitQuery(nextFilters)}`, { service: 'fin', active: true }),
+        http.get<{ data: RecordValue[]; pagination?: { totalItems: number } }>(`/profit/projects${buildProfitQuery(nextFilterTree, nextSorts, nextPage, nextPageSize)}`, { service: 'fin', active: true }),
+        http.get<RecordValue>(`/profit/totals${buildProfitQuery(nextFilterTree, nextSorts)}`, { service: 'fin', active: true }),
       ]);
       setRows(list.data);
       setTotalItems(list.pagination?.totalItems ?? list.data.length);
@@ -599,7 +637,7 @@ export function ProfitAnalysis() {
       setLoading(false);
     }
   };
-  useEffect(() => { void load(1, 20, {}); }, []); // 首次加载；保存后在本地精确回填。
+  useEffect(() => { void load(1, 20, createEmptyProfitFilterTree(), []); }, []); // 首次加载；保存后在本地精确回填。
 
   // 相同单元格（项目+字段）的连续保存串行处理（fin PRD §4：同单元格按发起顺序，
   // 不同单元格可并行）——串行链按 key 隔离，互不阻塞。
@@ -721,31 +759,44 @@ export function ProfitAnalysis() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  /** 应用筛选（有未保存内容时先确认放弃；重置回第 1 页）。 */
-  const applyFilters = () => {
-    const next = filterDraft;
+  /** 应用高级筛选（有未保存内容时先确认放弃；重置回第 1 页）。 */
+  const handleApplyFilters = (tree: FilterConditionGroup) => {
     const run = () => {
-      setFilters(next);
+      setAppliedFilterTree(tree);
       setPage(1);
-      void load(1, pageSize, next);
+      void load(1, pageSize, tree, appliedSorts);
     };
     confirmDiscard('当前有未保存的编辑内容（草稿或保存失败），应用筛选将放弃这些内容，确定继续吗？', run);
   };
-  const resetFilters = () => {
-    setFilterDraft({});
+
+  /** 应用多条件排序（有未保存内容时先确认放弃；重置回第 1 页）。 */
+  const handleApplySorts = (sorts: SortCondition[]) => {
     const run = () => {
-      setFilters({});
+      setAppliedSorts(sorts);
       setPage(1);
-      void load(1, pageSize, {});
+      void load(1, pageSize, appliedFilterTree, sorts);
     };
-    confirmDiscard('当前有未保存的编辑内容（草稿或保存失败），重置筛选将放弃这些内容，确定继续吗？', run);
+    confirmDiscard('当前有未保存的编辑内容（草稿或保存失败），应用排序将放弃这些内容，确定继续吗？', run);
   };
+
+  /** 清除全部筛选/排序条件（有未保存内容时先确认放弃）。 */
+  const clearAllConditions = () => {
+    const run = () => {
+      const emptyTree = createEmptyProfitFilterTree();
+      setAppliedFilterTree(emptyTree);
+      setAppliedSorts([]);
+      setPage(1);
+      void load(1, pageSize, emptyTree, []);
+    };
+    confirmDiscard('当前有未保存的编辑内容（草稿或保存失败），清除全部条件将放弃这些内容，确定继续吗？', run);
+  };
+
   /** 翻页/改页大小（有未保存内容时先确认放弃；fin PRD §4：翻页不得无提示离开）。 */
   const changePage = (nextPage: number, nextPageSize: number) => {
     const run = () => {
       setPage(nextPage);
       setPageSize(nextPageSize);
-      void load(nextPage, nextPageSize, filters);
+      void load(nextPage, nextPageSize, appliedFilterTree, appliedSorts);
     };
     confirmDiscard('当前有未保存的编辑内容（草稿或保存失败），翻页将放弃这些内容，确定继续吗？', run);
   };
@@ -753,7 +804,7 @@ export function ProfitAnalysis() {
   /** 利润分析导出（页头操作区）；「导出已筛选」携带当前筛选条件（批次 6-5）。 */
   const exportFile = async (scope: 'all' | 'filtered') => {
     try {
-      const query = scope === 'filtered' ? buildProfitQuery(filters) : '';
+      const query = scope === 'filtered' ? buildProfitQuery(appliedFilterTree, appliedSorts) : '';
       const blob = await download(`/profit/excel/export/${scope}${query}`, { service: 'fin', active: true });
       triggerDownload(blob, `profit-${scope}.xlsx`);
     } catch (error) {
@@ -865,8 +916,17 @@ export function ProfitAnalysis() {
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
       <Space>{saveStatusTag()}{Object.keys(drafts).length > 0 ? <Typography.Text type="warning">有 {Object.keys(drafts).length} 个未提交草稿</Typography.Text> : null}</Space>
-      {/* 页头操作区：撤销/重做（⌘Z / ⌘⇧Z）+ 导入 + 导出（导出已筛选携带当前筛选条件） */}
+      {/* 页头操作区：统一筛选/排序 + 撤销/重做 + 导入/导出（导出已筛选携带当前筛选条件） */}
       <Space wrap>
+        <Button icon={<FilterOutlined />} onClick={() => setFilterOpen(true)}>
+          筛选{appliedFilterCount > 0 ? `（${appliedFilterCount}）` : ''}
+        </Button>
+        <Button icon={<SortAscendingOutlined />} onClick={() => setSortOpen(true)}>
+          排序{appliedSorts.length > 0 ? `（${appliedSorts.length}）` : ''}
+        </Button>
+        {appliedFilterCount > 0 || appliedSorts.length > 0 ? (
+          <Button type="link" onClick={clearAllConditions}>清除全部条件</Button>
+        ) : null}
         <Button icon={<UndoOutlined />} disabled={undoStack.length === 0} onClick={() => void doUndo()}>撤销</Button>
         <Button icon={<RedoOutlined />} disabled={redoStack.length === 0} onClick={() => void doRedo()}>重做</Button>
         {canEdit ? <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入</Button> : null}
@@ -874,18 +934,6 @@ export function ProfitAnalysis() {
         <Button icon={<ExportOutlined />} onClick={() => void exportFile('filtered')}>导出已筛选</Button>
       </Space>
     </div>
-    {/* 筛选条：按项目名称/年度/地区/业务分类/项目进度筛选（fin PRD §4）；应用/重置在有未保存内容时先确认 */}
-    <Card size="small">
-      <Space wrap>
-        <Input allowClear placeholder="项目名称" value={filterDraft.name ?? ''} onChange={(event) => setFilterDraft((current) => ({ ...current, name: event.target.value || undefined }))} style={{ width: 180 }} />
-        <InputNumber placeholder="年度" min={1000} max={9999} value={filterDraft.year} onChange={(value) => setFilterDraft((current) => ({ ...current, year: typeof value === 'number' ? value : undefined }))} style={{ width: 120 }} />
-        <RemoteSelect source={PROFIT_REGION_SOURCE} placeholder="地区" value={filterDraft.regionId} onChange={(value) => setFilterDraft((current) => ({ ...current, regionId: typeof value === 'number' ? value : undefined }))} style={{ width: 160 }} />
-        <RemoteSelect source={PROFIT_CATEGORY_SOURCE} placeholder="业务分类" value={filterDraft.bizCategoryId} onChange={(value) => setFilterDraft((current) => ({ ...current, bizCategoryId: typeof value === 'number' ? value : undefined }))} style={{ width: 160 }} />
-        <RemoteSelect source={PROFIT_PROGRESS_SOURCE} placeholder="项目进度" value={filterDraft.progressId} onChange={(value) => setFilterDraft((current) => ({ ...current, progressId: typeof value === 'number' ? value : undefined }))} style={{ width: 160 }} />
-        <Button type="primary" onClick={applyFilters}>应用筛选</Button>
-        <Button onClick={resetFilters}>重置</Button>
-      </Space>
-    </Card>
     {canEdit && importOpen ? (
       <Modal title="导入" open footer={null} width="min(92vw, 720px)" onCancel={() => setImportOpen(false)} destroyOnHidden>
         <ImportCard />
@@ -938,6 +986,20 @@ export function ProfitAnalysis() {
         <Pagination current={page} pageSize={pageSize} total={totalItems} showSizeChanger onChange={changePage} showTotal={(total) => `共 ${total} 条`} />
       </div>
     </Card>
+    <AdvancedFilter
+      open={filterOpen}
+      fields={PROFIT_FILTER_FIELDS}
+      appliedTree={appliedFilterTree}
+      onApply={handleApplyFilters}
+      onCancel={() => setFilterOpen(false)}
+    />
+    <SortPanel
+      open={sortOpen}
+      sortableColumns={PROFIT_SORTABLE_COLUMNS}
+      appliedSorts={appliedSorts}
+      onApply={handleApplySorts}
+      onCancel={() => setSortOpen(false)}
+    />
     <Modal
       open={discardPrompt !== null}
       title="未保存的编辑内容"

@@ -174,12 +174,14 @@ describe('ProfitAnalysis 交互契约（批次 6）', () => {
     renderProfit();
     await fieldInput('测试项目 paymentNode');
 
-    fireEvent.change(screen.getByPlaceholderText('项目名称'), { target: { value: '某某' } });
-    fireEvent.click(screen.getByRole('button', { name: /应用筛选/ }));
+    // 统一高级筛选：打开后默认已选中第一个字段「项目名称」，直接填值并确定
+    fireEvent.click(screen.getAllByRole('button', { name: /筛\s*选/ })[0]!);
+    fireEvent.change(screen.getByPlaceholderText('请输入'), { target: { value: '某某' } });
+    fireEvent.click(screen.getByText('确 定'));
     await waitFor(() => {
       const paths = vi.mocked(http.get).mock.calls.map((call) => String(call[0]));
-      expect(paths.some((path) => path.startsWith('/profit/projects?') && path.includes('page=1&pageSize=20') && decodeURIComponent(path).includes('name=某某'))).toBe(true);
-      expect(paths.some((path) => path.startsWith('/profit/totals?') && decodeURIComponent(path).includes('name=某某'))).toBe(true);
+      expect(paths.some((path) => path.startsWith('/profit/projects?') && path.includes('page=1&pageSize=20') && decodeURIComponent(path).includes('filters=') && decodeURIComponent(path).includes('"field":"name"') && decodeURIComponent(path).includes('"value":"某某"'))).toBe(true);
+      expect(paths.some((path) => path.startsWith('/profit/totals?') && decodeURIComponent(path).includes('filters=') && decodeURIComponent(path).includes('"field":"name"') && decodeURIComponent(path).includes('"value":"某某"'))).toBe(true);
     });
   });
 
@@ -188,14 +190,15 @@ describe('ProfitAnalysis 交互契约（批次 6）', () => {
     renderProfit();
     await fieldInput('测试项目 paymentNode');
 
-    fireEvent.change(screen.getByPlaceholderText('项目名称'), { target: { value: '某某' } });
-    fireEvent.click(screen.getByRole('button', { name: /应用筛选/ }));
+    fireEvent.click(screen.getAllByRole('button', { name: /筛\s*选/ })[0]!);
+    fireEvent.change(screen.getByPlaceholderText('请输入'), { target: { value: '某某' } });
+    fireEvent.click(screen.getByText('确 定'));
     await waitFor(() => expect(http.get).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole('button', { name: /导出已筛选/ }));
     await waitFor(() => {
       const paths = vi.mocked(download).mock.calls.map((call) => String(call[0]));
-      expect(paths.some((path) => path.startsWith('/profit/excel/export/filtered?') && decodeURIComponent(path).includes('name=某某'))).toBe(true);
+      expect(paths.some((path) => path.startsWith('/profit/excel/export/filtered?') && decodeURIComponent(path).includes('filters=') && decodeURIComponent(path).includes('"field":"name"') && decodeURIComponent(path).includes('"value":"某某"'))).toBe(true);
     });
     fireEvent.click(screen.getByRole('button', { name: /导出全部/ }));
     await waitFor(() => {

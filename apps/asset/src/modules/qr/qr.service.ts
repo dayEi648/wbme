@@ -21,6 +21,7 @@ import {
   assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
+import { buildTablePrismaQuery } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { DepartmentClosureService } from '../../shared/department-closure.service';
@@ -112,23 +113,32 @@ export class QrService {
    * @returns items + total
    */
   async list(userId: number, query: QrCodeQueryDto, allowedTargetTypes: Array<'ASSET' | 'INVENTORY_ITEM' | 'SCAN_CATALOG'>): Promise<{ items: unknown[]; total: number }> {
-    const where: Prisma.QrCodeWhereInput = { targetType: { in: allowedTargetTypes } };
-    if (query.targetType) {
-      where.targetType = query.targetType;
-    }
-    if (query.targetId) {
-      where.targetId = query.targetId;
-    }
-    if (query.status) {
-      where.status = query.status;
-    }
+    const tableQuery = buildTablePrismaQuery(query, {
+      id: { prismaField: 'id', type: 'number' },
+      targetType: { prismaField: 'targetType', type: 'enum' },
+      targetId: { prismaField: 'targetId', type: 'number' },
+      status: { prismaField: 'status', type: 'enum' },
+      createdAt: { prismaField: 'createdAt', type: 'date' },
+    });
+    const where: Prisma.QrCodeWhereInput = {
+      AND: [
+        { targetType: { in: allowedTargetTypes } },
+        ...(query.targetType ? [{ targetType: query.targetType }] : []),
+        ...(query.targetId ? [{ targetId: query.targetId }] : []),
+        ...(query.status ? [{ status: query.status }] : []),
+        ...(tableQuery.where ? [tableQuery.where as Prisma.QrCodeWhereInput] : []),
+      ],
+    };
+    const orderBy = (tableQuery.orderBy?.length
+      ? tableQuery.orderBy
+      : [{ createdAt: 'desc' }, { id: 'desc' }]) as Prisma.QrCodeOrderByWithRelationInput[];
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [total, rows] = await Promise.all([
       this.prisma.client.qrCode.count({ where }),
       this.prisma.client.qrCode.findMany({
         where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

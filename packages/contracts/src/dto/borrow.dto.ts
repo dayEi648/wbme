@@ -90,6 +90,11 @@ export class MyBorrowQueryDto extends PaginationQueryDto {
   @IsOptional()
   @Type(() => Boolean)
   overdueOnly?: boolean;
+
+  @ApiProperty({ description: '视图：mine=我的借还（默认），shared=代领共享清单', required: false, enum: ['mine', 'shared'] })
+  @IsOptional()
+  @IsIn(['mine', 'shared'])
+  view?: 'mine' | 'shared';
 }
 
 /** 借还历史查询（「借还历史记录」部门/公司档：按记录类型/借用人/代交人/受领人/部门/结清状态/逾期/关键字查询） */

@@ -32,6 +32,10 @@ export class BorrowController {
   @Get('my-borrow')
   async listMine(@CurrentUser() userId: number, @Query() query: MyBorrowQueryDto): Promise<unknown> {
     await assertFunctionAccess(this.prisma.client, userId, MY_BORROW_FUNCTION_CODE);
+    if (query.view === 'shared') {
+      const result = await this.borrow.listSharedMine(userId, query);
+      return createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20);
+    }
     const result = await this.borrow.listMine(userId, query);
     return { ...createPaginationResponse(result.items, result.total, query.page ?? 1, query.pageSize ?? 20), agentShared: result.agentShared };
   }

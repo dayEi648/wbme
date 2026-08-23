@@ -111,6 +111,45 @@ export class BorrowService {
   }
 
   /**
+   * 代领共享清单（本人作为受领人的 AGENT 借还记录；独立分页，供统一 DataTable 使用）。
+   *
+   * @param userId 当前用户
+   * @param query 分页查询
+   * @returns items + total
+   */
+  async listSharedMine(userId: number, query: MyBorrowQueryDto): Promise<{ items: unknown[]; total: number }> {
+    const params: unknown[] = [userId];
+    const whereSql = `
+      WHERE br.record_type = 'AGENT'
+        AND br.agent_request_id IN (
+          SELECT request_id FROM asset.agent_recipients WHERE user_id = $1
+        )
+    `;
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const [totalRow, rows] = await Promise.all([
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `SELECT COUNT(*)::bigint AS total FROM asset.borrow_records br ${whereSql}`,
+        ...params,
+      ),
+      this.prisma.client.$queryRawUnsafe<unknown[]>(
+        `SELECT br.id, br.record_type, br.request_id, br.inventory_item_id, br.consumable_name, br.spec,
+                br.warehouse_name, br.warehouse_path, br.qty, br.borrowed_at, br.due_at,
+                br.returned_qty, br.written_off_qty, ar.applicant_name AS proxy_name
+         FROM asset.borrow_records br
+         INNER JOIN asset.approval_requests ar ON ar.id = br.agent_request_id
+         ${whereSql}
+         ORDER BY br.created_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        ...params,
+        pageSize,
+        (page - 1) * pageSize,
+      ),
+    ]);
+    return { items: rows, total: Number(totalRow[0]?.total ?? 0) };
+  }
+
+  /**
    * 提交归还申请（幂等；可申请数量公式校验；同一借还记录整单一次）。
    *
    * @param operator 操作人

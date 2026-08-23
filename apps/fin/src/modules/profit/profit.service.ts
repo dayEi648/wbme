@@ -7,6 +7,7 @@ import {
   type ProfitCellSaveDto,
   type ProjectQueryDto,
 } from '@wbme/contracts';
+import { buildTableSqlQuery, type TableSqlField } from '@wbme/server';
 import { Prisma, type Project } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { executeIdempotentOperation, fingerprintPayload, type FinOperationLogOperator } from '../../shared/fin-operation-log.util';
@@ -82,6 +83,20 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
+/** 利润分析总计 SQL 使用的字段白名单（与 buildProjectTableQuery 对齐；列名均带 p. 前缀）。 */
+const PROJECT_TABLE_SQL_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'p.id', type: 'number' },
+  name: { column: 'p.name', type: 'text' },
+  year: { column: 'p.year', type: 'number' },
+  partyA: { column: 'p.party_a', type: 'text' },
+  regionId: { column: 'p.region_id', type: 'number' },
+  progressId: { column: 'p.progress_id', type: 'number' },
+  bizCategoryId: { column: 'p.biz_category_id', type: 'number' },
+  contractStartDate: { column: 'p.contract_start_date', type: 'date' },
+  contractEndDate: { column: 'p.contract_end_date', type: 'date' },
+  updatedAt: { column: 'p.updated_at', type: 'date' },
+};
+
 /** 生成筛选 SQL 片段（与列表 where 同条件；参数化） */
 function buildFilterSql(query: ProjectQueryDto, params: unknown[]): string {
   const conds = ['p.deleted_at IS NULL'];
@@ -108,6 +123,13 @@ function buildFilterSql(query: ProjectQueryDto, params: unknown[]): string {
   if (query.progressId !== undefined) {
     params.push(query.progressId);
     conds.push(`p.progress_id = $${params.length}`);
+  }
+  if (query.filters) {
+    const compiled = buildTableSqlQuery({ filters: query.filters }, PROJECT_TABLE_SQL_FIELDS, { parameterOffset: params.length });
+    if (compiled.whereSql) {
+      conds.push(`(${compiled.whereSql})`);
+      params.push(...compiled.params);
+    }
   }
   return conds.join(' AND ');
 }
