@@ -32,6 +32,7 @@ export * from './session/session-user.loader';
 export * from './session/session.service';
 export * from './session/session.guard';
 export * from './session/session.module';
+export * from './session/platform-idle-timeout';
 export * from './session/csrf.service';
 export * from './session/csrf.guard';
 export * from './session/cookie';

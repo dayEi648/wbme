@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Checkbox, Col, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Row, Select, Space, Spin, Table, Tabs, Tag, Typography, type FormInstance } from 'antd';
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Row, Select, Space, Spin, Switch, Table, Tabs, Tag, Typography, type FormInstance } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -7,7 +7,7 @@ import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { ResourceFormModal } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
-import { SystemSettingsPage, type SystemSettingItem, type SystemSettingsGroup } from '../../components/SystemSettingsPage';
+import { SystemSettingsPage, type SystemSettingItem, type SystemSettingPresentation, type SystemSettingsGroup } from '../../components/SystemSettingsPage';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { deactivatedUsersSource, permissionEmployeesSource, permissionGroupsSource, PermissionGrantDrawer, type GrantItem, type RemoteOptionSource } from '../../components/selectors';
@@ -595,6 +595,64 @@ const SETTING_LABELS: Readonly<Record<string, string>> = {
   'log.cleanup.security_log.days': '安全日志保留',
 };
 
+/** 平台设置在界面上的单位与存储换算规则。 */
+const SETTING_PRESENTATIONS: Readonly<Record<string, SystemSettingPresentation>> = {
+  'session.idle.timeout.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'session.idle.remember.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'session.abs.timeout.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'session.abs.remember.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'login.account.max.attempts': {
+    unit: '次', integer: true,
+  },
+  'login.account.lock.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'login.ip.window.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'login.ip.max.attempts': {
+    unit: '次', integer: true,
+  },
+  'login.ip.lock.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'invitation.valid.seconds': {
+    unit: '分钟', storedValueFactor: 60, integer: true, step: 1,
+  },
+  'query.default.window.days': {
+    unit: '天', integer: true,
+  },
+  'export.max.rows': {
+    unit: '行', integer: true,
+  },
+  'backup.retention.days': {
+    unit: '天', integer: true,
+  },
+  'upload.unassociated.image.retention.hours': {
+    unit: '小时', integer: true,
+  },
+  'approval.timeout.cancel.days': {
+    unit: '天', integer: true,
+  },
+  'log.cleanup.interval.hours': {
+    unit: '小时', integer: true,
+  },
+  'log.cleanup.error_log.days': {
+    unit: '天', integer: true,
+  },
+  'log.cleanup.security_log.days': {
+    unit: '天', integer: true,
+  },
+};
+
 const SETTING_GROUPS: SystemSettingsGroup[] = [
   {
     id: 'session',
@@ -691,7 +749,7 @@ function SettingsBookmarkPage() {
                   {operationLogItems.map((item) => (
                     <Col xs={24} sm={12} lg={8} key={item.key}>
                       <Form.Item name={item.key} label={OPERATION_LOG_LABELS[item.key] ?? SETTING_LABELS[item.key] ?? item.label} rules={[{ required: true }]}>
-                        <InputNumber min={item.min} max={item.max} addonAfter="天" style={{ width: '100%' }} />
+                        <InputNumber min={item.min} max={item.max} precision={0} addonAfter="天" style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
                   ))}
@@ -721,6 +779,7 @@ function SettingsBookmarkPage() {
       endpoint="/system-settings"
       groups={groups}
       labels={SETTING_LABELS}
+      presentations={SETTING_PRESENTATIONS}
       save={(patches) => http.put('/system-settings', { patches })}
       extraSections={[{ id: 'system-status', title: '系统状态', content: <SystemStatusTab /> }]}
     />
@@ -746,6 +805,7 @@ function SystemStatusTab() {
   const feedback = useFeedback();
   const [systems, setSystems] = useState<Array<{ code: string; name: string; productStatus: 'OPEN' | 'COMING_SOON' }>>([]);
   const [loading, setLoading] = useState(true);
+  const [updatingCode, setUpdatingCode] = useState<string | null>(null);
   const load = async () => {
     setLoading(true);
     try {
@@ -759,18 +819,48 @@ function SystemStatusTab() {
   };
   useEffect(() => { void load(); }, []);
   const changeStatus = async (code: string, productStatus: 'OPEN' | 'COMING_SOON') => {
+    setUpdatingCode(code);
     try {
       await http.put(`/systems/${code}/status`, { productStatus });
       feedback.success('系统状态已更新');
-      await load();
+      setSystems((current) => current.map((system) => (system.code === code ? { ...system, productStatus } : system)));
     } catch (error) {
       feedback.error(error, '系统状态更新失败');
+    } finally {
+      setUpdatingCode(null);
     }
   };
   if (loading) return <Spin tip="正在加载..." />;
   if (systems.length === 0) return <Typography.Text type="secondary">当前没有可调整状态的业务系统。</Typography.Text>;
-  return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-    {systems.map((system) => <Card key={system.code} size="small" title={system.name} extra={<Select value={system.productStatus} style={{ width: 140 }} options={[{ label: '开放', value: 'OPEN' }, { label: '即将上线', value: 'COMING_SOON' }]} onChange={(value: 'OPEN' | 'COMING_SOON') => void changeStatus(system.code, value)} />} />)}
+  return <Space direction="vertical" size="small" style={{ width: '100%' }}>
+    {systems.map((system) => {
+      const isOpen = system.productStatus === 'OPEN';
+      const switchControl = <Switch
+        checked={isOpen}
+        checkedChildren="开放"
+        unCheckedChildren="即将上线"
+        loading={updatingCode === system.code}
+        disabled={updatingCode !== null}
+        onChange={(checked) => {
+          if (checked) {
+            void changeStatus(system.code, 'OPEN');
+          }
+        }}
+      />;
+      return <Card
+        key={system.code}
+        size="small"
+        title={system.name}
+        extra={isOpen ? <Popconfirm
+          title={`确认关闭“${system.name}”？`}
+          okText="设为即将上线"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => void changeStatus(system.code, 'COMING_SOON')}
+        >{switchControl}</Popconfirm> : switchControl}
+        styles={{ body: { display: 'none' } }}
+      />;
+    })}
   </Space>;
 }
 

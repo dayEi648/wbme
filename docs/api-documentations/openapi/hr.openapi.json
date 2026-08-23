@@ -899,6 +899,16 @@
           }
         },
         "type": "object"
+      },
+      "UpdateHrSettingsDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1736,6 +1746,29 @@
           }
         },
         "summary": "读取全部人事设置",
+        "tags": [
+          "Settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_updateAll",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHrSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "批量更新人事设置（与操作日志在同一事务中提交）。",
         "tags": [
           "Settings"
         ]

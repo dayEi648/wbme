@@ -123,6 +123,7 @@ DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/hr-settings` | 全部人事设置（运行参数） |
+| `PUT` | `/hr-settings` | 原子更新一组设置；任一参数校验失败时全部回滚 |
 | `PUT` | `/hr-settings/{key}` | 更新单条设置（即时生效，快照规则不追溯） |
 | `GET` | `/dicts` | 字典列表（dictType/status 筛选 + 分页） |
 | `POST` | `/dicts` | 新增字典项（幂等；同类型同名唯一） |
@@ -130,7 +131,7 @@ DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批
 | `GET` | `/dicts/delete-preview` | 删除前引用预览（`?ids=` 逗号分隔；逐目标返回当前业务引用数，引用不阻断删除——当前无业务表引用 hr_dicts，恒为 0；任一目标不存在 `RESOURCE_NOT_FOUND`） |
 | `DELETE` | `/dicts/delete` | 批量硬删除（幂等；主 PRD §2.6 确认式删除——引用预览确认后事务内物理删除，不整批拒绝；任一目标不存在整批不变更） |
 
-设置键：`overtime.advance.days`（提前申请窗口，默认 30）、`overtime.backfill.days`（补交窗口，默认 7）。
+设置键：`overtime.advance.days`（提前申请窗口，默认 30）、`overtime.backfill.days`（补交窗口，默认 7）；取值必须为非负整数天。
 
 ## 表格偏好（主 PRD §10.2）
 

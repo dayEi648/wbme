@@ -11,6 +11,7 @@ import {
   RedisModule,
   SessionGuard,
   SessionModule,
+  createPlatformSessionIdleTimeoutProvider,
   SESSION_IDLE_TIMEOUT_PROVIDER,
   SESSION_USER_LOADER,
   type Redis,
@@ -25,9 +26,7 @@ import { TablePrefsModule } from './modules/base/table-prefs/table-prefs.module'
 import { TitleModule } from './modules/title/title.module';
 import { CrossSchemaSessionLoader } from './shared/cross-schema-auth';
 import { SharedModule } from './shared.module';
-
-/** 固定空闲超时（毫秒） */
-const T5_IDLE_TIMEOUT_MS = 86_400_000;
+import { PrismaService } from './prisma.service';
 
 /** hr 根模块（接入会话守卫与审批头） */
 @Module({
@@ -57,7 +56,13 @@ export class AppModule {
         { provide: SESSION_USER_LOADER, useExisting: CrossSchemaSessionLoader },
         {
           provide: SESSION_IDLE_TIMEOUT_PROVIDER,
-          useValue: async () => T5_IDLE_TIMEOUT_MS,
+          useFactory: (prisma: PrismaService) => createPlatformSessionIdleTimeoutProvider(async (key) => {
+            const rows = await prisma.client.$queryRaw<Array<{ value: string }>>`
+              SELECT value FROM backstage.platform_settings WHERE key = ${key} LIMIT 1
+            `;
+            return rows[0]?.value ?? null;
+          }),
+          inject: [PrismaService],
         },
         { provide: APP_GUARD, useClass: SessionGuard },
         { provide: APP_GUARD, useClass: CsrfGuard },

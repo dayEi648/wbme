@@ -85,7 +85,7 @@ export class SettingsService {
   }
 
   /**
-   * 更新单条设置（值须为有限数值；本期人事参数均为数值）。
+   * 更新单条设置（值须为非负整数；业务日期窗口只接受自然日）。
    *
    * @param key 设置键
    * @param value 新值字符串
@@ -97,17 +97,38 @@ export class SettingsService {
     if (!definition) {
       throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '未知的人事设置键' });
     }
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric) || numeric < 0) {
-      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '人事设置值必须为非负数值' });
+    const normalizedValue = value.trim();
+    const numeric = Number(normalizedValue);
+    if (!/^\d+$/.test(normalizedValue) || !Number.isSafeInteger(numeric)) {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '人事设置值必须为非负整数' });
     }
     // 传入事务客户端时与调用方（操作日志）同事务（主 PRD §9.3：日志随业务事务写入）
     const client = tx ?? this.prisma.client;
     await client.hrSetting.upsert({
       where: { key },
-      create: { key, value, valueType: 'NUMBER', label: definition.label, updatedBy },
-      update: { value, updatedBy },
+      create: { key, value: String(numeric), valueType: 'NUMBER', label: definition.label, updatedBy },
+      update: { value: String(numeric), updatedBy },
     });
     return { ok: true };
+  }
+
+  /**
+   * 原子更新一组人事设置，避免管理员保存同一分组时出现部分成功。
+   *
+   * 调用方必须传入事务客户端，使参数更新与操作日志共同提交或共同回滚。
+   */
+  async updateMany(
+    patches: Partial<Record<(typeof HR_SETTING_KEYS)[keyof typeof HR_SETTING_KEYS], string | number>>,
+    updatedBy: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<string[]> {
+    const entries = Object.entries(patches);
+    if (entries.length === 0) {
+      throw new BusinessException(frameworkErrors.VALIDATION_FAILED, { reason: '至少提供一项人事设置' });
+    }
+    for (const [key, value] of entries) {
+      await this.update(key, String(value), updatedBy, tx);
+    }
+    return entries.map(([key]) => key);
   }
 }

@@ -33,7 +33,7 @@ import {
   departmentTreeSource,
   RemoteSelect,
 } from '../../components/selectors';
-import { SystemSettingsPage, type SystemSettingsGroup } from '../../components/SystemSettingsPage';
+import { SystemSettingsPage, type SystemSettingPresentation, type SystemSettingsGroup } from '../../components/SystemSettingsPage';
 import { SystemHome } from '../../components/SystemHome';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
@@ -927,6 +927,17 @@ const ASSET_SETTING_LABELS: Readonly<Record<string, string>> = {
   'asset.quota.reset.day': '申领上限重置日',
 };
 
+const ASSET_SETTING_PRESENTATIONS: Readonly<Record<string, SystemSettingPresentation>> = {
+  'asset.scan.entry.url': {
+    placeholder: 'https://example.com/scan',
+    inputMode: 'url',
+    required: false,
+  },
+  'asset.quota.reset.day': {
+    unit: '日', min: 1, max: 28, integer: true,
+  },
+};
+
 /** 系统设置书签：运行参数 / 资产分类 / 业务字典（分类与字典删除为两段式引用确认）。 */
 function AssetConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
@@ -936,9 +947,11 @@ function AssetConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
         endpoint="/asset-settings"
         groups={ASSET_SETTING_GROUPS}
         labels={ASSET_SETTING_LABELS}
+        presentations={ASSET_SETTING_PRESENTATIONS}
         save={async (patches) => {
+          const scanEntryUrl = String(patches['asset.scan.entry.url'] ?? '').trim();
           await http.put('/asset-settings', {
-            scanEntryUrl: patches['asset.scan.entry.url'] as string | undefined,
+            ...(scanEntryUrl ? { scanEntryUrl } : {}),
             quotaResetDay: patches['asset.quota.reset.day'] as number | undefined,
           }, { service: 'asset' });
         }}

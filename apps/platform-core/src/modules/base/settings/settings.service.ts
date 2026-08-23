@@ -102,6 +102,18 @@ export const PLATFORM_SETTING_KEYS = [
 
 export type PlatformSettingKey = (typeof PLATFORM_SETTING_KEYS)[number];
 
+/** 以分钟编辑的时长设置仍以秒存储；接口也只接受整分钟，避免绕过管理界面。 */
+const MINUTE_BASED_SETTING_KEYS = new Set<PlatformSettingKey>([
+  SETTING_KEYS.SESSION_IDLE_TIMEOUT,
+  SETTING_KEYS.SESSION_IDLE_REMEMBER,
+  SETTING_KEYS.SESSION_ABS_TIMEOUT,
+  SETTING_KEYS.SESSION_ABS_REMEMBER,
+  SETTING_KEYS.LOGIN_ACCOUNT_LOCK_SECONDS,
+  SETTING_KEYS.LOGIN_IP_WINDOW_SECONDS,
+  SETTING_KEYS.LOGIN_IP_LOCK_SECONDS,
+  SETTING_KEYS.INVITATION_VALID_SECONDS,
+]);
+
 /** 平台设置元数据（默认值、展示名、校验边界） */
 export interface PlatformSettingDefinition {
   key: PlatformSettingKey;
@@ -118,25 +130,25 @@ export interface PlatformSettingItem extends PlatformSettingDefinition {
 
 const PLATFORM_SETTING_DEFINITIONS: Readonly<Record<PlatformSettingKey, Omit<PlatformSettingDefinition, 'key'>>> = {
   [SETTING_KEYS.SESSION_IDLE_TIMEOUT]: {
-    label: '普通会话空闲超时（秒）',
+    label: '普通会话空闲超时',
     defaultValue: 24 * 60 * 60,
     min: 60,
     max: 30 * 24 * 60 * 60,
   },
   [SETTING_KEYS.SESSION_IDLE_REMEMBER]: {
-    label: '「记住我」会话空闲超时（秒）',
+    label: '「记住我」会话空闲超时',
     defaultValue: 30 * 24 * 60 * 60,
     min: 60,
     max: 180 * 24 * 60 * 60,
   },
   [SETTING_KEYS.SESSION_ABS_TIMEOUT]: {
-    label: '普通会话绝对过期（秒）',
+    label: '普通会话绝对过期',
     defaultValue: 7 * 24 * 60 * 60,
     min: 60,
     max: 90 * 24 * 60 * 60,
   },
   [SETTING_KEYS.SESSION_ABS_REMEMBER]: {
-    label: '「记住我」会话绝对过期（秒）',
+    label: '「记住我」会话绝对过期',
     defaultValue: 90 * 24 * 60 * 60,
     min: 60,
     max: 365 * 24 * 60 * 60,
@@ -148,13 +160,13 @@ const PLATFORM_SETTING_DEFINITIONS: Readonly<Record<PlatformSettingKey, Omit<Pla
     max: 100,
   },
   [SETTING_KEYS.LOGIN_ACCOUNT_LOCK_SECONDS]: {
-    label: '账号锁定时长（秒）',
+    label: '账号锁定时长',
     defaultValue: 10 * 60,
-    min: 30,
+    min: 60,
     max: 24 * 60 * 60,
   },
   [SETTING_KEYS.LOGIN_IP_WINDOW_SECONDS]: {
-    label: 'IP 锁计数窗口（秒）',
+    label: 'IP 锁计数窗口',
     defaultValue: 60 * 60,
     min: 60,
     max: 24 * 60 * 60,
@@ -166,13 +178,13 @@ const PLATFORM_SETTING_DEFINITIONS: Readonly<Record<PlatformSettingKey, Omit<Pla
     max: 10_000,
   },
   [SETTING_KEYS.LOGIN_IP_LOCK_SECONDS]: {
-    label: 'IP 锁定时长（秒）',
+    label: 'IP 锁定时长',
     defaultValue: 60 * 60,
-    min: 30,
+    min: 60,
     max: 24 * 60 * 60,
   },
   [SETTING_KEYS.INVITATION_VALID_SECONDS]: {
-    label: '激活/重置凭证有效期（秒）',
+    label: '激活/重置凭证有效期',
     defaultValue: 7 * 24 * 60 * 60,
     min: 60,
     max: 90 * 24 * 60 * 60,
@@ -375,10 +387,30 @@ export class SettingsService {
         });
       }
       const def = PLATFORM_SETTING_DEFINITIONS[key];
-      if (!Number.isFinite(value) || value < def.min || value > def.max) {
+      if (!Number.isInteger(value) || value < def.min || value > def.max) {
         throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
-          fields: [{ field: key, errors: [`取值须在 ${def.min}～${def.max} 之间`] }],
+          fields: [{ field: key, errors: [`取值须为 ${def.min}～${def.max} 之间的整数`] }],
         });
+      }
+      if (MINUTE_BASED_SETTING_KEYS.has(key) && value % 60 !== 0) {
+        throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+          fields: [{ field: key, errors: ['时长必须按整分钟设置'] }],
+        });
+      }
+    }
+    const patchMap = new Map(entries);
+    const sessionTimeoutPairs: Array<[PlatformSettingKey, PlatformSettingKey]> = [
+      [SETTING_KEYS.SESSION_IDLE_TIMEOUT, SETTING_KEYS.SESSION_ABS_TIMEOUT],
+      [SETTING_KEYS.SESSION_IDLE_REMEMBER, SETTING_KEYS.SESSION_ABS_REMEMBER],
+    ];
+    if (sessionTimeoutPairs.some(([idleKey, absoluteKey]) => patchMap.has(idleKey) || patchMap.has(absoluteKey))) {
+      const effectiveValue = async (key: PlatformSettingKey): Promise<number> => patchMap.get(key) ?? this.getNumber(key);
+      for (const [idleKey, absoluteKey] of sessionTimeoutPairs) {
+        if ((await effectiveValue(idleKey)) > (await effectiveValue(absoluteKey))) {
+          throw new BusinessException(frameworkErrors.VALIDATION_FAILED, {
+            fields: [{ field: idleKey, errors: ['空闲超时不能长于绝对过期'] }],
+          });
+        }
       }
     }
     const operator = await loadOperationLogOperator(this.prisma.client, operatorId);
