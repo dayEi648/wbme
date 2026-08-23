@@ -8,7 +8,7 @@ import { DataTable, StatusTag, type DataColumn } from '../../components/DataTabl
 import { PageTabs } from '../../components/PageTabs';
 import { ResourcePage } from '../../components/ResourcePage';
 import { ResourceFormModal, type FormField } from '../../components/ResourceFormModal';
-import { SettingsEditor } from '../../components/SettingsEditor';
+import { SystemSettingsPage, type SystemSettingsGroup } from '../../components/SystemSettingsPage';
 import { SystemHome } from '../../components/SystemHome';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
@@ -339,10 +339,33 @@ function OvertimeMine() {
   </Space>;
 }
 
+const HR_SETTING_GROUPS: SystemSettingsGroup[] = [
+  {
+    id: 'overtime',
+    title: '加班',
+    keys: ['overtime.advance.days', 'overtime.backfill.days'],
+  },
+];
+
+const HR_SETTING_LABELS: Readonly<Record<string, string>> = {
+  'overtime.advance.days': '提前申请窗口',
+  'overtime.backfill.days': '补交窗口',
+};
+
 function HrSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
-      { key: 'params', label: '运行参数', children: <SettingsEditor service="hr" endpoint="/hr-settings" save={async (item, value) => { await http.put(`/hr-settings/${item.key}`, { value }, { service: 'hr' }); }} /> },
+      { key: 'params', label: '系统设置', children: <SystemSettingsPage
+        service="hr"
+        endpoint="/hr-settings"
+        groups={HR_SETTING_GROUPS}
+        labels={HR_SETTING_LABELS}
+        save={async (patches) => {
+          for (const [key, value] of Object.entries(patches)) {
+            await http.put(`/hr-settings/${key}`, { value: String(value) }, { service: 'hr' });
+          }
+        }}
+      /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="HR" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'dicts', label: '人事字典', children: <ResourcePage title="人事字典" service="hr" endpoint="/dicts" pageKey="hr-dicts" columns={markSortable([...COMMON_COLUMNS, { key: 'dictType', title: '类型', render: (value: unknown) => displayDictType(value) }], ['name', 'status', 'createdAt', 'dictType'])} create={{ title: '新建字典项', endpoint: '/dicts', fields: [{ key: 'dictType', label: '字典类型', type: 'select' as const, options: HR_DICT_TYPE_OPTIONS, required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' as const, width: 'narrow' as const }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dicts/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dicts/delete', bodyKey: 'ids', previewEndpoint: '/dicts/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 条` }) }} /> },
     ]} />

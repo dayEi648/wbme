@@ -11,6 +11,7 @@ export * from './validation.pipe';
 export * from './idempotency-header.interceptor';
 export * from './table-query';
 export * from './access-log.interceptor';
+export * from './query-operation-log.interceptor';
 export * from './request-timeout.decorator';
 export * from './request-timeout.interceptor';
 export * from './redis/redis-constants';

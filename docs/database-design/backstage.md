@@ -150,9 +150,10 @@
 | `remark` | `text` | NULL | 处理备注 |
 | `updated_at` | `timestamptz` | NOT NULL | 聚合/处置更新 |
 
-原始异常样本与聚合数据不可人工编辑；处置状态单向流转（`PENDING → HANDLED/IGNORED`）。
+原始异常样本与聚合数据不可人工编辑；处置状态单向流转（`PENDING → HANDLED/IGNORED`）；系统可按主 PRD §9.1 日志保留策略按 `first_seen_at` 自动清理过期记录。
 - 部分唯一索引：`(fingerprint, bucket_start) WHERE status = 'PENDING'`——并发聚合原子 UPSERT
 - 查询索引：`(status, last_seen_at DESC)`（处置列表）
+- 清理索引：`(first_seen_at)`（日志保留清理）
 
 ### S-10 `security_logs` 安全日志（只追加）
 
@@ -169,8 +170,8 @@
 | `request_id` | `text` | NULL | 追踪标识 |
 | `created_at` | `timestamptz` | NOT NULL `DEFAULT now()` | 事件时间 |
 
-不记录密码、凭证、会话标识、邀请原文。
-- 不建查询索引：记录量少、查询频率低，列表按 `id` 倒序即时间倒序
+不记录密码、凭证、会话标识、邀请原文；系统可按主 PRD §9.1 日志保留策略按 `created_at` 自动清理过期记录。
+- 清理索引：`(created_at)`（日志保留清理）；列表按 `id` 倒序即时间倒序
 
 ## 5. 统一后台任务
 
@@ -346,7 +347,7 @@ MVP 不自动清理、不提供删除接口。
 
 ### S-19 `operation_logs`（backstage schema）
 
-结构与 `base.operation_logs`（B-4）完全一致，只写本模块日志；联合只读视图汇总全模块日志。
+结构与 `base.operation_logs`（B-4）完全一致，只写本模块日志；联合只读视图汇总全模块日志；支持按主 PRD §9.1 日志保留策略自动清理。
 
 ## 10. 用户表格偏好
 

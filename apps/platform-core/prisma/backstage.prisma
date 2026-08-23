@@ -319,6 +319,7 @@ model ErrorLog {
   updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([status, lastSeenAt])
+  @@index([firstSeenAt])
   @@map("error_logs")
   @@schema("backstage")
 }
@@ -336,6 +337,7 @@ model SecurityLog {
   requestId    String?           @map("request_id")
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@index([createdAt])
   @@map("security_logs")
   @@schema("backstage")
 }
@@ -548,6 +550,7 @@ model BackstageOperationLog {
 
   @@index([system, createdAt])
   @@index([operatorId, createdAt])
+  @@index([actionType, createdAt])
   @@map("operation_logs")
   @@schema("backstage")
 }

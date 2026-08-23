@@ -48,6 +48,24 @@ export const SETTING_KEYS = {
   UPLOAD_UNASSOCIATED_IMAGE_RETENTION_HOURS: 'upload.unassociated.image.retention.hours',
   /** 审批超时自动取消天数：backstage PRD §7 */
   APPROVAL_TIMEOUT_CANCEL_DAYS: 'approval.timeout.cancel.days',
+  /** 日志自动清理执行间隔（小时）：0=禁用自动清理 */
+  LOG_CLEANUP_INTERVAL_HOURS: 'log.cleanup.interval.hours',
+  /** 操作日志统一保留天数（内部兜底，不展示在设置页）：0=永不自动清理 */
+  LOG_CLEANUP_OPERATION_LOG_DEFAULT_DAYS: 'log.cleanup.operation_log.default.days',
+  /** 操作日志-新增保留天数：0=永不自动清理 */
+  LOG_CLEANUP_OPERATION_LOG_CREATE_DAYS: 'log.cleanup.operation_log.create.days',
+  /** 操作日志-修改保留天数：0=永不自动清理 */
+  LOG_CLEANUP_OPERATION_LOG_UPDATE_DAYS: 'log.cleanup.operation_log.update.days',
+  /** 操作日志-删除保留天数：0=永不自动清理 */
+  LOG_CLEANUP_OPERATION_LOG_DELETE_DAYS: 'log.cleanup.operation_log.delete.days',
+  /** 操作日志-导出保留天数：0=永不自动清理 */
+  LOG_CLEANUP_OPERATION_LOG_EXPORT_DAYS: 'log.cleanup.operation_log.export.days',
+  /** 操作日志-查询保留天数：0=永不自动清理 */
+  LOG_CLEANUP_OPERATION_LOG_QUERY_DAYS: 'log.cleanup.operation_log.query.days',
+  /** 错误日志保留天数：0=永不自动清理 */
+  LOG_CLEANUP_ERROR_LOG_DAYS: 'log.cleanup.error_log.days',
+  /** 安全日志保留天数：0=永不自动清理 */
+  LOG_CLEANUP_SECURITY_LOG_DAYS: 'log.cleanup.security_log.days',
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
@@ -72,6 +90,14 @@ export const PLATFORM_SETTING_KEYS = [
   SETTING_KEYS.BACKUP_RETENTION_DAYS,
   SETTING_KEYS.UPLOAD_UNASSOCIATED_IMAGE_RETENTION_HOURS,
   SETTING_KEYS.APPROVAL_TIMEOUT_CANCEL_DAYS,
+  SETTING_KEYS.LOG_CLEANUP_INTERVAL_HOURS,
+  SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_CREATE_DAYS,
+  SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_UPDATE_DAYS,
+  SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_DELETE_DAYS,
+  SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_EXPORT_DAYS,
+  SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_QUERY_DAYS,
+  SETTING_KEYS.LOG_CLEANUP_ERROR_LOG_DAYS,
+  SETTING_KEYS.LOG_CLEANUP_SECURITY_LOG_DAYS,
 ] as const;
 
 export type PlatformSettingKey = (typeof PLATFORM_SETTING_KEYS)[number];
@@ -181,6 +207,54 @@ const PLATFORM_SETTING_DEFINITIONS: Readonly<Record<PlatformSettingKey, Omit<Pla
     min: 1,
     max: 365,
   },
+  [SETTING_KEYS.LOG_CLEANUP_INTERVAL_HOURS]: {
+    label: '日志自动清理执行间隔（小时，0=禁用）',
+    defaultValue: 24,
+    min: 0,
+    max: 24 * 30,
+  },
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_CREATE_DAYS]: {
+    label: '操作日志-新增保留天数（天）',
+    defaultValue: 365,
+    min: 0,
+    max: 36_500,
+  },
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_UPDATE_DAYS]: {
+    label: '操作日志-修改保留天数（天）',
+    defaultValue: 365,
+    min: 0,
+    max: 36_500,
+  },
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_DELETE_DAYS]: {
+    label: '操作日志-删除保留天数（天）',
+    defaultValue: 365,
+    min: 0,
+    max: 36_500,
+  },
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_EXPORT_DAYS]: {
+    label: '操作日志-导出保留天数（天）',
+    defaultValue: 365,
+    min: 0,
+    max: 36_500,
+  },
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_QUERY_DAYS]: {
+    label: '操作日志-查询保留天数（天）',
+    defaultValue: 30,
+    min: 0,
+    max: 36_500,
+  },
+  [SETTING_KEYS.LOG_CLEANUP_ERROR_LOG_DAYS]: {
+    label: '错误日志保留天数（0=永不清理）',
+    defaultValue: 180,
+    min: 0,
+    max: 36_500,
+  },
+  [SETTING_KEYS.LOG_CLEANUP_SECURITY_LOG_DAYS]: {
+    label: '安全日志保留天数（0=永不清理）',
+    defaultValue: 365,
+    min: 0,
+    max: 36_500,
+  },
 };
 
 /** 键 → 默认值（数值型；设置变更即时生效，不追溯历史快照） */
@@ -200,6 +274,15 @@ const DEFAULT_VALUES: Readonly<Record<SettingKey, number>> = {
   [SETTING_KEYS.BACKUP_RETENTION_DAYS]: 30,
   [SETTING_KEYS.UPLOAD_UNASSOCIATED_IMAGE_RETENTION_HOURS]: 24,
   [SETTING_KEYS.APPROVAL_TIMEOUT_CANCEL_DAYS]: 30,
+  [SETTING_KEYS.LOG_CLEANUP_INTERVAL_HOURS]: 24,
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_DEFAULT_DAYS]: 365,
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_CREATE_DAYS]: 365,
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_UPDATE_DAYS]: 365,
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_DELETE_DAYS]: 365,
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_EXPORT_DAYS]: 365,
+  [SETTING_KEYS.LOG_CLEANUP_OPERATION_LOG_QUERY_DAYS]: 30,
+  [SETTING_KEYS.LOG_CLEANUP_ERROR_LOG_DAYS]: 180,
+  [SETTING_KEYS.LOG_CLEANUP_SECURITY_LOG_DAYS]: 365,
 };
 
 /** DB 覆盖值缓存条目 */

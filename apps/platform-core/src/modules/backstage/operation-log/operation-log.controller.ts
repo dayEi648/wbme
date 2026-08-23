@@ -35,9 +35,9 @@ class OperationLogQueryDto extends PaginationQueryDto {
   @Min(1)
   departmentId?: number;
 
-  @ApiProperty({ description: '动作类型', required: false, enum: ['CREATE', 'UPDATE', 'DELETE', 'EXPORT'] })
+  @ApiProperty({ description: '动作类型', required: false, enum: ['CREATE', 'UPDATE', 'DELETE', 'EXPORT', 'QUERY'] })
   @IsOptional()
-  @IsIn(['CREATE', 'UPDATE', 'DELETE', 'EXPORT'])
+  @IsIn(['CREATE', 'UPDATE', 'DELETE', 'EXPORT', 'QUERY'])
   actionType?: string;
 
   @ApiProperty({ description: '开始时间（含）', required: false, type: 'string', format: 'date-time' })

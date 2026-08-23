@@ -80,7 +80,7 @@
 | `operator_departments` | `jsonb` | NULL | 操作时全部归属部门快照 `[{id, name}]` |
 | `system` | `text` | NOT NULL | `BASE / BACKSTAGE / ASSET / HR / FIN` |
 | `feature` | `text` | NOT NULL | 功能编码 |
-| `action_type` | `enum log_action` | NOT NULL | `CREATE / UPDATE / DELETE / EXPORT` |
+| `action_type` | `enum log_action` | NOT NULL | `CREATE / UPDATE / DELETE / EXPORT / QUERY` |
 | `summary` | `text` | NOT NULL | 按功能摘要模板生成的正文 |
 | `idempotency_scope` | `text` | NULL | 幂等作用域 |
 | `idempotency_key` | `text` | NULL | 幂等键 |
@@ -92,6 +92,7 @@
 **约束与索引**
 - 部分唯一索引（幂等）：`(COALESCE(operator_id, 0), system, idempotency_scope, idempotency_key) WHERE idempotency_key IS NOT NULL`
 - 查询索引：`(system, created_at)`、`(operator_id, created_at)`
+- 清理索引：`(action_type, created_at)`（日志保留清理；保留 `idempotency_key IS NOT NULL` 的行）
 
 ## B-5 `user_table_prefs` 用户表格偏好（物理删除）
 

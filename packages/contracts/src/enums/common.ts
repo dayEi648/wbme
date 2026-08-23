@@ -27,7 +27,7 @@ export type ApprovalAction = 'SUBMIT' | 'CANCEL' | 'APPROVE' | 'REJECT' | 'AUTO_
 export type CancelSource = 'USER' | 'ACCOUNT_DEACTIVATED' | 'OVERDUE';
 
 /** 操作日志操作性质（主 PRD §3.3） */
-export type LogAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT';
+export type LogAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT' | 'QUERY';
 
 /** 用户表格偏好类型（主 PRD §10.2） */
 export type TablePrefType = 'FILTER_PRESET' | 'COLUMN_SETTING';

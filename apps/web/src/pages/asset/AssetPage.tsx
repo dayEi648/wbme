@@ -33,7 +33,7 @@ import {
   departmentTreeSource,
   RemoteSelect,
 } from '../../components/selectors';
-import { SettingsEditor } from '../../components/SettingsEditor';
+import { SystemSettingsPage, type SystemSettingsGroup } from '../../components/SystemSettingsPage';
 import { SystemHome } from '../../components/SystemHome';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
@@ -914,21 +914,35 @@ function ApprovalPage() {
   return <ApprovalCenter title="资产审批中心" service="asset" pageKey="asset-approval" />;
 }
 
+const ASSET_SETTING_GROUPS: SystemSettingsGroup[] = [
+  {
+    id: 'basic',
+    title: '基础参数',
+    keys: ['asset.scan.entry.url', 'asset.quota.reset.day'],
+  },
+];
+
+const ASSET_SETTING_LABELS: Readonly<Record<string, string>> = {
+  'asset.scan.entry.url': '扫码入口地址',
+  'asset.quota.reset.day': '申领上限重置日',
+};
+
 /** 系统设置书签：运行参数 / 资产分类 / 业务字典（分类与字典删除为两段式引用确认）。 */
 function AssetConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
-      { key: 'params', label: '运行参数', children: <SettingsEditor service="asset" endpoint="/asset-settings" save={async (item, value) => {
-        if (item.key === 'asset.scan.entry.url') {
-          await http.put('/asset-settings', { scanEntryUrl: value }, { service: 'asset' });
-          return;
-        }
-        if (item.key === 'asset.quota.reset.day') {
-          await http.put('/asset-settings', { quotaResetDay: Number(value) }, { service: 'asset' });
-          return;
-        }
-        throw new Error('未知的资产设置键');
-      }} /> },
+      { key: 'params', label: '系统设置', children: <SystemSettingsPage
+        service="asset"
+        endpoint="/asset-settings"
+        groups={ASSET_SETTING_GROUPS}
+        labels={ASSET_SETTING_LABELS}
+        save={async (patches) => {
+          await http.put('/asset-settings', {
+            scanEntryUrl: patches['asset.scan.entry.url'] as string | undefined,
+            quotaResetDay: patches['asset.quota.reset.day'] as number | undefined,
+          }, { service: 'asset' });
+        }}
+      /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="ASSET" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'categories', label: '资产分类', children: <ResourcePage title="资产分类" service="asset" endpoint="/categories" pageKey="asset-categories" columns={COMMON_COLUMNS} create={{ title: '新建分类', endpoint: '/categories', fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'parentId', label: '父分类', type: 'tree-select', remote: assetCategoryTreeSource, required: true }] }} edit={{ title: '编辑资产分类', endpoint: (id) => `/categories/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/categories/batch', bodyKey: 'ids', previewEndpoint: '/categories/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `现存资产 ${String(item.assetCount ?? 0)} 个；消耗品品种 ${String(item.consumableCount ?? 0)} 个` }) }} /> },
       { key: 'dicts', label: '业务字典', children: <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={markSortable([...COMMON_COLUMNS, { key: 'dictType', title: '类型' }], ['name', 'status', 'createdAt', 'dictType'])} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids', previewEndpoint: '/dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 处` }) }} /> },

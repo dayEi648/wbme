@@ -1,5 +1,5 @@
 /** 操作性质（与各 schema operation_logs.action_type 枚举对齐） */
-export type OperationActionType = 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT';
+export type OperationActionType = 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT' | 'QUERY';
 
 /** 操作日志摘要模板输入（主 PRD §3.3） */
 export interface OperationSummaryInput {
@@ -20,6 +20,7 @@ const ACTION_VERB: Readonly<Record<OperationActionType, string>> = {
   UPDATE: '修改了',
   DELETE: '删除了',
   EXPORT: '导出了',
+  QUERY: '查询了',
 };
 
 /**

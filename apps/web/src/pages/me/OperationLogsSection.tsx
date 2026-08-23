@@ -39,6 +39,7 @@ export function OperationLogsSection() {
             { label: '修改', value: 'UPDATE' },
             { label: '删除', value: 'DELETE' },
             { label: '导出', value: 'EXPORT' },
+            { label: '查询', value: 'QUERY' },
           ],
         },
         { key: 'createdAt', title: '时间', type: 'date' },

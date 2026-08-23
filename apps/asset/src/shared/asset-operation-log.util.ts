@@ -120,7 +120,7 @@ export async function writeAssetOperationLog(
     operator: AssetOperationLogOperator;
     /** 功能编码（目录稳定编码，如 fixed_asset_maintain / consumable_apply） */
     feature: string;
-    actionType: 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT';
+    actionType: 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT' | 'QUERY';
     summary: string;
     idempotencyScope?: string;
     idempotencyKey?: string;

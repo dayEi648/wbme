@@ -120,7 +120,7 @@ export async function writeFinOperationLog(
     operator: FinOperationLogOperator;
     /** 功能编码（目录稳定编码，如 finance_maintain / finance_config） */
     feature: string;
-    actionType: 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT';
+    actionType: 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT' | 'QUERY';
     summary: string;
     idempotencyScope?: string;
     idempotencyKey?: string;

@@ -6,7 +6,7 @@ import { AdvancedFilter } from '../../components/AdvancedFilter';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
 import { DataTable } from '../../components/DataTable';
 import { SortPanel } from '../../components/SortPanel';
-import { JsonDetails } from '../../components/JsonDetails';
+import { SystemSettingsPage } from '../../components/SystemSettingsPage';
 import { ResourcePage } from '../../components/ResourcePage';
 import { ResourceFormModal, type FormField } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
@@ -1108,20 +1108,15 @@ const FIN_DICT_TYPE_LABELS: Readonly<Record<string, string>> = {
   REGION: '地区',
 };
 
-/** 财务运行参数字段中文标签（JsonDetails labelMap；通用字段走共享映射）。 */
-const FIN_SETTINGS_LABELS: Readonly<Record<string, string>> = {
-  items: '运行参数',
-  key: '参数键',
-  value: '参数值',
-  valueType: '值类型',
-  label: '显示名称',
-  updatedBy: '更新人 ID',
-};
-
 function FinanceConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
-      { key: 'params', label: '运行参数', children: <JsonDetails service="fin" endpoint="/finance-settings" labelMap={FIN_SETTINGS_LABELS} /> },
+      { key: 'params', label: '系统设置', children: <SystemSettingsPage
+        service="fin"
+        endpoint="/finance-settings"
+        groups={[]}
+        save={async () => undefined}
+      /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="FIN" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'dictType', title: '类型', sortable: true }, { key: 'name', title: '名称', sortable: true }, { key: 'semantic', title: '金额语义', sortable: true }, { key: 'status', title: '状态', sortable: true }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids', previewEndpoint: '/finance-dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `被工程合同引用 ${String(item.referencedCount ?? 0)} 处（${FIN_DICT_TYPE_LABELS[String(item.dictType ?? '')] ?? String(item.dictType ?? '未知类型')}）` }) }} /> },
     ]} />

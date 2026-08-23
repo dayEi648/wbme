@@ -3,6 +3,7 @@ import {
   TASK_TYPE_APPROVAL_TIMEOUT_SCAN,
   TASK_TYPE_EMERGENCY_BACKUP,
   TASK_TYPE_IMMEDIATE_BACKUP,
+  TASK_TYPE_LOG_RETENTION_CLEANUP,
   TASK_TYPE_RESTORE_DELIVERY,
   TASK_TYPE_SCHEDULED_BACKUP,
   TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP,
@@ -12,6 +13,7 @@ import { processAccountLifecycle } from './account-lifecycle.processor';
 import { processApprovalTimeoutScan } from './approval-timeout.processor';
 import { processBackupTask } from './backup-task.processor';
 import { processImageCleanup } from './image-cleanup.processor';
+import { processLogRetentionCleanup } from './log-retention-cleanup.processor';
 import { processRestoreDelivery } from './restore-delivery.processor';
 import type { TaskProcessor } from './types';
 
@@ -24,6 +26,7 @@ export const TASK_PROCESSORS: Record<TaskType, TaskProcessor> = {
   [TASK_TYPE_EMERGENCY_BACKUP]: processBackupTask,
   [TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP]: processImageCleanup,
   [TASK_TYPE_APPROVAL_TIMEOUT_SCAN]: processApprovalTimeoutScan,
+  [TASK_TYPE_LOG_RETENTION_CLEANUP]: processLogRetentionCleanup,
 };
 
 /**

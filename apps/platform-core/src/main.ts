@@ -4,18 +4,26 @@ import { resolve } from 'node:path';
 import {
   AccessLogInterceptor,
   assertRedisAvailable,
+  createQueryOperationLogInterceptor,
   createRedisClient,
   createRequestContextMiddleware,
   createValidationPipe,
   defaultDependencyDetector,
+  getRequestContext,
   GlobalExceptionFilter,
   IdempotencyHeaderInterceptor,
+  isExcludedQueryLogRoute,
   RequestTimeoutInterceptor,
   ShutdownStateService,
   listenWithFallback,
 } from '@wbme/server';
 import { AppModule } from './app.module';
 import { PlatformErrorLogWriter } from './modules/base/security-log/platform-error-log.writer';
+import { PrismaService } from './prisma.service';
+import {
+  loadOperationLogOperator,
+  writeBackstageOperationLog,
+} from './modules/backstage/permission/operation-log.util';
 
 /** 优雅停机宽限（毫秒，主 PRD §9.13：固定有界时间，超时强制退出） */
 const SHUTDOWN_GRACE_MS = 30_000;
@@ -42,7 +50,23 @@ async function bootstrap(): Promise<void> {
   const errorLogWriter = app.get(PlatformErrorLogWriter);
   app.useGlobalFilters(new GlobalExceptionFilter(defaultDependencyDetector, errorLogWriter));
   app.useGlobalPipes(createValidationPipe());
-  app.useGlobalInterceptors(new IdempotencyHeaderInterceptor(), new AccessLogInterceptor(), new RequestTimeoutInterceptor());
+  const prisma = app.get(PrismaService);
+  const queryLogInterceptor = createQueryOperationLogInterceptor(async (route, userId) => {
+    if (isExcludedQueryLogRoute(route)) {
+      return;
+    }
+    const operator = await loadOperationLogOperator(prisma.client, userId);
+    const feature = getRequestContext()?.grantedFunction?.code ?? route;
+    await prisma.client.$transaction((tx) =>
+      writeBackstageOperationLog(tx, {
+        operator,
+        feature,
+        actionType: 'QUERY',
+        summary: `查询了 ${route}`,
+      }),
+    );
+  });
+  app.useGlobalInterceptors(new IdempotencyHeaderInterceptor(), new AccessLogInterceptor(), queryLogInterceptor, new RequestTimeoutInterceptor());
 
   // 默认端口 43001（开发环境少见端口段）；被占用时 listenWithFallback 自动 +1 顺延（开发友好）
   const port = Number(process.env.PLATFORM_CORE_PORT ?? 43001);

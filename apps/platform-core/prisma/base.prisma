@@ -35,6 +35,7 @@ enum LogAction {
   UPDATE
   DELETE
   EXPORT
+  QUERY
 
   @@schema("base")
 }
@@ -136,6 +137,7 @@ model OperationLog {
 
   @@index([system, createdAt])
   @@index([operatorId, createdAt])
+  @@index([actionType, createdAt])
   @@map("operation_logs")
   @@schema("base")
 }

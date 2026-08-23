@@ -60,6 +60,12 @@ export interface ApprovalTimeoutScanTaskRef {
   scanFrom?: string;
 }
 
+/** 日志保留清理任务 ref */
+export interface LogRetentionCleanupTaskRef {
+  /** 周期标识（由清理间隔推导） */
+  cycleId?: number;
+}
+
 /** 各任务类型 ref 映射 */
 export interface TaskRefByType {
   ACCOUNT_LIFECYCLE: AccountLifecycleTaskRef;
@@ -69,6 +75,7 @@ export interface TaskRefByType {
   EMERGENCY_BACKUP: ImmediateBackupTaskRef;
   UNASSOCIATED_IMAGE_CLEANUP: UnassociatedImageCleanupTaskRef;
   APPROVAL_TIMEOUT_SCAN: ApprovalTimeoutScanTaskRef;
+  LOG_RETENTION_CLEANUP: LogRetentionCleanupTaskRef;
 }
 
 export type TaskRef = TaskRefByType[keyof TaskRefByType];

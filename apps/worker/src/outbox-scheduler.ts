@@ -12,6 +12,7 @@ import {
   SAFELY_REPLAYABLE_TASK_TYPES,
   stableTaskUuid,
   TASK_TYPE_APPROVAL_TIMEOUT_SCAN,
+  TASK_TYPE_LOG_RETENTION_CLEANUP,
   TASK_TYPE_RESTORE_DELIVERY,
   TASK_TYPE_SCHEDULED_BACKUP,
   TASK_TYPE_UNASSOCIATED_IMAGE_CLEANUP,
@@ -29,6 +30,9 @@ let lastImageCleanupCycleDate: string | null = null;
 
 /** 每日审批超时扫描调度内存状态（进程内，重启后靠 stable uuid 去重） */
 let lastApprovalTimeoutCycleDate: string | null = null;
+
+/** 日志清理调度内存状态（进程内，重启后靠 stable uuid 去重） */
+let lastLogCleanupCycleId: number | null = null;
 
 /**
  * 若已过北京时间 02:00 且当日尚无定时备份任务，则创建 PENDING_ENQUEUE。
@@ -128,6 +132,42 @@ export async function ensureDailyApprovalTimeoutScan(sql: SqlClient, now: Date =
 }
 
 /**
+ * 按配置的清理间隔创建日志保留清理任务（主 PRD §9.1 新增）。
+ *
+ * 保留间隔从系统设置 `log.cleanup.interval.hours` 读取，0 表示禁用。
+ * 以固定周期边界生成稳定 taskUuid，保证同一周期只创建一个任务。
+ *
+ * @param sql SQL 客户端
+ * @param now 当前时间
+ */
+export async function ensurePeriodicLogCleanup(sql: SqlClient, now: Date = new Date()): Promise<void> {
+  const rows = (await sql.queryRows<{ value: string }>(
+    `SELECT value FROM backstage.system_settings WHERE key = 'log.cleanup.interval.hours' LIMIT 1`,
+  )) ?? [];
+  const intervalHours = rows[0] ? Number(rows[0].value) : 24;
+  if (!Number.isFinite(intervalHours) || intervalHours <= 0) {
+    return;
+  }
+  const intervalMs = intervalHours * 60 * 60 * 1000;
+  const cycleId = Math.floor(now.getTime() / intervalMs);
+  if (lastLogCleanupCycleId === cycleId) {
+    return;
+  }
+  const taskUuid = stableTaskUuid(`${TASK_TYPE_LOG_RETENTION_CLEANUP}:${cycleId}`);
+  const result = await insertPendingTaskSql(sql, {
+    taskUuid,
+    taskType: TASK_TYPE_LOG_RETENTION_CLEANUP,
+    module: 'backstage',
+    initiatorType: 'SCHEDULER',
+    ref: { cycleId },
+  }, now);
+  if (result.created) {
+    console.log(`[scheduler] 已创建日志清理任务 cycleId=${cycleId} uuid=${taskUuid}`);
+  }
+  lastLogCleanupCycleId = cycleId;
+}
+
+/**
  * Outbox 调度器：领取待投递任务并写入 BullMQ。
  */
 export class OutboxScheduler {
@@ -180,6 +220,7 @@ export class OutboxScheduler {
       await ensureDailyScheduledBackup(this.sql, now);
       await ensureDailyImageCleanup(this.sql, now);
       await ensureDailyApprovalTimeoutScan(this.sql, now);
+      await ensurePeriodicLogCleanup(this.sql, now);
       // 超时控制（主 PRD §9.1 第 250 行「支持超时控制、卡死任务发现」，问题12 修复）：
       // RUNNING 且 timeout_at 过期的卡死任务终态化为 FAILED（不再重领/重试，人工核查）；
       // 活着的长任务经 renewRunningLease 持续重置 timeout_at，不触发。

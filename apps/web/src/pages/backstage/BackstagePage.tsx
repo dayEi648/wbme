@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Select, Space, Spin, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Row, Select, Space, Spin, Table, Tabs, Tag, Typography, type FormInstance } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -7,6 +7,7 @@ import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { ResourceFormModal } from '../../components/ResourceFormModal';
 import { SystemHome } from '../../components/SystemHome';
+import { SystemSettingsPage, type SystemSettingItem, type SystemSettingsGroup } from '../../components/SystemSettingsPage';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { deactivatedUsersSource, permissionEmployeesSource, permissionGroupsSource, PermissionGrantDrawer, type GrantItem, type RemoteOptionSource } from '../../components/selectors';
@@ -573,33 +574,171 @@ function PermissionGroups() {
   </>;
 }
 
-/** 系统设置书签：运行参数 / 系统状态（系统状态切换自「系统与业务结构」迁移，仅状态不保留说明编辑）。 */
-function PlatformSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
-  const feedback = useFeedback();
-  const [settings, setSettings] = useState<Array<{ key: string; label: string; value: number; min: number; max: number }>>([]);
-  const [loading, setLoading] = useState(true);
-  const [form] = Form.useForm<Record<string, number>>();
-  useEffect(() => {
-    void http.get<{ settings: Array<{ key: string; label: string; value: number; min: number; max: number }> }>('/system-settings', { active: true }).then((result) => { setSettings(result.settings); form.setFieldsValue(Object.fromEntries(result.settings.map((item) => [item.key, item.value]))); }).catch((error) => feedback.error(error, '系统设置加载失败')).finally(() => setLoading(false));
-  }, [feedback, form]);
-  const save = async (values: Record<string, number>) => {
-    await http.put('/system-settings', { patches: values });
-    feedback.success('系统设置已保存并即时生效');
+const SETTING_LABELS: Readonly<Record<string, string>> = {
+  'session.idle.timeout.seconds': '普通会话空闲超时',
+  'session.idle.remember.seconds': '记住我空闲超时',
+  'session.abs.timeout.seconds': '普通会话绝对过期',
+  'session.abs.remember.seconds': '记住我绝对过期',
+  'login.account.max.attempts': '账号锁失败次数',
+  'login.account.lock.seconds': '账号锁定时长',
+  'login.ip.window.seconds': 'IP 锁窗口',
+  'login.ip.max.attempts': 'IP 锁失败次数',
+  'login.ip.lock.seconds': 'IP 锁定时长',
+  'invitation.valid.seconds': '邀请有效期',
+  'query.default.window.days': '默认查询窗口',
+  'export.max.rows': '单次导出上限',
+  'backup.retention.days': '备份保留天数',
+  'upload.unassociated.image.retention.hours': '图片保留时长',
+  'approval.timeout.cancel.days': '审批超时取消',
+  'log.cleanup.interval.hours': '清理执行间隔',
+  'log.cleanup.error_log.days': '错误日志保留',
+  'log.cleanup.security_log.days': '安全日志保留',
+};
+
+const SETTING_GROUPS: SystemSettingsGroup[] = [
+  {
+    id: 'session',
+    title: '会话与安全',
+    keys: [
+      'session.idle.timeout.seconds',
+      'session.idle.remember.seconds',
+      'session.abs.timeout.seconds',
+      'session.abs.remember.seconds',
+      'login.account.max.attempts',
+      'login.account.lock.seconds',
+      'login.ip.window.seconds',
+      'login.ip.max.attempts',
+      'login.ip.lock.seconds',
+      'invitation.valid.seconds',
+    ],
+  },
+  {
+    id: 'query-export',
+    title: '查询与导出',
+    keys: ['query.default.window.days', 'export.max.rows'],
+  },
+  {
+    id: 'backup-files',
+    title: '备份与文件',
+    keys: ['backup.retention.days', 'upload.unassociated.image.retention.hours'],
+  },
+  {
+    id: 'approval',
+    title: '审批',
+    keys: ['approval.timeout.cancel.days'],
+  },
+  {
+    id: 'log-cleanup',
+    title: '日志清理',
+    keys: [
+      'log.cleanup.interval.hours',
+      'log.cleanup.error_log.days',
+      'log.cleanup.security_log.days',
+    ],
+  },
+];
+
+const LOG_CLEANUP_KEYS = [
+  'log.cleanup.interval.hours',
+  'log.cleanup.operation_log.create.days',
+  'log.cleanup.operation_log.update.days',
+  'log.cleanup.operation_log.delete.days',
+  'log.cleanup.operation_log.export.days',
+  'log.cleanup.operation_log.query.days',
+  'log.cleanup.error_log.days',
+  'log.cleanup.security_log.days',
+];
+
+const OPERATION_LOG_KEYS = [
+  'log.cleanup.operation_log.create.days',
+  'log.cleanup.operation_log.update.days',
+  'log.cleanup.operation_log.delete.days',
+  'log.cleanup.operation_log.export.days',
+  'log.cleanup.operation_log.query.days',
+];
+
+const OPERATION_LOG_LABELS: Readonly<Record<string, string>> = {
+  'log.cleanup.operation_log.create.days': '新增',
+  'log.cleanup.operation_log.update.days': '修改',
+  'log.cleanup.operation_log.delete.days': '删除',
+  'log.cleanup.operation_log.export.days': '导出',
+  'log.cleanup.operation_log.query.days': '查询',
+};
+
+/** 系统设置书签页：左侧目录点击后滚动到对应分组，地址栏同步 #hash。 */
+function SettingsBookmarkPage() {
+  const [unifiedDays, setUnifiedDays] = useState<number | null>(null);
+
+  const applyUnifiedOperationLog = (form: FormInstance) => {
+    if (unifiedDays === null || unifiedDays === undefined) {
+      return;
+    }
+    form.setFieldsValue(Object.fromEntries(OPERATION_LOG_KEYS.map((key) => [key, unifiedDays])));
   };
-  return <Card>
-    <Tabs
-      items={[
-        { key: 'params', label: '运行参数', children: <Card loading={loading}>
-          <Form form={form} layout="vertical" onFinish={(values) => void save(values)}>
-            {settings.map((setting) => <Form.Item key={setting.key} name={setting.key} label={setting.label} rules={[{ required: true }]}><InputNumber min={setting.min} max={setting.max} style={{ width: '100%' }} /></Form.Item>)}
-            <Button type="primary" htmlType="submit">保存设置</Button>
-          </Form>
-        </Card> },
-        { key: 'status', label: '系统状态', children: <SystemStatusTab /> },
-        { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="BACKSTAGE" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
-      ]}
+
+  const groups: SystemSettingsGroup[] = SETTING_GROUPS.map((group) => (
+    group.id === 'log-cleanup'
+      ? {
+          ...group,
+          saveKeys: LOG_CLEANUP_KEYS,
+          renderExtra: ({ form, settings }) => {
+            const operationLogItems = OPERATION_LOG_KEYS
+              .map((key) => settings.find((setting) => setting.key === key))
+              .filter((setting): setting is SystemSettingItem => Boolean(setting));
+            return (
+              <Card size="small" title="操作日志" style={{ marginTop: 8 }}>
+                <Row gutter={[16, 0]}>
+                  {operationLogItems.map((item) => (
+                    <Col xs={24} sm={12} lg={8} key={item.key}>
+                      <Form.Item name={item.key} label={OPERATION_LOG_LABELS[item.key] ?? SETTING_LABELS[item.key] ?? item.label} rules={[{ required: true }]}>
+                        <InputNumber min={item.min} max={item.max} addonAfter="天" style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                  ))}
+                </Row>
+                <Space>
+                  <InputNumber
+                    value={unifiedDays}
+                    onChange={setUnifiedDays}
+                    min={0}
+                    max={36_500}
+                    addonAfter="天"
+                    placeholder="统一天数"
+                    style={{ width: 180 }}
+                  />
+                  <Button onClick={() => applyUnifiedOperationLog(form)}>统一修改</Button>
+                </Space>
+              </Card>
+            );
+          },
+        }
+      : group
+  ));
+
+  return (
+    <SystemSettingsPage
+      service="platform"
+      endpoint="/system-settings"
+      groups={groups}
+      labels={SETTING_LABELS}
+      save={(patches) => http.put('/system-settings', { patches })}
+      extraSections={[{ id: 'system-status', title: '系统状态', content: <SystemStatusTab /> }]}
     />
-  </Card>;
+  );
+}
+
+/** 系统设置：系统设置（书签页）+ 菜单管理。 */
+function PlatformSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
+  return (
+    <Card>
+      <Tabs
+        items={[
+          { key: 'settings', label: '系统设置', children: <SettingsBookmarkPage /> },
+          { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="BACKSTAGE" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
+        ]}
+      />
+    </Card>
+  );
 }
 
 /** 系统开放状态切换（原「系统与业务结构」状态能力迁移；backstage 恒开放不可调）。 */
@@ -636,7 +775,7 @@ function SystemStatusTab() {
 }
 
 function OperationLogs() {
-  return <DataTable title="操作日志" service="platform" endpoint="/operation-logs" pageKey="backstage-operation-logs" columns={[{ key: 'operatorName', title: '操作者', sortable: true }, { key: 'actionType', title: '操作', render: (value: unknown) => <StatusTag value={value} />, sortable: true }, { key: 'summary', title: '摘要', sortable: true }, { key: 'createdAt', title: '时间', sortable: true }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: OPERATION_SYSTEM_OPTIONS }, { key: 'feature', title: '功能', type: 'enum', options: operationFeatureOptions }, { key: 'operatorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'departmentId', title: '部门', type: 'tree', remote: operationLogDepartmentTreeSource }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/operation-logs/export', filename: 'operation-logs.xlsx', method: 'POST' }} />;
+  return <DataTable title="操作日志" service="platform" endpoint="/operation-logs" pageKey="backstage-operation-logs" columns={[{ key: 'operatorName', title: '操作者', sortable: true }, { key: 'actionType', title: '操作', render: (value: unknown) => <StatusTag value={value} />, sortable: true }, { key: 'summary', title: '摘要', sortable: true }, { key: 'createdAt', title: '时间', sortable: true }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: OPERATION_SYSTEM_OPTIONS }, { key: 'feature', title: '功能', type: 'enum', options: operationFeatureOptions }, { key: 'operatorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'departmentId', title: '部门', type: 'tree', remote: operationLogDepartmentTreeSource }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }, { label: '查询', value: 'QUERY' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/operation-logs/export', filename: 'operation-logs.xlsx', method: 'POST' }} />;
 }
 
 function SystemLogs() {
