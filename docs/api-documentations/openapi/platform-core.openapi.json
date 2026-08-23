@@ -2943,7 +2943,8 @@
                 "CREATE",
                 "UPDATE",
                 "DELETE",
-                "EXPORT"
+                "EXPORT",
+                "QUERY"
               ],
               "type": "string"
             }
@@ -3106,7 +3107,8 @@
                 "CREATE",
                 "UPDATE",
                 "DELETE",
-                "EXPORT"
+                "EXPORT",
+                "QUERY"
               ],
               "type": "string"
             }
