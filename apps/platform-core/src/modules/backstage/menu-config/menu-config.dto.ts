@@ -20,7 +20,8 @@ export const MENU_ITEMS_LIMIT = 200;
 
 /**
  * 菜单分组展示配置行（任意层级，分组可自由嵌套）。
- * nodeKey 为稳定标识 = 代码默认名按层级用 `/` 连接（如 `用户与权限` 或 `用户与权限/组织架构`）；
+ * nodeKey 为稳定标识：代码默认名按层级用 `/` 连接（如 `用户与权限` 或 `用户与权限/组织架构`），
+ * 菜单管理新建分组使用 `custom:` 前缀；
  * 改名只写 nameOverride，层级调整只写 parentKey，均不影响标识与菜单项关联。
  */
 export class MenuGroupConfigRowDto {

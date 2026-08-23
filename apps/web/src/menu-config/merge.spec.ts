@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NavigationItem } from '../components/AppShell';
-import { buildEditorState, moveEditorNode, renameEditorNode, serializeEditorState } from './editor-state';
+import { buildEditorState, createGroupNode, moveEditorNode, renameEditorNode, serializeEditorState } from './editor-state';
 import { applyMenuConfig, EMPTY_MENU_CONFIG } from './merge';
 import type { SystemMenuConfig } from './types';
 
@@ -254,5 +254,24 @@ describe('applyMenuConfig（代码默认 + 数据库展示配置 → 最终导�
     expect(result.find((item) => item.key === 'my-assets')?.groupPath).toEqual(['固定资产']);
     // 顶层共享顺序轴：已配置分组（order 1）在前；未配置节点 +∞ 按默认下标兜底（消耗品 di=2 先于叶子 approval/config）
     expect(keysOf(result)).toEqual(['assets', 'my-assets', 'consumables', 'warehouses', 'claims', 'approval', 'config']);
+  });
+
+  it('用户新建分组：custom: 分组可容纳菜单项并渲染；空分组不渲染但编辑器保留', () => {
+    let state = buildEditorState(FIXTURE, EMPTY_MENU_CONFIG);
+    const created = createGroupNode(state, null)!;
+    state = renameEditorNode(created.next, { kind: 'group', nodeKey: created.nodeKey }, '加班管理')!;
+    state = moveEditorNode(
+      state,
+      { kind: 'item', itemKey: 'claims' },
+      { type: 'children', groupKey: created.nodeKey, index: Number.MAX_SAFE_INTEGER },
+    )!;
+    const config = serializeEditorState(state);
+    const result = applyMenuConfig(FIXTURE, config);
+    expect(result.find((item) => item.key === 'claims')?.groupPath).toEqual(['加班管理']);
+
+    const emptyConfig = serializeEditorState(createGroupNode(buildEditorState(FIXTURE, EMPTY_MENU_CONFIG), null)!.next);
+    const emptyResult = applyMenuConfig(FIXTURE, emptyConfig);
+    expect(emptyResult.some((item) => item.groupPath?.[0] === '新分组')).toBe(false);
+    expect(buildEditorState(FIXTURE, emptyConfig).top.some((node) => node.kind === 'group' && node.nodeKey.startsWith('custom:'))).toBe(true);
   });
 });

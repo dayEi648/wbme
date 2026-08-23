@@ -4,8 +4,22 @@ import type { MenuGroupConfigRow, MenuItemConfigRow, SystemMenuConfig } from './
 /** 空展示配置：applyMenuConfig 的恒等输入（未配置时渲染与代码默认完全一致） */
 export const EMPTY_MENU_CONFIG: SystemMenuConfig = { groups: [], items: [] };
 
-/** 分组 nodeKey 的默认显示名 = 最后一个 '/' 之后的段（nodeKey = 代码默认名按层级用 '/' 连接） */
+/** 用户新建分组 nodeKey 的前缀（与代码默认名路径区分；菜单管理可新建分组） */
+export const CUSTOM_GROUP_PREFIX = 'custom:';
+
+/** 用户新建分组的默认显示名 */
+export const CUSTOM_GROUP_DEFAULT_NAME = '新分组';
+
+/** 判断分组是否为菜单管理新建（非代码默认） */
+export function isCustomGroupNodeKey(nodeKey: string): boolean {
+  return nodeKey.startsWith(CUSTOM_GROUP_PREFIX);
+}
+
+/** 分组 nodeKey 的默认显示名 = 最后一个 '/' 之后的段（nodeKey = 代码默认名按层级用 '/' 连接）；新建分组使用固定默认名 */
 export function groupDefaultName(nodeKey: string): string {
+  if (isCustomGroupNodeKey(nodeKey)) {
+    return CUSTOM_GROUP_DEFAULT_NAME;
+  }
   const separator = nodeKey.lastIndexOf('/');
   return separator === -1 ? nodeKey : nodeKey.slice(separator + 1);
 }
@@ -81,27 +95,44 @@ export interface ResolvedMenu {
 /**
  * 归并代码默认导航与数据库展示配置。
  *
- * 分组身份（nodeKey）稳定：代码默认名按层级用 `/` 连接；配置行的 parentKey 是"当前位置"
- * 语义——分组可移动到任意层级（任意嵌套深度），身份不变。
+ * 分组身份（nodeKey）稳定：代码默认名按层级用 `/` 连接；菜单管理新建分组使用
+ * `custom:` 前缀；配置行的 parentKey 是"当前位置"语义——分组可移动到任意层级
+ * （任意嵌套深度），身份不变。
  *
- * 前向兼容与防御：代码新增项/分组按默认位置追加（order = +∞ 兜底）；配置引用代码
- * 已删除的标识一律忽略；自引用/环的层级配置回退默认父级（默认父级也成环则提升为顶层）；
- * 菜单项引用已删除分组时归属回退代码默认（仅保留改名）。永不抛错。
+ * 前向兼容与防御：代码新增项/分组按默认位置追加（order = +∞ 兜底）；带 `custom:`
+ * 前缀的非代码分组视为用户新建分组保留，其它非默认分组视为代码已删除的旧配置并忽略；
+ * 自引用/环的层级配置回退默认父级（默认父级也成环则提升为顶层）；菜单项引用不存在
+ * 分组时归属回退代码默认（仅保留改名）。永不抛错。
  */
 export function resolveMenuConfig(defaults: NavigationItem[], config: SystemMenuConfig): ResolvedMenu {
   const identity = configFromDefaults(defaults);
   const configGroupByKey = new Map(config.groups.map((row) => [row.nodeKey, row]));
   const configItemByKey = new Map(config.items.map((row) => [row.itemKey, row]));
-  const identityKeys = new Set(identity.groups.map((row) => row.nodeKey));
+  const identityGroupByKey = new Map(identity.groups.map((row) => [row.nodeKey, row]));
+  // 仅保留代码默认分组与带 custom: 前缀的用户新建分组；其它非默认分组视为代码已删除的旧配置并忽略
+  const allGroupKeys = new Set<string>([
+    ...identity.groups.map((row) => row.nodeKey),
+    ...config.groups.filter((row) => isCustomGroupNodeKey(row.nodeKey)).map((row) => row.nodeKey),
+  ]);
 
-  // 候选父级 = 配置行 parentKey（引用自身或代码已删除的分组时回退代码默认父级）
+  // 候选父级 = 配置行 parentKey（引用自身或不存在分组时回退代码默认父级；新建分组无默认父级则提升为顶层）
   const candidateParent = new Map<string, string | null>();
   for (const base of identity.groups) {
     const row = configGroupByKey.get(base.nodeKey);
     const desired = row === undefined ? base.parentKey : row.parentKey;
     candidateParent.set(
       base.nodeKey,
-      desired !== null && (desired === base.nodeKey || !identityKeys.has(desired)) ? base.parentKey : desired,
+      desired !== null && (desired === base.nodeKey || !allGroupKeys.has(desired)) ? base.parentKey : desired,
+    );
+  }
+  for (const row of config.groups) {
+    if (identityGroupByKey.has(row.nodeKey) || !isCustomGroupNodeKey(row.nodeKey)) {
+      continue;
+    }
+    const desired = row.parentKey ?? null;
+    candidateParent.set(
+      row.nodeKey,
+      desired !== null && (desired === row.nodeKey || !allGroupKeys.has(desired)) ? null : desired,
     );
   }
 
@@ -136,8 +167,8 @@ export function resolveMenuConfig(defaults: NavigationItem[], config: SystemMenu
     resolvedParent.set(nodeKey, resolved);
     return resolved;
   };
-  for (const base of identity.groups) {
-    resolveNode(base.nodeKey);
+  for (const nodeKey of allGroupKeys) {
+    resolveNode(nodeKey);
   }
 
   /** 分组子树内首个菜单项的代码默认下标（递归；分组/菜单项数量上限小，无需记忆化） */
@@ -163,23 +194,25 @@ export function resolveMenuConfig(defaults: NavigationItem[], config: SystemMenu
     return min;
   };
 
-  const groups: ResolvedMenuGroupRow[] = identity.groups.map((base) => {
-    const row = configGroupByKey.get(base.nodeKey);
-    return {
-      nodeKey: base.nodeKey,
-      parentKey: resolvedParent.get(base.nodeKey) ?? null,
+  const groups: ResolvedMenuGroupRow[] = [];
+  for (const nodeKey of allGroupKeys) {
+    const base = identityGroupByKey.get(nodeKey);
+    const row = configGroupByKey.get(nodeKey);
+    groups.push({
+      nodeKey,
+      parentKey: resolvedParent.get(nodeKey) ?? null,
       nameOverride: row?.nameOverride ?? null,
       order: row?.sortOrder ?? Number.POSITIVE_INFINITY,
-      defaultIndex: subtreeFirstIndex(base.nodeKey),
-    };
-  });
+      defaultIndex: base ? subtreeFirstIndex(nodeKey) : Number.POSITIVE_INFINITY,
+    });
+  }
 
   const items: ResolvedMenuItemRow[] = defaults.map((item, defaultIndex) => {
     const row = configItemByKey.get(item.key);
     let parentKey = identity.items[defaultIndex]?.parentKey ?? null;
     let order = Number.POSITIVE_INFINITY;
-    // 配置归属有效：顶层叶子（null）或引用代码仍存在的分组（任意层级）；否则回退默认归属（仅保留改名）
-    if (row && (row.parentKey === null || identityKeys.has(row.parentKey))) {
+    // 配置归属有效：顶层叶子（null）或引用任意现存分组（代码默认或用户新建）；否则回退默认归属（仅保留改名）
+    if (row && (row.parentKey === null || allGroupKeys.has(row.parentKey))) {
       parentKey = row.parentKey;
       order = row.sortOrder;
     }

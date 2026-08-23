@@ -74,6 +74,45 @@ describe('菜单管理 Tab', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
   });
 
+  it('新建分组：创建自定义分组并重命名后保存到整树载荷', async () => {
+    const onSaved = vi.fn();
+    render(<MenuManagementTab systemCode="ASSET" defaults={FIXTURE} onSaved={onSaved} />);
+    expect(await screen.findByText('固定资产')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /新建分组/ }));
+    expect(screen.getByPlaceholderText('默认名：新分组（留空恢复默认）')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('默认名：新分组（留空恢复默认）'), { target: { value: '加班管理' } });
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+    expect(screen.getByText('有未保存的修改')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(httpMock.put).toHaveBeenCalledTimes(1));
+    const [path, payload] = httpMock.put.mock.calls[0] as unknown as [string, SystemMenuConfig];
+    expect(path).toBe('/system-menu-configs/ASSET');
+    const customGroup = payload.groups.find((row) => row.nodeKey.startsWith('custom:'));
+    expect(customGroup).toBeDefined();
+    expect(customGroup?.nameOverride).toBe('加班管理');
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+  });
+
+  it('新建分组后可删除空分组，保存载荷不再包含该分组', async () => {
+    const onSaved = vi.fn();
+    render(<MenuManagementTab systemCode="ASSET" defaults={FIXTURE} onSaved={onSaved} />);
+    expect(await screen.findByText('固定资产')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /新建分组/ }));
+    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
+    fireEvent.click(screen.getByLabelText('删除分组 新分组'));
+    expect(screen.getByText('有未保存的修改')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(httpMock.put).toHaveBeenCalledTimes(1));
+    const [path, payload] = httpMock.put.mock.calls[0] as unknown as [string, SystemMenuConfig];
+    expect(path).toBe('/system-menu-configs/ASSET');
+    expect(payload.groups.some((row) => row.nodeKey.startsWith('custom:'))).toBe(false);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+  });
+
   it('恢复默认：确认后 DELETE 并重建默认树', async () => {
     const onSaved = vi.fn();
     render(<MenuManagementTab systemCode="ASSET" defaults={FIXTURE} onSaved={onSaved} />);

@@ -26,7 +26,7 @@ function markSortable(columns: DataColumn[], keys: string[]): DataColumn[] {
 }
 
 const NAVIGATION: NavigationItem[] = [
-  { key: 'overtime', label: '加班申请', path: '/hr/overtime', permission: ['overtime_apply', 'proxy_overtime', 'overtime_history'] },
+  { key: 'overtime', label: '加班申请', path: '/hr/overtime', permission: ['overtime_apply', 'proxy_overtime', 'overtime_history'], group: '加班管理' },
   { key: 'approval', label: '审批中心', path: '/hr/approval', permission: ['overtime_approval', 'org_structure'] },
   { key: 'settings', label: '系统设置', path: '/hr/settings', permission: 'hr_config' },
   { key: 'employees', label: '组织成员', path: '/hr/employees', permission: 'org_structure', group: '组织架构' },

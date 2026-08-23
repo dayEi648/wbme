@@ -1,5 +1,5 @@
 import type { NavigationItem } from '../components/AppShell';
-import { comparePlacement, resolveMenuConfig } from './merge';
+import { comparePlacement, CUSTOM_GROUP_PREFIX, resolveMenuConfig } from './merge';
 import type { SystemMenuConfig } from './types';
 
 /**
@@ -111,6 +111,82 @@ export function findGroupNode(state: MenuEditorState, nodeKey: string): EditorGr
     return null;
   };
   return walk(state.top);
+}
+
+/** 新建分组 nodeKey（nodeKey 为稳定标识，不对外展示；优先使用 crypto.randomUUID 避免跨端碰撞） */
+function nextCustomGroupNodeKey(): string {
+  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `${CUSTOM_GROUP_PREFIX}${random}`;
+}
+
+/**
+ * 新建一个空分组。
+ *
+ * @param state 当前编辑器树
+ * @param parentKey 父分组 nodeKey；null = 顶层
+ * @param nameOverride 新建分组的中文名覆盖；null = 使用默认名「新分组」
+ * @returns 新树与新分组 nodeKey；父分组不存在时返回 null
+ */
+export function createGroupNode(
+  state: MenuEditorState,
+  parentKey: string | null,
+  nameOverride: string | null = null,
+): { next: MenuEditorState; nodeKey: string } | null {
+  const nodeKey = nextCustomGroupNodeKey();
+  const group: EditorGroupNode = { kind: 'group', nodeKey, nameOverride, children: [] };
+  if (parentKey === null) {
+    return { next: { top: [...state.top, group] }, nodeKey };
+  }
+  if (!findGroupNode(state, parentKey)) {
+    return null;
+  }
+  const insertInto = (nodes: EditorNode[]): EditorNode[] =>
+    nodes.map((node) => {
+      if (node.kind !== 'group') {
+        return node;
+      }
+      if (node.nodeKey === parentKey) {
+        return { ...node, children: [...node.children, group] };
+      }
+      return { ...node, children: insertInto(node.children) };
+    });
+  return { next: { top: insertInto(state.top) }, nodeKey };
+}
+
+/**
+ * 删除一个空分组（children 为空；非空分组返回 null，避免误删菜单项/子分组）。
+ *
+ * @param state 当前编辑器树
+ * @param nodeKey 要删除的分组 nodeKey
+ * @returns 删除后的新树；分组不存在或非空时返回 null
+ */
+export function deleteGroupNode(state: MenuEditorState, nodeKey: string): MenuEditorState | null {
+  const group = findGroupNode(state, nodeKey);
+  if (!group || group.children.length > 0) {
+    return null;
+  }
+  const removeFrom = (nodes: EditorNode[]): { nodes: EditorNode[]; found: boolean } => {
+    const index = nodes.findIndex((node) => node.kind === 'group' && node.nodeKey === nodeKey);
+    if (index !== -1) {
+      return { nodes: nodes.filter((_, position) => position !== index), found: true };
+    }
+    for (const [position, node] of nodes.entries()) {
+      if (node.kind !== 'group') {
+        continue;
+      }
+      const inner = removeFrom(node.children);
+      if (inner.found) {
+        const next = [...nodes];
+        next[position] = { ...node, children: inner.nodes };
+        return { nodes: next, found: true };
+      }
+    }
+    return { nodes, found: false };
+  };
+  const result = removeFrom(state.top);
+  return result.found ? { top: result.nodes } : null;
 }
 
 /** 收集分组子树内全部分组 nodeKey（含自身）——拖放守卫：分组不能落入自身或后代 */

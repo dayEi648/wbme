@@ -129,9 +129,10 @@ export function normalizeAndValidateMenuConfig(dto: SaveSystemMenuConfigDto): Sy
 /**
  * 系统导航菜单展示配置（主 PRD §2.1 菜单管理）。
  *
- * 代码仍是菜单项目录的唯一事实（key/path/默认名/权限）；本服务只持久化展示层配置
- * （排序/分组归属与层级/中文名覆盖），读取由前端与代码默认合并。整树单事务替换，
- * 重要写操作经 executeIdempotentOperation 幂等并落操作日志（主 PRD §9.5/§3.3）。
+ * 代码仍是菜单项目录的唯一事实（key/path/默认名/权限）；分组可由菜单管理新建
+ * （nodeKey 使用 `custom:` 前缀），本服务持久化展示层配置（排序/分组归属与层级/
+ * 中文名覆盖），读取由前端与代码默认合并。整树单事务替换，重要写操作经
+ * executeIdempotentOperation 幂等并落操作日志（主 PRD §9.5/§3.3）。
  */
 @Injectable()
 export class MenuConfigService {

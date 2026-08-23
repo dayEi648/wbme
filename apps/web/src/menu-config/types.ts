@@ -5,7 +5,8 @@ export type MenuSystemCode = 'BACKSTAGE' | 'ASSET' | 'HR' | 'FIN';
 
 /**
  * 菜单分组展示配置行（任意层级，分组可自由嵌套）。
- * nodeKey = 稳定身份（代码默认名按层级用 `/` 连接），不随改名/层级调整变化。
+ * nodeKey = 稳定身份：代码默认名按层级用 `/` 连接，菜单管理新建分组使用 `custom:` 前缀；
+ * 不随改名/层级调整变化。
  */
 export interface MenuGroupConfigRow {
   nodeKey: string;

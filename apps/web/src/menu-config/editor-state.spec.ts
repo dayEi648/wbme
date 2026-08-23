@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { NavigationItem } from '../components/AppShell';
 import {
   buildEditorState,
+  createGroupNode,
+  deleteGroupNode,
   findGroupNode,
   moveEditorNode,
   moveEditorNodeByOffset,
@@ -170,5 +172,51 @@ describe('菜单编辑器状态（build/serialize/move/rename）', () => {
     expect(groupOf(state, '消耗品/消耗品管理')?.nameOverride).toBe('品类与库位');
     state = renameEditorNode(state, { kind: 'item', itemKey: 'config' }, '  ')!;
     expect(state.top.find((node) => node.kind === 'item' && node.itemKey === 'config')?.nameOverride).toBeNull();
+  });
+
+  it('新建分组：顶层创建空分组并序列化/重建回环一致', () => {
+    const state = buildEditorState(FIXTURE, EMPTY_MENU_CONFIG);
+    const created = createGroupNode(state, null)!;
+    expect(created.nodeKey.startsWith('custom:')).toBe(true);
+    expect(topKeys(created.next).slice(-1)[0]).toBe(`g:${created.nodeKey}`);
+    expect(groupOf(created.next, created.nodeKey)?.children).toEqual([]);
+
+    const serialized = serializeEditorState(created.next);
+    expect(serialized.groups.find((row) => row.nodeKey === created.nodeKey)).toMatchObject({ parentKey: null, nameOverride: null });
+    expect(topKeys(buildEditorState(FIXTURE, serialized))).toEqual(topKeys(created.next));
+  });
+
+  it('新建分组：可创建到已有分组内，序列化保留 parentKey', () => {
+    const state = buildEditorState(FIXTURE, EMPTY_MENU_CONFIG);
+    const created = createGroupNode(state, '固定资产')!;
+    expect(childKeys(groupOf(created.next, '固定资产')?.children).slice(-1)[0]).toBe(`g:${created.nodeKey}`);
+
+    const serialized = serializeEditorState(created.next);
+    expect(serialized.groups.find((row) => row.nodeKey === created.nodeKey)).toMatchObject({ parentKey: '固定资产' });
+    expect(buildEditorState(FIXTURE, serialized)).toEqual(created.next);
+  });
+
+  it('新建分组：父分组不存在返回 null；改名后保存为 nameOverride', () => {
+    const state = buildEditorState(FIXTURE, EMPTY_MENU_CONFIG);
+    expect(createGroupNode(state, '不存在的分组')).toBeNull();
+
+    const created = createGroupNode(state, null)!;
+    const renamed = renameEditorNode(created.next, { kind: 'group', nodeKey: created.nodeKey }, '加班管理')!;
+    const serialized = serializeEditorState(renamed);
+    expect(serialized.groups.find((row) => row.nodeKey === created.nodeKey)?.nameOverride).toBe('加班管理');
+    expect(groupOf(buildEditorState(FIXTURE, serialized), created.nodeKey)?.nameOverride).toBe('加班管理');
+  });
+
+  it('删除分组：仅允许删除空分组，非空分组返回 null', () => {
+    const state = buildEditorState(FIXTURE, EMPTY_MENU_CONFIG);
+    const created = createGroupNode(state, null)!;
+    const deleted = deleteGroupNode(created.next, created.nodeKey)!;
+    expect(topKeys(deleted)).not.toContain(`g:${created.nodeKey}`);
+    // 非空分组不可删除（默认分组含菜单项；新建分组含子分组也不可删除）
+    expect(deleteGroupNode(state, '固定资产')).toBeNull();
+    const nested = createGroupNode(state, null)!;
+    const withChild = createGroupNode(nested.next, nested.nodeKey)!;
+    expect(deleteGroupNode(withChild.next, nested.nodeKey)).toBeNull();
+    expect(deleteGroupNode(state, '不存在的分组')).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { ArrowDownOutlined, ArrowUpOutlined, EditOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Input, Modal, Space, Spin, Tree, Typography } from 'antd';
 import type { TreeDataNode, TreeProps } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -8,6 +8,8 @@ import { http } from '../request/http';
 import {
   buildEditorState,
   collectGroupSubtreeKeys,
+  createGroupNode,
+  deleteGroupNode,
   moveEditorNode,
   moveEditorNodeByOffset,
   renameEditorNode,
@@ -117,6 +119,32 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
     [state],
   );
 
+  const handleAddGroup = () => {
+    if (!state) {
+      return;
+    }
+    const created = createGroupNode(state, null);
+    if (!created) {
+      return;
+    }
+    setState(created.next);
+    setDirty(true);
+    openRename({ kind: 'group', nodeKey: created.nodeKey }, groupDefaultName(created.nodeKey));
+  };
+
+  const handleDeleteGroup = (nodeKey: string) => {
+    if (!state) {
+      return;
+    }
+    const next = deleteGroupNode(state, nodeKey);
+    if (!next) {
+      feedback.error('仅可删除空分组，请先移出其中的菜单项或子分组');
+      return;
+    }
+    setState(next);
+    setDirty(true);
+  };
+
   const treeData = useMemo((): MenuTreeNode[] => {
     if (!state) {
       return [];
@@ -127,6 +155,7 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
       nameOverride: string | null,
       canMoveUp: boolean,
       canMoveDown: boolean,
+      canDelete: boolean,
     ) => {
       const displayName = nameOverride ?? defaultName;
       return (
@@ -172,6 +201,19 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
                 openRename(ref, defaultName);
               }}
             />
+            {canDelete ? (
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label={`删除分组 ${displayName}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleDeleteGroup(ref.kind === 'group' ? ref.nodeKey : '');
+                }}
+              />
+            ) : null}
           </Space>
         </div>
       );
@@ -181,7 +223,7 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
         const defaultName = defaultsByKey.get(node.itemKey)?.label ?? node.itemKey;
         return {
           key: `item:${node.itemKey}`,
-          title: titleOf({ kind: 'item', itemKey: node.itemKey }, defaultName, node.nameOverride, canMoveUp, canMoveDown),
+          title: titleOf({ kind: 'item', itemKey: node.itemKey }, defaultName, node.nameOverride, canMoveUp, canMoveDown, false),
           nodeType: 'item',
           container,
           payload: node,
@@ -191,7 +233,7 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
       return {
         key: `group:${node.nodeKey}`,
         // 默认名与层级无关：nodeKey 取末段（移动到任意层级后仍显示原默认名）
-        title: titleOf({ kind: 'group', nodeKey: node.nodeKey }, groupDefaultName(node.nodeKey), node.nameOverride, canMoveUp, canMoveDown),
+        title: titleOf({ kind: 'group', nodeKey: node.nodeKey }, groupDefaultName(node.nodeKey), node.nameOverride, canMoveUp, canMoveDown, node.children.length === 0),
         nodeType: 'group',
         container,
         payload: node,
@@ -203,7 +245,7 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
     return state.top.map((node, index) =>
       buildNode(node, { kind: 'top' }, index > 0, index < state.top.length - 1),
     );
-  }, [state, defaultsByKey, openRename, applyMove]);
+  }, [state, defaultsByKey, openRename, applyMove, handleDeleteGroup]);
 
   /** 拖放准入（antd 6：dropPosition 已是相对值，0 = 落入内部，±1 = 前后空隙）：
    * item 可落入分组内部或任意空隙（落到目标所在容器）；
@@ -342,8 +384,8 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Typography.Text type="secondary">
-        拖拽或用行右侧的上移/下移按钮调整菜单的排序与层级：菜单项与分组都可以在顶层与任意分组之间移动，
-        分组可嵌套到任意深度（不能落入自身或其后代）；点击编辑图标修改显示名称，留空即恢复默认名。
+        可新建分组；拖拽或用行右侧的上移/下移按钮调整菜单的排序与层级：菜单项与分组都可以在顶层与任意分组之间移动，
+        分组可嵌套到任意深度（不能落入自身或其后代）；点击编辑图标修改显示名称，留空即恢复默认名；空分组可删除。
         仅影响导航展示，不改变各页面的访问权限；保存后对本系统所有用户生效。
       </Typography.Text>
       {loading ? (
@@ -365,6 +407,9 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
             treeData={treeData}
           />
           <Space>
+            <Button icon={<PlusOutlined />} disabled={saving} onClick={handleAddGroup}>
+              新建分组
+            </Button>
             <Button type="primary" disabled={!dirty} loading={saving} onClick={() => void handleSave()}>
               保存
             </Button>
