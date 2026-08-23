@@ -41,8 +41,8 @@ export interface RecoveryExecutorDeps {
     /** 流式下载（问题16 修复；缺省时回退 getObject 整体读入，仅测试替身路径） */
     getObjectStream?(key: string): Promise<NodeJS.ReadableStream>;
     listPrefix(prefix: string): Promise<string[]>;
-    /** 对象元数据（服务端加密校验；本地替身可缺省，缺省时跳过加密验证） */
-    headObject?(key: string): Promise<{ serverSideEncryption?: string }>;
+    /** 对象元数据（服务端加密校验；本地替身通过 usesLocalFallback 跳过验证） */
+    headObject?(key: string): Promise<{ serverSideEncryption?: string; usesLocalFallback?: boolean }>;
   };
   /** Redis 连接串（恢复后清空） */
   redisUrl: string;
@@ -82,6 +82,24 @@ const BUSINESS_READY_POLL_MS = 5_000;
 
 /** 业务服务就绪探测超时（毫秒） */
 const BUSINESS_READY_PROBE_TIMEOUT_MS = 5_000;
+
+/** 备份对象加密元数据；usesLocalFallback 为 true 时表示本地替身，跳过加密校验。 */
+export interface BackupObjectEncryptionMeta {
+  serverSideEncryption?: string;
+  usesLocalFallback?: boolean;
+}
+
+/** OSS 场景强制要求备份对象为 SSE-OSS/AES256；本地替身跳过。 */
+export function assertBackupObjectEncryption(meta: BackupObjectEncryptionMeta): void {
+  if (meta.usesLocalFallback === true) {
+    return;
+  }
+  if (!meta.serverSideEncryption || meta.serverSideEncryption.toUpperCase() !== 'AES256') {
+    throw new Error(
+      `备份对象服务端加密元数据异常（${meta.serverSideEncryption ?? '缺失'}），未使用 SSE-OSS/AES256，禁止恢复`,
+    );
+  }
+}
 
 /**
  * 恢复执行状态机（backstage PRD §10）。
@@ -427,25 +445,24 @@ export class RecoveryExecutorService {
         throw new Error('备份对象在存储中不可达');
       }
       // 服务端加密元数据校验（主 PRD §9.2 第 265 行，问题6 修复）：
-      // 备份写入时统一携带 SSE-OSS/AES256；预检验证该头，有元数据但非 AES256 即拒绝，
-      // 防止明文落盘无法发现。本地替身无元数据（headObject 缺省/空）时跳过。
+      // 备份写入时统一携带 SSE-OSS/AES256；预检在 OSS 场景下必须确认该头为 AES256，
+      // 缺失或读取失败均 fail-closed，防止明文备份或无法确认加密状态的备份进入恢复。
+      // 本地替身无加密概念，通过 usesLocalFallback 标记跳过。
       if (storage.headObject) {
-        let encryption: string | undefined;
+        let meta: { serverSideEncryption?: string; usesLocalFallback?: boolean };
         try {
-          const meta = await storage.headObject(`backups/${this.manifest!.backupId}/dump.fc`);
-          encryption = meta.serverSideEncryption;
+          meta = await storage.headObject(`backups/${this.manifest!.backupId}/dump.fc`);
         } catch (error) {
-          this.logger.warn(
-            `备份对象元数据读取失败（跳过加密校验）: ${
+          throw new Error(
+            `备份对象元数据读取失败，禁止恢复: ${
               error instanceof Error ? error.message : error
             }`,
           );
         }
-        if (encryption && encryption.toUpperCase() !== 'AES256') {
-          throw new Error(
-            `备份对象服务端加密元数据异常（${encryption}），未使用 SSE-OSS/AES256，禁止恢复`,
-          );
+        if (meta.usesLocalFallback === true) {
+          this.logger.log('本地存储替身，跳过服务端加密元数据校验');
         }
+        assertBackupObjectEncryption(meta);
       }
     } finally {
       await db.end();

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { RecoveryExecutorService } from './recovery-executor.service';
+import { assertBackupObjectEncryption, RecoveryExecutorService } from './recovery-executor.service';
 
 /** 就绪检查所需的控制会话密钥（readiness 依赖） */
 const SESSION_SECRET = 'test-session-secret-32-chars-long!!';
@@ -177,5 +177,39 @@ describe('acceptDelivery 终态清单语义（批次8复核修复）', () => {
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('assertBackupObjectEncryption 备份加密预检', () => {
+  it('本地替身无加密元数据时跳过校验', () => {
+    expect(() => assertBackupObjectEncryption({ usesLocalFallback: true })).not.toThrow();
+  });
+
+  it('本地替身即使出现异常加密值也跳过校验', () => {
+    expect(() =>
+      assertBackupObjectEncryption({ serverSideEncryption: 'none', usesLocalFallback: true }),
+    ).not.toThrow();
+  });
+
+  it('OSS 场景 AES256 通过', () => {
+    expect(() =>
+      assertBackupObjectEncryption({ serverSideEncryption: 'AES256', usesLocalFallback: false }),
+    ).not.toThrow();
+  });
+
+  it('OSS 场景缺失加密元数据时拒绝', () => {
+    expect(() =>
+      assertBackupObjectEncryption({ usesLocalFallback: false }),
+    ).toThrow(/未使用 SSE-OSS\/AES256/);
+  });
+
+  it('OSS 场景非 AES256 加密时拒绝', () => {
+    expect(() =>
+      assertBackupObjectEncryption({ serverSideEncryption: 'KMS', usesLocalFallback: false }),
+    ).toThrow(/未使用 SSE-OSS\/AES256/);
+  });
+
+  it('未声明存储类型时按 OSS 处理，缺失加密元数据拒绝', () => {
+    expect(() => assertBackupObjectEncryption({})).toThrow(/未使用 SSE-OSS\/AES256/);
   });
 });

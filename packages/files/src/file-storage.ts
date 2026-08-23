@@ -212,21 +212,22 @@ export class FileStorageService {
    * 读取对象元数据（恢复预检验证服务端加密用，问题6 修复）。
    *
    * OSS 对象级 SSE（写入时携带 x-oss-server-side-encryption）会经 HEAD 响应头回显；
-   * 本地替身无加密概念，返回空元数据（调用方跳过验证）。
+   * 本地替身无加密概念，返回空元数据并标记本地回退，调用方据此跳过加密验证。
    *
    * @param objectKey OSS 对象键
-   * @returns 服务端加密方式（无元数据时为空）
+   * @returns 服务端加密方式与存储类型（本地替身时无加密元数据）
    */
-  async headObject(objectKey: string): Promise<{ serverSideEncryption?: string }> {
+  async headObject(objectKey: string): Promise<{ serverSideEncryption?: string; usesLocalFallback: boolean }> {
     if (this.oss) {
       const result = await this.oss.head(objectKey);
       const headers = (result.res?.headers ?? {}) as Record<string, unknown>;
       const encryption = headers['x-oss-server-side-encryption'];
       return {
         serverSideEncryption: typeof encryption === 'string' ? encryption : undefined,
+        usesLocalFallback: false,
       };
     }
-    return {};
+    return { usesLocalFallback: true };
   }
 
   /**
