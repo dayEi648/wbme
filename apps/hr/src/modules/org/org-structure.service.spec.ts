@@ -9,7 +9,7 @@ describe('ORG_EMPLOYEE_FILTER_FIELDS', () => {
       ORG_EMPLOYEE_FILTER_FIELDS,
     );
 
-    expect(compiled.orderBySql).toBe('ua.name ASC');
+    expect(compiled.orderBySql).toBe('ua.name ASC, ua.user_id DESC');
   });
 
   it('name 筛选按姓名模糊匹配', () => {

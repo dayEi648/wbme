@@ -98,7 +98,7 @@ describe('buildMyAssetTableQuery', () => {
         { field: 'updatedAt', direction: 'DESC' },
       ]),
     }));
-    expect(result.orderBy).toEqual([{ name: 'asc' }, { updatedAt: 'desc' }]);
+    expect(result.orderBy).toEqual([{ name: 'asc' }, { updatedAt: 'desc' }, { id: 'desc' }]);
   });
 });
 

@@ -35,7 +35,7 @@ const ACTIVE_RESTORE_STATUSES = ['PENDING', 'PRECHECK', 'MAINTENANCE', 'RESTORIN
 const EMERGENCY_BACKUP_POLL_INTERVAL_MS = 2_000;
 
 /** 紧急备份等待上限（毫秒；超时按失败处理，任务仍在执行时用户可重试继续等待） */
-const EMERGENCY_BACKUP_WAIT_MS = 300_000;
+export const EMERGENCY_BACKUP_WAIT_MS = 300_000;
 
 /** 复用本流程紧急备份的时间窗口（重试/幂等场景识别；backstage PRD §10 同一恢复流程只创建一个回退副本） */
 const EMERGENCY_BACKUP_RECENT_WINDOW_MS = 2 * 60 * 60 * 1000;

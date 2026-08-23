@@ -40,7 +40,7 @@ export class ProjectOperationService {
       this.prisma.client.projectOperation.count({ where: effectiveWhere }),
       this.prisma.client.projectOperation.findMany({
         where: effectiveWhere,
-        orderBy: (tableQuery.orderBy as Prisma.ProjectOperationOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }],
+        orderBy: (tableQuery.orderBy as Prisma.ProjectOperationOrderByWithRelationInput[] | undefined) ?? [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
         // 项目列：join 项目名（含已软删项目——操作记录展示删除前名称）

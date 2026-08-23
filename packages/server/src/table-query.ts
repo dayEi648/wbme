@@ -151,14 +151,19 @@ export function buildTablePrismaQuery(
 ): TablePrismaQuery {
   const filters = parseFilters(input.filters);
   const sorts = parseSorts(input.sorts);
+  const orderBy: Array<Record<string, 'asc' | 'desc'>> = sorts.map((sort) => {
+    const definition = fieldDefinition(sort.field, fields);
+    // 自定义谓词字段（无 Prisma 列）与多字段映射都不能排序
+    if (!('prismaField' in definition) || isMultiField(definition.prismaField)) throw validationError(`字段 ${sort.field} 不支持排序`);
+    return { [definition.prismaField]: sort.direction === 'ASC' ? 'asc' : 'desc' };
+  });
+  // 稳定分页兜底：自定义排序必须追加唯一 id 作为末级排序，避免同值行翻页重复/遗漏（主 PRD §9.5）
+  if (orderBy.length > 0 && !orderBy.some((sort) => 'id' in sort)) {
+    orderBy.push({ id: 'desc' });
+  }
   return {
     ...(filters ? { where: compileGroup(filters, fields) } : {}),
-    ...(sorts.length > 0 ? { orderBy: sorts.map((sort) => {
-      const definition = fieldDefinition(sort.field, fields);
-      // 自定义谓词字段（无 Prisma 列）与多字段映射都不能排序
-      if (!('prismaField' in definition) || isMultiField(definition.prismaField)) throw validationError(`字段 ${sort.field} 不支持排序`);
-      return { [definition.prismaField]: sort.direction === 'ASC' ? 'asc' : 'desc' };
-    }) } : {}),
+    ...(orderBy.length > 0 ? { orderBy } : {}),
   };
 }
 
@@ -189,16 +194,23 @@ export function buildTableSqlQuery(
     ? `(${node.conditions.map(compileNode).join(` ${node.logic} `)})`
     : compileSqlCondition(node, fields, nextParam);
   const whereSql = filters ? compileNode(filters) : undefined;
-  const orderBySql = sorts.length > 0
-    ? sorts.map((sort) => {
-      const definition = fields[sort.field];
-      if (!definition) throw validationError(`不支持筛选或排序字段 ${sort.field}`);
-      const column = definition.column;
-      // 自定义谓词字段（EXISTS 类）没有可排序的列表达式
-      if (column === undefined) throw validationError(`字段 ${sort.field} 不支持排序`);
-      return `${column} ${sort.direction}`;
-    }).join(', ')
-    : undefined;
+  const orderBySqlParts = sorts.map((sort) => {
+    const definition = fields[sort.field];
+    if (!definition) throw validationError(`不支持筛选或排序字段 ${sort.field}`);
+    const column = definition.column;
+    // 自定义谓词字段（EXISTS 类）没有可排序的列表达式
+    if (column === undefined) throw validationError(`字段 ${sort.field} 不支持排序`);
+    return `${column} ${sort.direction}`;
+  });
+  // 稳定分页兜底：自定义排序必须追加唯一 id 作为末级排序，避免同值行翻页重复/遗漏（主 PRD §9.5）。
+  // 仅当资源注册了可排序的 id 列且客户端未显式按 id 排序时追加。
+  const idDefinition = fields.id;
+  if (orderBySqlParts.length > 0
+    && !sorts.some((sort) => sort.field === 'id')
+    && idDefinition?.column) {
+    orderBySqlParts.push(`${idDefinition.column} DESC`);
+  }
+  const orderBySql = orderBySqlParts.length > 0 ? orderBySqlParts.join(', ') : undefined;
   return { ...(whereSql ? { whereSql } : {}), params, ...(orderBySql ? { orderBySql } : {}) };
 }
 

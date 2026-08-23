@@ -12,6 +12,7 @@ import {
 } from './table-query';
 
 const FIELDS = {
+  id: { prismaField: 'id', type: 'number' as const },
   name: { prismaField: 'name', type: 'text' as const },
   status: { prismaField: 'status', type: 'enum' as const },
   count: { prismaField: 'count', type: 'number' as const },
@@ -19,6 +20,7 @@ const FIELDS = {
 };
 
 const SQL_FIELDS = {
+  id: { column: 'id', type: 'number' as const },
   name: { column: 'name', type: 'text' as const },
   status: { column: 'status::text', type: 'enum' as const },
   count: { column: 'count', type: 'number' as const },
@@ -60,8 +62,16 @@ describe('buildTablePrismaQuery', () => {
           { count: { gte: 2 } },
         ],
       },
-      orderBy: [{ count: 'desc' }, { name: 'asc' }],
+      orderBy: [{ count: 'desc' }, { name: 'asc' }, { id: 'desc' }],
     });
+  });
+
+  it('自定义排序已包含 id 时不重复追加唯一性兜底', () => {
+    const result = buildTablePrismaQuery({
+      sorts: JSON.stringify([{ field: 'name', direction: 'ASC' }, { field: 'id', direction: 'ASC' }]),
+    }, FIELDS);
+
+    expect(result.orderBy).toEqual([{ name: 'asc' }, { id: 'asc' }]);
   });
 
   it('正确保留组内 AND、组间 OR 的筛选语义', () => {
@@ -112,6 +122,22 @@ describe('buildTablePrismaQuery', () => {
       params: ['asset', 'PENDING'],
       orderBySql: 'last_seen_at DESC, id ASC',
     });
+  });
+
+  it('SQL 自定义排序自动追加注册的 id 列作为唯一性兜底', () => {
+    const result = buildTableSqlQuery({
+      sorts: JSON.stringify([{ field: 'name', direction: 'ASC' }]),
+    }, SQL_FIELDS);
+
+    expect(result.orderBySql).toBe('name ASC, id DESC');
+  });
+
+  it('SQL 自定义排序已包含 id 时不重复追加唯一性兜底', () => {
+    const result = buildTableSqlQuery({
+      sorts: JSON.stringify([{ field: 'name', direction: 'ASC' }, { field: 'id', direction: 'ASC' }]),
+    }, SQL_FIELDS);
+
+    expect(result.orderBySql).toBe('name ASC, id ASC');
   });
 
   it('支持 SQL 参数偏移，供调用方在既有范围条件之后安全追加结构化条件', () => {

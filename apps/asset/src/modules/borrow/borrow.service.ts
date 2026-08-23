@@ -514,6 +514,7 @@ export class BorrowService {
 
 /** 借还记录结构化筛选字段：keyword 为跨列文本匹配；settlementStatus 为派生表达式。 */
 const BORROW_RECORD_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'id', type: 'number' },
   keyword: {
     type: 'text',
     compile: (context) => {

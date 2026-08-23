@@ -59,7 +59,7 @@ describe('ProjectOperationService.list', () => {
 
     expect(prisma.client.projectOperation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderBy: [{ createdAt: 'asc' }],
+        orderBy: [{ createdAt: 'asc' }, { id: 'desc' }],
       }),
     );
   });
@@ -73,7 +73,7 @@ describe('ProjectOperationService.list', () => {
 
     expect(prisma.client.projectOperation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderBy: [{ createdAt: 'desc' }],
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
     );
   });

@@ -140,7 +140,7 @@ describe('AnnouncementService', () => {
         where: Record<string, unknown>;
         orderBy: Array<Record<string, string>>;
       };
-      expect(call.orderBy).toEqual([{ publishedAt: 'asc' }]);
+      expect(call.orderBy).toEqual([{ publishedAt: 'asc' }, { id: 'desc' }]);
       expect(call.where).toMatchObject({
         deletedAt: null,
         AND: [{ AND: [{ title: { contains: '维护', mode: 'insensitive' } }] }],

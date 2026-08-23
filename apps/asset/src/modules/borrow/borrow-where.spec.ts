@@ -123,7 +123,7 @@ describe('buildBorrowWhereClause', () => {
     const { whereSql, params, orderBySql } = buildBorrowWhereClause({ filters, sorts });
     expect(whereSql).toContain('qty > $1');
     expect(params).toEqual([5]);
-    expect(orderBySql).toBe('created_at DESC, qty ASC');
+    expect(orderBySql).toBe('created_at DESC, qty ASC, id DESC');
   });
 
   it('仅有 sorts 时返回空 WHERE 与 orderBySql', () => {
@@ -131,7 +131,7 @@ describe('buildBorrowWhereClause', () => {
     const { whereSql, params, orderBySql } = buildBorrowWhereClause({ sorts });
     expect(whereSql).toBe('');
     expect(params).toEqual([]);
-    expect(orderBySql).toBe('due_at ASC');
+    expect(orderBySql).toBe('due_at ASC, id DESC');
   });
 
   it('无 sorts 时不返回 orderBySql，调用方保持默认排序', () => {

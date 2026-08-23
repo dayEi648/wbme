@@ -29,7 +29,7 @@
 
 `/restores/precheck` 请求体：`backupId`。普通（定时/立即）备份运行中返回 `{ ready: false, waitingForBackup: true, runningBackupId }`，前端停留在预检等待并轮询本接口直到放行（backstage PRD §10，不拒绝、不并发 pg_dump）；放行后返回 `{ ready: true, backupTime, fileSize, checksum, pgVersion }`。
 
-`/restores/confirm` 请求体：`backupId`、`idempotencyKey`、可选 `note`、可选 `proceedWithoutEmergency`（紧急备份失败时置 `true` 表示已人工确认风险后继续，backstage PRD §10 不得伪装为已有回退副本）。普通备份运行中的防御性检查仍返回 `BACKUP_LOCK_BUSY`（正常流程由预检等待保证不触发）；紧急备份等待窗口 300s，超时按失败处理、任务仍在执行时可重试继续等待（复用窗口内进行中的紧急备份）。
+`/restores/confirm` 请求体：`backupId`、`idempotencyKey`、可选 `note`、可选 `proceedWithoutEmergency`（紧急备份失败时置 `true` 表示已人工确认风险后继续，backstage PRD §10 不得伪装为已有回退副本）。普通备份运行中的防御性检查仍返回 `BACKUP_LOCK_BUSY`（正常流程由预检等待保证不触发）；紧急备份等待窗口 300s，超时按失败处理、任务仍在执行时可重试继续等待（复用窗口内进行中的紧急备份）。该路由使用独立 330s 路由级超时（Nginx 精确匹配路由读超时 360s），避免被全局 30s HTTP 超时截断。
 
 错误码见 contracts `backupErrors`：`RESTORE_IN_PROGRESS`、`BACKUP_LOCK_BUSY`、`EMERGENCY_BACKUP_FAILED` 等。
 

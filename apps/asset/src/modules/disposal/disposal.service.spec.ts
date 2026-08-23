@@ -29,7 +29,7 @@ describe('buildDisposalRecordWhereClause', () => {
     );
     expect(result.whereSql).toContain("dr.disposal_type = $1");
     expect(result.params).toEqual(['RETURN']);
-    expect(result.orderBySql).toBe('dr.created_at DESC');
+    expect(result.orderBySql).toBe('dr.created_at DESC, dr.id DESC');
   });
 
   it('仅有 sorts 时返回 TRUE 条件与 orderBySql', () => {
@@ -40,7 +40,7 @@ describe('buildDisposalRecordWhereClause', () => {
     );
     expect(result.whereSql).toBe('TRUE');
     expect(result.params).toEqual([]);
-    expect(result.orderBySql).toBe("COALESCE(dr.user_name, ar.applicant_name, '') ASC");
+    expect(result.orderBySql).toBe("COALESCE(dr.user_name, ar.applicant_name, '') ASC, dr.id DESC");
   });
 
   it('部门范围与 sorts 同时存在时参数编号连续', () => {
@@ -50,6 +50,6 @@ describe('buildDisposalRecordWhereClause', () => {
       { kind: 'DEPARTMENT', departmentIds: new Set([1, 2]) },
     );
     expect(result.params).toEqual([[1, 2]]);
-    expect(result.orderBySql).toBe('dr.created_at ASC');
+    expect(result.orderBySql).toBe('dr.created_at ASC, dr.id DESC');
   });
 });

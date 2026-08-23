@@ -332,7 +332,7 @@ describe('用户管理结构化查询白名单（单元）', () => {
     });
 
     const call = findMany.mock.calls[0]![0] as { where: Record<string, unknown>; orderBy: Array<Record<string, string>> };
-    expect(call.orderBy).toEqual([{ createdAt: 'desc' }]);
+    expect(call.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     expect(call.where).toMatchObject({
       deletedAt: null,
       AND: [{ AND: [{ name: { equals: '张三', mode: 'insensitive' } }] }],

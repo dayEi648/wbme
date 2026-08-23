@@ -605,7 +605,7 @@ describe('人员权限员工列表结构化查询白名单（单元）', () => {
       },
       EMPLOYEE_FILTER_FIELDS,
     );
-    expect(query.orderBy).toEqual([{ name: 'asc' }]);
+    expect(query.orderBy).toEqual([{ name: 'asc' }, { id: 'desc' }]);
     expect(query.where).toEqual({ AND: [{ name: { contains: '张', mode: 'insensitive' } }] });
   });
 });

@@ -13,6 +13,7 @@ import { bumpUserOrgVersion } from '../../shared/org-version.service';
  * 导出供单元测试验证字段注册与编译行为。
  */
 export const ORG_EMPLOYEE_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'ua.user_id', type: 'number' },
   keyword: { column: 'ua.name', type: 'text' },
   name: { column: 'ua.name', type: 'text' },
   status: { column: 'ua.status::text', type: 'enum' },

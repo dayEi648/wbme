@@ -1,7 +1,7 @@
 import { ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Inject, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { DATA_BACKUP_FUNCTION_CODE } from '@wbme/contracts';
-import { CurrentUser, RateLimit, RateLimitGuard } from '@wbme/server';
+import { CurrentUser, RateLimit, RateLimitGuard, RequestTimeout } from '@wbme/server';
 import type { Response } from 'express';
 import { FunctionPermissionGuard, RequireFunction } from '../permission/function-permission.guard';
 import {
@@ -11,8 +11,11 @@ import {
   RestoreConfirmDto,
   RestorePrecheckDto,
 } from './backup.dto';
-import { BackupService } from './backup.service';
+import { BackupService, EMERGENCY_BACKUP_WAIT_MS } from './backup.service';
 import { RecoverySessionClient } from './recovery-session.client';
+
+/** 恢复确认路由超时：紧急备份等待上限 300s + 30s 处理/响应缓冲（全局默认 30s 会截断长任务） */
+const RESTORE_CONFIRM_TIMEOUT_MS = EMERGENCY_BACKUP_WAIT_MS + 30_000;
 
 /**
  * 数据备份与恢复管理 API（backstage PRD §10）。
@@ -50,6 +53,7 @@ export class BackupController {
   }
 
   @Post('restores/confirm')
+  @RequestTimeout(RESTORE_CONFIRM_TIMEOUT_MS)
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'restore-confirm', keyType: 'user', limit: 5, windowSeconds: 300 })
   confirmRestore(@CurrentUser() operatorId: number, @Body() dto: RestoreConfirmDto): Promise<unknown> {
