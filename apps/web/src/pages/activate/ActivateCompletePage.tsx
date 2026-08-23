@@ -53,7 +53,7 @@ export default function ActivateCompletePage() {
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Form<ActivatePayload> layout="vertical" onFinish={onFinish} requiredMark={false} initialValues={{ gender: 'MALE' }}>
             <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }, { max: 50 }]}>
-              <Input placeholder="姓名" maxLength={50} />
+              <Input maxLength={50} />
             </Form.Item>
             <Form.Item name="gender" label="性别" rules={[{ required: true }]}>
               <Radio.Group>
@@ -61,11 +61,11 @@ export default function ActivateCompletePage() {
                 <Radio value="FEMALE">女</Radio>
               </Radio.Group>
             </Form.Item>
-            <Form.Item name="password" label="平台密码" rules={[{ required: true, min: 8, max: 32, message: '密码需 8~32 个字符' }]}>
-              <Input.Password placeholder="8~32 个字符" />
+            <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, max: 32, message: '密码需 8~32 个字符' }]}>
+              <Input.Password />
             </Form.Item>
             <Form.Item name="confirmPassword" label="确认密码" rules={[{ required: true, min: 8, max: 32 }]}>
-              <Input.Password placeholder="再次输入密码" />
+              <Input.Password />
             </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
               <Button type="primary" htmlType="submit" block loading={submitting}>

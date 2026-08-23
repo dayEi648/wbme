@@ -96,10 +96,10 @@ export function ResetCompletePage() {
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item name="newPassword" label="新密码" rules={[{ required: true, min: 8, max: 32, message: '密码需 8~32 个字符' }]}>
-              <Input.Password placeholder="8~32 个字符" />
+              <Input.Password />
             </Form.Item>
             <Form.Item name="confirmPassword" label="确认新密码" rules={[{ required: true, min: 8, max: 32 }]}>
-              <Input.Password placeholder="再次输入密码" />
+              <Input.Password />
             </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
               <Button type="primary" htmlType="submit" block loading={submitting}>

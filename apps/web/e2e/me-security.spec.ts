@@ -10,8 +10,8 @@ const PASSWORD = process.env.E2E_USER_PASSWORD ?? 'E2ePassw0rd!';
 test.describe('账户安全', () => {
   test('未绑定钉钉的账号在账户安全页可见自助绑定入口', async ({ page }) => {
     await page.goto('/login');
-    await page.getByPlaceholder('手机号').fill(PHONE);
-    await page.getByPlaceholder('密码（8~32 位）').fill(PASSWORD);
+    await page.getByLabel('手机号').fill(PHONE);
+    await page.getByLabel('密码').fill(PASSWORD);
     await page.locator('button[type="submit"]').click();
     await expect(page).toHaveURL(/\/portal/, { timeout: 15_000 });
 

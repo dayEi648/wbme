@@ -94,19 +94,19 @@ export default function LoginPage() {
   const { token } = theme.useToken();
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
-      <Card style={{ width: 'min(380px, 100vw - 32px)' }}>
+      <Card title="WBME 企业管理平台" style={{ width: 'min(380px, 100vw - 32px)' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Form<LoginPayload> layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]}>
-              <Input prefix={<UserOutlined />} placeholder="手机号" maxLength={32} autoComplete="username" />
+              <Input prefix={<UserOutlined />} maxLength={32} autoComplete="username" />
             </Form.Item>
             <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-              <Input.Password prefix={<LockOutlined />} placeholder="密码（8~32 位）" autoComplete="current-password" />
+              <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />
             </Form.Item>
             <Form.Item style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Form.Item name="rememberMe" valuePropName="checked" noStyle>
-                  <Checkbox>记住我（延长会话时限）</Checkbox>
+                  <Checkbox>记住我</Checkbox>
                 </Form.Item>
                 <Button type="link" size="small" onClick={() => setResetOpen(true)}>
                   忘记密码？
@@ -129,7 +129,7 @@ export default function LoginPage() {
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Form layout="vertical" onFinish={startSelfReset} requiredMark={false}>
             <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]}>
-              <Input placeholder="手机号" maxLength={32} autoComplete="username" />
+              <Input maxLength={32} autoComplete="username" />
             </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
               <Button type="primary" htmlType="submit" block loading={resetSubmitting}>

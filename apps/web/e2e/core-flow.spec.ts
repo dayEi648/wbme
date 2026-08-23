@@ -9,8 +9,8 @@ const PASSWORD = process.env.E2E_USER_PASSWORD ?? 'E2ePassw0rd!';
 
 async function login(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login');
-  await page.getByPlaceholder('手机号').fill(PHONE);
-  await page.getByPlaceholder('密码（8~32 位）').fill(PASSWORD);
+  await page.getByLabel('手机号').fill(PHONE);
+  await page.getByLabel('密码').fill(PASSWORD);
   await page.locator('button[type="submit"]').click();
   await expect(page).toHaveURL(/\/portal/, { timeout: 15_000 });
 }
