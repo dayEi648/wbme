@@ -77,7 +77,6 @@ interface PaginatedResponse {
 
 export interface DataTableProps {
   title: string;
-  description?: string;
   service: ApiService;
   endpoint: string;
   pageKey: string;
@@ -210,7 +209,6 @@ export function isNumericCell(column: DataColumn, value: unknown): boolean {
  */
 export function DataTable({
   title,
-  description,
   service,
   endpoint,
   pageKey,
@@ -560,14 +558,7 @@ export function DataTable({
   ];
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Typography.Title level={3} style={{ marginBottom: 4 }}>
-          {title}
-        </Typography.Title>
-        {description ? <Typography.Text type="secondary">{description}</Typography.Text> : null}
-      </div>
-
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
       {/* 移动端工具栏：首屏只保留筛选与页面主操作，次要操作折叠进「更多」（桌面端形态不变）。 */}
       <div className="wbme-mobile-toolbar">
         <Space wrap>
@@ -695,6 +686,7 @@ export function DataTable({
           <>
             <div className="wbme-desktop-table">
               <Table<RecordValue>
+                aria-label={title}
                 rowKey={(row) => String(row[rowKey])}
                 columns={tableColumns}
                 dataSource={rows}
@@ -882,7 +874,7 @@ export function DataTable({
           <Button type="primary" htmlType="submit" block>保存名称</Button>
         </Form>
       </Modal>
-    </Space>
+    </div>
   );
 }
 

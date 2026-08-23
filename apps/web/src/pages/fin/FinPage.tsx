@@ -254,7 +254,7 @@ export default function FinPage() {
       case 'profit':
         return null;
       default:
-        return <SystemHome systemName="财务系统" welcome="维护工程合同、金额明细、利润分析和财务配置。" items={navigationItems} />;
+        return <SystemHome items={navigationItems} />;
     }
   }, [section, navigationItems, reloadMenuConfig]);
   return <AppShell systemName="财务系统" homePath="/fin" items={navigationItems}>
@@ -864,10 +864,7 @@ export function ProfitAnalysis() {
 
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-      <div>
-        <Typography.Title level={3} style={{ marginBottom: 4 }}>利润分析</Typography.Title>
-        <Space>{saveStatusTag()}{Object.keys(drafts).length > 0 ? <Typography.Text type="warning">有 {Object.keys(drafts).length} 个未提交草稿</Typography.Text> : null}</Space>
-      </div>
+      <Space>{saveStatusTag()}{Object.keys(drafts).length > 0 ? <Typography.Text type="warning">有 {Object.keys(drafts).length} 个未提交草稿</Typography.Text> : null}</Space>
       {/* 页头操作区：撤销/重做（⌘Z / ⌘⇧Z）+ 导入 + 导出（导出已筛选携带当前筛选条件） */}
       <Space wrap>
         <Button icon={<UndoOutlined />} disabled={undoStack.length === 0} onClick={() => void doUndo()}>撤销</Button>
@@ -1062,7 +1059,7 @@ const FIN_SETTINGS_LABELS: Readonly<Record<string, string>> = {
 function FinanceConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
-      { key: 'params', label: '运行参数', children: <JsonDetails title="财务运行参数" service="fin" endpoint="/finance-settings" labelMap={FIN_SETTINGS_LABELS} /> },
+      { key: 'params', label: '运行参数', children: <JsonDetails service="fin" endpoint="/finance-settings" labelMap={FIN_SETTINGS_LABELS} /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="FIN" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'dictType', title: '类型', sortable: true }, { key: 'name', title: '名称', sortable: true }, { key: 'semantic', title: '金额语义', sortable: true }, { key: 'status', title: '状态', sortable: true }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids', previewEndpoint: '/finance-dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `被工程合同引用 ${String(item.referencedCount ?? 0)} 处（${FIN_DICT_TYPE_LABELS[String(item.dictType ?? '')] ?? String(item.dictType ?? '未知类型')}）` }) }} /> },
     ]} />

@@ -383,11 +383,6 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Typography.Text type="secondary">
-        可新建分组；拖拽或用行右侧的上移/下移按钮调整菜单的排序与层级：菜单项与分组都可以在顶层与任意分组之间移动，
-        分组可嵌套到任意深度（不能落入自身或其后代）；点击编辑图标修改显示名称，留空即恢复默认名；空分组可删除。
-        仅影响导航展示，不改变各页面的访问权限；保存后对本系统所有用户生效。
-      </Typography.Text>
       {loading ? (
         <Spin />
       ) : loadFailed || !state ? (

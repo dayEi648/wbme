@@ -1,4 +1,4 @@
-import { Breadcrumb, Typography } from 'antd';
+import { Breadcrumb } from 'antd';
 import { useMemo, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { HistoryNavButtons } from '../../components/HistoryNavButtons';
@@ -40,14 +40,11 @@ export default function MePage() {
   }, [section]);
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', padding: 24 }}>
-      <div style={{ marginBottom: 8 }}>
+    <div style={{ maxWidth: 1080, margin: '0 auto', padding: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
         <HistoryNavButtons onRefresh={() => setRefreshKey((value) => value + 1)} />
+        <Breadcrumb style={{ marginLeft: 12 }} items={[{ title: '门户', href: '/portal' }, { title: '个人中心' }]} />
       </div>
-      <Breadcrumb style={{ marginBottom: 8 }} items={[{ title: '门户', href: '/portal' }, { title: '个人中心' }]} />
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        个人中心
-      </Typography.Title>
       <div key={refreshKey}>{body}</div>
     </div>
   );

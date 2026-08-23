@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Radio, Space, Typography } from 'antd';
+import { Button, Card, Form, Input, Radio, Space } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
@@ -63,15 +63,10 @@ export default function RegisterPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Card style={{ width: 'min(420px, 100vw - 32px)' }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div style={{ textAlign: 'center' }}>
-            <Typography.Title level={4} style={{ marginBottom: 4 }}>
-              完善注册信息
-            </Typography.Title>
-            <Typography.Text type="secondary">
-              手机号 <Typography.Text strong>{phone}</Typography.Text>（来自钉钉，只读）
-            </Typography.Text>
-          </div>
           <Form<RegisterPayload> layout="vertical" onFinish={onFinish} requiredMark={false} initialValues={{ gender: 'MALE' }}>
+            <Form.Item label="手机号">
+              <Input value={phone} disabled />
+            </Form.Item>
             <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }, { max: 50 }]}>
               <Input placeholder="姓名" maxLength={50} />
             </Form.Item>

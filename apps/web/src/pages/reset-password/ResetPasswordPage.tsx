@@ -94,12 +94,6 @@ export function ResetCompletePage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Card style={{ width: 'min(420px, 100vw - 32px)' }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div style={{ textAlign: 'center' }}>
-            <Typography.Title level={4} style={{ marginBottom: 4 }}>
-              设置新密码
-            </Typography.Title>
-            <Typography.Text type="secondary">设置完成后原会话全部失效，需重新登录</Typography.Text>
-          </div>
           <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item name="newPassword" label="新密码" rules={[{ required: true, min: 8, max: 32, message: '密码需 8~32 个字符' }]}>
               <Input.Password placeholder="8~32 个字符" />

@@ -54,7 +54,7 @@ const groupMenuKey = (path: string[]): string => `group:${path.join('/')}`;
  *
  * 菜单按祖先分组路径递归渲染：分组可自由嵌套（代码默认最多两级，菜单管理可突破）；
  * 未分组的项作为顶层叶子。提供菜单内搜索；Header 左侧为全站统一的回退/前进/刷新，
- * Header 下方提供面包屑（系统名 → 各级分组 → 页面）。
+ * Header 内展示当前页面位置面包屑（系统名 → 各级分组 → 页面）。
  * 菜单只渲染当前会话被授予的功能；路由及接口的最终访问控制仍由服务端负责。
  */
 export function AppShell({ systemName, homePath, items, children }: AppShellProps) {
@@ -178,7 +178,7 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
           <Space>
             {!screens.lg ? <Button type="text" icon={<MenuOutlined />} aria-label="打开导航" onClick={() => setMobileNavOpen(true)} /> : null}
             <HistoryNavButtons onRefresh={() => setRefreshKey((value) => value + 1)} />
-            <Typography.Text strong>{systemName}</Typography.Text>
+            {current ? <Breadcrumb items={breadcrumbItems} /> : <Typography.Text strong>{systemName}</Typography.Text>}
           </Space>
           <Space>
             <Button type="text" icon={<AppstoreOutlined />} onClick={() => navigate('/portal')}>
@@ -190,10 +190,7 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
             <Button type="text" icon={<LogoutOutlined />} aria-label="退出登录" onClick={() => void handleLogout()} />
           </Space>
         </Header>
-        <Content style={{ padding: screens.lg ? 24 : 16, maxWidth: 1680, width: '100%', margin: '0 auto' }}>
-          {current ? (
-            <Breadcrumb style={{ marginBottom: 16 }} items={breadcrumbItems} />
-          ) : null}
+        <Content style={{ padding: screens.lg ? 16 : 12, maxWidth: 1680, width: '100%', margin: '0 auto' }}>
           <div key={refreshKey}>{children}</div>
         </Content>
       </Layout>

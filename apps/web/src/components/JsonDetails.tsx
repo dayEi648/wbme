@@ -1,4 +1,4 @@
-import { Alert, Card, Descriptions, Spin, Typography } from 'antd';
+import { Alert, Card, Descriptions, Spin } from 'antd';
 import { useEffect, useState } from 'react';
 import { useFeedback } from '../request/feedback';
 import { http, type ApiService } from '../request/http';
@@ -11,16 +11,14 @@ function isRecord(value: unknown): value is RecordValue {
 }
 
 interface JsonDetailsProps {
-  title: string;
   service: ApiService;
   endpoint: string;
-  description?: string;
   /** 业务详情的字段中文名；通用字段使用共享映射。 */
   labelMap?: Readonly<Record<string, string>>;
 }
 
 /** 只读详情/状态页共用加载器，动态字段以安全文本呈现。 */
-export function JsonDetails({ title, service, endpoint, description, labelMap }: JsonDetailsProps) {
+export function JsonDetails({ service, endpoint, labelMap }: JsonDetailsProps) {
   const feedback = useFeedback();
   const [data, setData] = useState<RecordValue | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,8 +40,6 @@ export function JsonDetails({ title, service, endpoint, description, labelMap }:
 
   return (
     <>
-      <Typography.Title level={3}>{title}</Typography.Title>
-      {description ? <Typography.Paragraph type="secondary">{description}</Typography.Paragraph> : null}
       <Card>
         {loading ? <Spin tip="正在加载..." /> : data ? <Descriptions bordered column={1} items={Object.entries(data).map(([key, value]) => ({
           key,

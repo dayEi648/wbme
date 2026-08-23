@@ -305,7 +305,7 @@ export default function AssetPage() {
       case 'config':
         return <AssetConfig onMenuSaved={reloadMenuConfig} />;
       default:
-        return <SystemHome systemName="资产系统" welcome="办理资产台账、消耗品库存、申领审批与资产配置。" items={navigationItems} />;
+        return <SystemHome items={navigationItems} />;
     }
   }, [section, navigationItems, reloadMenuConfig]);
   return <AppShell systemName="资产系统" homePath="/asset" items={navigationItems}>{body}</AppShell>;
@@ -906,13 +906,8 @@ function ClaimRequests() {
   const [searchParams] = useSearchParams();
   const rawInventoryItemId = searchParams.get('inventoryItemId');
   const initialValues = buildScannedClaimInitialValues(rawInventoryItemId);
-  const inventoryItemId = initialValues === undefined ? null : Number(rawInventoryItemId);
-  const description = inventoryItemId === null
-    ? undefined
-    : '已根据二维码定位库存条目，申领明细已预填；请确认数量并填写用途后提交。';
   return <ResourcePage
     title="消耗品申领"
-    description={description}
     service="asset"
     endpoint="/consumable-requests/mine"
     pageKey="asset-claims"
@@ -935,7 +930,7 @@ function ApprovalPage() {
 function AssetConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
-      { key: 'params', label: '运行参数', children: <SettingsEditor title="资产运行参数" service="asset" endpoint="/asset-settings" save={async (item, value) => {
+      { key: 'params', label: '运行参数', children: <SettingsEditor service="asset" endpoint="/asset-settings" save={async (item, value) => {
         if (item.key === 'asset.scan.entry.url') {
           await http.put('/asset-settings', { scanEntryUrl: value }, { service: 'asset' });
           return;

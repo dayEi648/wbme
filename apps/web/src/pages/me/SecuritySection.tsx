@@ -10,7 +10,6 @@ interface SecurityItem {
   key: string;
   icon: ReactNode;
   title: string;
-  description: string;
   /** 行右侧内容：操作按钮或只读状态。 */
   extra: ReactNode;
 }
@@ -98,23 +97,18 @@ export function SecuritySection() {
       key: 'password',
       icon: <KeyOutlined />,
       title: '登录密码',
-      description: '定期修改密码可提升账号安全性；修改成功后全部登录状态失效，需重新登录。',
       extra: <Button onClick={() => setPasswordOpen(true)}>修改密码</Button>,
     },
     {
       key: 'phone',
       icon: <MobileOutlined />,
       title: '手机号',
-      description: '手机号以钉钉授权返回的号码为准，平台内不提供修改入口；钉钉侧更换号码后，下次钉钉扫码登录时将自动同步更新。',
       extra: <Typography.Text strong>{user?.phoneMasked ?? '—'}</Typography.Text>,
     },
     {
       key: 'dingtalk',
       icon: <DingtalkOutlined />,
       title: '钉钉账号',
-      description: hasDingtalkBinding
-        ? '可使用钉钉扫码登录，手机号随每次钉钉授权自动同步。'
-        : '未绑定钉钉账号，无法使用扫码登录与手机号自动同步；扫码绑定后立即生效。',
       extra: hasDingtalkBinding ? (
         <Tag color="success">已绑定</Tag>
       ) : (
@@ -137,7 +131,6 @@ export function SecuritySection() {
               </Typography.Text>
               <Flex vertical gap={4}>
                 <Typography.Text strong>{item.title}</Typography.Text>
-                <Typography.Text type="secondary">{item.description}</Typography.Text>
               </Flex>
             </Flex>
             {item.extra}
@@ -167,9 +160,6 @@ export function SecuritySection() {
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-            修改成功后全部登录状态失效，需重新登录。
-          </Typography.Paragraph>
           <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button onClick={() => setPasswordOpen(false)}>取消</Button>
             <Button type="primary" htmlType="submit" loading={submitting}>

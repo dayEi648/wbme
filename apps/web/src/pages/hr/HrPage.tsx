@@ -116,7 +116,7 @@ export default function HrPage() {
       case 'settings':
         return <HrSettings onMenuSaved={reloadMenuConfig} />;
       default:
-        return <SystemHome systemName="人事系统" welcome="办理组织架构、岗位职称、加班申请与人事审批。" items={navigationItems} />;
+        return <SystemHome items={navigationItems} />;
     }
   }, [section, navigationItems, reloadMenuConfig]);
   return <AppShell systemName="人事系统" homePath="/hr" items={navigationItems}>{body}</AppShell>;
@@ -342,7 +342,7 @@ function OvertimeMine() {
 function HrSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
-      { key: 'params', label: '运行参数', children: <SettingsEditor title="人事运行参数" service="hr" endpoint="/hr-settings" save={async (item, value) => { await http.put(`/hr-settings/${item.key}`, { value }, { service: 'hr' }); }} /> },
+      { key: 'params', label: '运行参数', children: <SettingsEditor service="hr" endpoint="/hr-settings" save={async (item, value) => { await http.put(`/hr-settings/${item.key}`, { value }, { service: 'hr' }); }} /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="HR" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'dicts', label: '人事字典', children: <ResourcePage title="人事字典" service="hr" endpoint="/dicts" pageKey="hr-dicts" columns={markSortable([...COMMON_COLUMNS, { key: 'dictType', title: '类型', render: (value: unknown) => displayDictType(value) }], ['name', 'status', 'createdAt', 'dictType'])} create={{ title: '新建字典项', endpoint: '/dicts', fields: [{ key: 'dictType', label: '字典类型', type: 'select' as const, options: HR_DICT_TYPE_OPTIONS, required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' as const, width: 'narrow' as const }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dicts/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dicts/delete', bodyKey: 'ids', previewEndpoint: '/dicts/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 条` }) }} /> },
     ]} />

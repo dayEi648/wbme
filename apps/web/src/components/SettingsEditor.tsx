@@ -11,8 +11,6 @@ interface SettingItem {
 }
 
 interface SettingsEditorProps {
-  title: string;
-  description?: string;
   service: ApiService;
   endpoint: string;
   /** 将一项设置转换为所属服务的更新请求。 */
@@ -24,7 +22,7 @@ interface SettingsEditorProps {
  *
  * 读取服务端注册的键，再逐项提交；具体写入路径由调用页面提供，避免把 asset/hr 的契约差异隐藏在组件内。
  */
-export function SettingsEditor({ title, description, service, endpoint, save }: SettingsEditorProps) {
+export function SettingsEditor({ service, endpoint, save }: SettingsEditorProps) {
   const feedback = useFeedback();
   const [items, setItems] = useState<SettingItem[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -62,10 +60,6 @@ export function SettingsEditor({ title, description, service, endpoint, save }: 
   };
 
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <div>
-      <Typography.Title level={3} style={{ marginBottom: 4 }}>{title}</Typography.Title>
-      {description ? <Typography.Paragraph type="secondary">{description}</Typography.Paragraph> : null}
-    </div>
     <Card loading={loading}>
       {loading ? <Spin /> : items.length === 0 ? <Typography.Text type="secondary">当前没有可配置的运行参数。</Typography.Text> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {items.map((item) => <Card key={item.key} size="small" title={item.label}>

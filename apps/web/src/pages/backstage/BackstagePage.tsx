@@ -231,7 +231,7 @@ export default function BackstagePage() {
       case 'health':
         return <HealthStatusPage />;
       default:
-        return <SystemHome systemName="管理后台" welcome="管理平台用户、权限、系统配置与运维状态。" items={navigationItems} />;
+        return <SystemHome items={navigationItems} />;
     }
   }, [section, navigationItems, reloadMenuConfig]);
   return <AppShell systemName="管理后台" homePath="/backstage" items={navigationItems}>{body}</AppShell>;

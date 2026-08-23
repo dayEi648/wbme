@@ -100,7 +100,6 @@ describe('个人中心 Tab 结构', () => {
     expect(await screen.findByText('登录密码')).toBeTruthy();
     expect(activePanel.getByText('手机号')).toBeTruthy();
     expect(activePanel.getByText('+86 138****8000')).toBeTruthy();
-    expect(activePanel.getByText(/平台内不提供修改入口/)).toBeTruthy();
     expect(activePanel.getByText('钉钉账号')).toBeTruthy();
     expect(activePanel.getByText('已绑定')).toBeTruthy();
     fireEvent.click(activePanel.getByRole('button', { name: '修改密码' }));

@@ -1,4 +1,4 @@
-import { Button, Card, Result, Spin, Typography } from 'antd';
+import { Button, Card, Result, Spin } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ApiError, http } from '../../request/http';
@@ -61,9 +61,6 @@ export default function ActivatePage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Card style={{ width: 'min(420px, 100vw - 32px)' }}>
         <Result status="error" title="激活失败" subTitle={errorMessage} />
-        <Typography.Paragraph type="secondary" style={{ textAlign: 'center' }}>
-          请联系管理员重新生成激活邀请
-        </Typography.Paragraph>
         <Button type="primary" block href="/login">
           返回登录
         </Button>

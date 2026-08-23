@@ -53,17 +53,9 @@ export default function PortalPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', maxWidth: 960, margin: '0 auto', padding: 32 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-        <Space size="middle" align="start">
-          <HistoryNavButtons onRefresh={() => setRefreshKey((value) => value + 1)} />
-          <div>
-            <Typography.Title level={2} style={{ marginBottom: 0 }}>
-              {portal?.brand.name ?? 'WBME 企业管理平台'}
-            </Typography.Title>
-            <Typography.Text type="secondary">欢迎，{portal?.user?.name}</Typography.Text>
-          </div>
-        </Space>
+    <div style={{ minHeight: '100vh', maxWidth: 960, margin: '0 auto', padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <HistoryNavButtons onRefresh={() => setRefreshKey((value) => value + 1)} />
         <Space>
           <Button icon={<BellOutlined />} onClick={() => setAnnouncementOpen(true)}>
             系统公告
@@ -77,7 +69,6 @@ export default function PortalPage() {
         </Space>
       </div>
 
-      <Typography.Title level={4}>系统入口</Typography.Title>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
         {portal?.systems
           // 入口可见规则：仅展示当前用户拥有至少一项功能授权的系统（base PRD §5）

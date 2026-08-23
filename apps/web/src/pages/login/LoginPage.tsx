@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Form, Input, Modal, Space, Typography, theme } from 'antd';
+import { Button, Card, Checkbox, Form, Input, Modal, Space, theme } from 'antd';
 import { QrcodeOutlined, UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -96,12 +96,6 @@ export default function LoginPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
       <Card style={{ width: 'min(380px, 100vw - 32px)' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <div style={{ textAlign: 'center' }}>
-            <Typography.Title level={3} style={{ marginBottom: 4 }}>
-              WBME 企业管理平台
-            </Typography.Title>
-            <Typography.Text type="secondary">统一登录入口</Typography.Text>
-          </div>
           <Form<LoginPayload> layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]}>
               <Input prefix={<UserOutlined />} placeholder="手机号" maxLength={32} autoComplete="username" />
@@ -133,9 +127,6 @@ export default function LoginPage() {
 
       <Modal title="重置密码" open={resetOpen} onCancel={() => setResetOpen(false)} footer={null} width="min(92vw, 380px)">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            已绑定钉钉的账号可输入手机号，完成钉钉验证后重新设置密码
-          </Typography.Paragraph>
           <Form layout="vertical" onFinish={startSelfReset} requiredMark={false}>
             <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]}>
               <Input placeholder="手机号" maxLength={32} autoComplete="username" />

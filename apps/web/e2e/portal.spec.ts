@@ -32,6 +32,6 @@ test.describe('门户与个人中心', () => {
     await expect(page.getByText('E2E测试员')).toBeVisible({ timeout: 15_000 });
     // 我的日志 Tab：操作日志表格加载（登录行为本身已写操作日志）
     await page.getByRole('tab', { name: '我的日志' }).click();
-    await expect(page.getByText('我的操作日志')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: '时间' })).toBeVisible({ timeout: 15_000 });
   });
 });

@@ -43,7 +43,6 @@ interface ResourceExportConfig {
 
 export interface ResourcePageProps {
   title: string;
-  description?: string;
   service: ApiService;
   endpoint: string;
   pageKey: string;
@@ -87,7 +86,6 @@ export function formatDeletePreviewItem(
  */
 export function ResourcePage({
   title,
-  description,
   service,
   endpoint,
   pageKey,
@@ -216,7 +214,6 @@ export function ResourcePage({
       <DataTable
         key={version}
         title={title}
-        description={description}
         service={service}
         endpoint={endpoint}
         pageKey={pageKey}

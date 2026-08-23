@@ -1,4 +1,4 @@
-import { Button, Card, Form, Modal, Select, Space, Tooltip, Typography } from 'antd';
+import { Button, Card, Form, Modal, Select, Space, Tooltip } from 'antd';
 import { useState } from 'react';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { useFeedback } from '../../request/feedback';
@@ -72,9 +72,6 @@ export function PositionApplicationsSection() {
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Card title="岗位申请">
-        <Typography.Paragraph type="secondary">
-          每张申请只能选择一个目标部门和一个目标岗位，审批通过后生效；仅当前无部门或仅属于一个部门的员工可自助申请。
-        </Typography.Paragraph>
         <Tooltip title={canApply ? undefined : '已属于多个部门的员工不能自助变更组织关系，请联系管理员调整'}>
           <Button type="primary" disabled={!canApply} onClick={() => void openApply()}>
             发起岗位申请

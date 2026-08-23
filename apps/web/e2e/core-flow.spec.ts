@@ -25,7 +25,7 @@ test.describe('核心业务链路', () => {
     await expect(page.getByText('操作日志').first()).toBeVisible({ timeout: 15_000 });
     await page.getByText('操作日志').first().click();
     await expect(page).toHaveURL(/\/backstage\/operation-logs/);
-    await expect(page.getByRole('heading', { name: '操作日志' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.ant-breadcrumb').getByText('操作日志')).toBeVisible({ timeout: 15_000 });
     // 筛选契约（与用例名对齐）：工具栏「筛选」打开「高级筛选」弹窗（桌面视口为 Modal）。
     // accessible name 形如「filter 筛选」或「filter 筛选（n）」；须锚定开头，避免命中「导出已筛选」。
     await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /^(filter\s+)?筛\s*选/ }).click();
@@ -47,7 +47,7 @@ test.describe('核心业务链路', () => {
     await page.getByText('固定资产').click();
     await expect(page.getByText('固定资产台账').first()).toBeVisible({ timeout: 15_000 });
     await page.getByText('固定资产台账').first().click();
-    await expect(page.getByRole('heading', { name: '固定资产台账' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.ant-breadcrumb').getByText('固定资产台账')).toBeVisible({ timeout: 15_000 });
   });
 
   test('超管身份显式断言：门户可见管理后台入口（L38）', async ({ page }) => {
@@ -120,7 +120,7 @@ test.describe('核心业务链路', () => {
     await page.getByText('固定资产').click();
     await expect(page.getByText('我的资产').first()).toBeVisible({ timeout: 15_000 });
     await page.getByText('我的资产').first().click();
-    await expect(page.getByRole('heading', { name: '我的资产' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.ant-breadcrumb').getByText('我的资产')).toBeVisible({ timeout: 15_000 });
 
     // 打开排序抽屉并添加一条排序
     await page.locator('.wbme-desktop-toolbar').getByRole('button', { name: /^(sort-ascending\s+)?排\s*序/ }).click();

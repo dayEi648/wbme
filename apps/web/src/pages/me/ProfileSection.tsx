@@ -86,10 +86,6 @@ export function ProfileSection() {
               <Radio value="FEMALE">女</Radio>
             </Radio.Group>
           </Form.Item>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-            {me?.user.isSuperAdmin ? '超级管理员修改立即生效。' : '提交后需管理员审批通过才生效。'}
-            手机号以钉钉授权返回的号码为准，不可在平台内修改。
-          </Typography.Paragraph>
           <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button onClick={() => setEditOpen(false)}>取消</Button>
             <Button type="primary" htmlType="submit" loading={submitting}>

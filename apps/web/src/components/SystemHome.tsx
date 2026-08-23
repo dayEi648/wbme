@@ -4,8 +4,6 @@ import { useSession } from '../request/session';
 import type { NavigationItem } from './AppShell';
 
 interface SystemHomeProps {
-  systemName: string;
-  welcome: string;
   items: NavigationItem[];
 }
 
@@ -31,24 +29,19 @@ function featuredItems(items: NavigationItem[]): NavigationItem[] {
 }
 
 /** 各系统统一首页：欢迎信息 + 按权限过滤的常用功能快捷入口（主 PRD §2.1）。 */
-export function SystemHome({ systemName, welcome, items }: SystemHomeProps) {
+export function SystemHome({ items }: SystemHomeProps) {
   const { can } = useSession();
   const navigate = useNavigate();
   const available = items.filter((item) => !item.permission || (Array.isArray(item.permission) ? item.permission.some((code) => can(code)) : can(item.permission)));
   return (
-    <>
-      <Typography.Title level={3}>{systemName}</Typography.Title>
-      <Typography.Paragraph type="secondary">{welcome}</Typography.Paragraph>
-      <Typography.Title level={5} style={{ marginTop: 24 }}>快捷入口</Typography.Title>
-      <Row gutter={[16, 16]}>
-        {featuredItems(available).map((item) => (
-          <Col key={item.key} xs={24} sm={12} lg={8}>
-            <Card hoverable onClick={() => navigate(item.path)}>
-              <Typography.Text strong>{item.label}</Typography.Text>
-            </Card>
-          </Col>
-        ))}
-      </Row>
-    </>
+    <Row gutter={[16, 16]}>
+      {featuredItems(available).map((item) => (
+        <Col key={item.key} xs={24} sm={12} lg={8}>
+          <Card hoverable onClick={() => navigate(item.path)}>
+            <Typography.Text strong>{item.label}</Typography.Text>
+          </Card>
+        </Col>
+      ))}
+    </Row>
   );
 }
