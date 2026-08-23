@@ -17,6 +17,7 @@ import {
   Tag,
   Typography,
   Dropdown,
+  Tooltip,
   type MenuProps,
   type TableColumnsType,
 } from 'antd';
@@ -26,6 +27,7 @@ import { useFeedback } from '../request/feedback';
 import { download, http, type ApiService } from '../request/http';
 import { formatDisplayValue, isMoneyField } from './display-format';
 import { AdvancedFilter } from './AdvancedFilter';
+import { SortPanel } from './SortPanel';
 import {
   buildFilterTreePayload,
   flattenConditions,
@@ -54,7 +56,7 @@ export interface DataColumn {
   /** 将原始行字段转换为受控 React 节点。 */
   render?: (value: unknown, row: RecordValue) => ReactNode;
   /**
-   * 为 true 时该列出现在排序抽屉的字段下拉中；必须与对应端点服务端 filters/sorts 白名单一致。
+   * 为 true 时该列出现在排序面板的字段下拉中；必须与对应端点服务端 filters/sorts 白名单一致。
    * 仅声明单列 prismaField 或 SQL column 的字段可排序；多列 keyword / compile-only 字段不可排序。
    */
   sortable?: boolean;
@@ -238,7 +240,6 @@ export function DataTable({
   const [presetManageOpen, setPresetManageOpen] = useState(false);
   /** 已生效的筛选树（唯一筛选状态；编辑草稿由 AdvancedFilter 内部持有）。 */
   const [appliedFilterTree, setAppliedFilterTree] = useState<FilterConditionGroup>(() => ({ id: crypto.randomUUID(), logic: 'AND', children: [] }));
-  const [sorts, setSorts] = useState<SortCondition[]>([]);
   const [appliedSorts, setAppliedSorts] = useState<SortCondition[]>([]);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [activePresetId, setActivePresetId] = useState<number | undefined>();
@@ -387,7 +388,7 @@ export function DataTable({
     try {
       await http.post(
         `/me/table-prefs/${pageKey}/filter-presets`,
-        { name: values.name, content: { filterTree: buildFilterTreePayload(appliedFilterTree) ?? null, sorts } },
+        { name: values.name, content: { filterTree: buildFilterTreePayload(appliedFilterTree) ?? null, sorts: appliedSorts } },
         { service },
       );
       await refreshPresets();
@@ -487,7 +488,6 @@ export function DataTable({
   const applyPreset = (preset: FilterPreset) => {
     const { tree, sorts: presetSorts } = normalizePresetContent(preset.content);
     setActivePresetId(preset.id);
-    setSorts(presetSorts);
     setAppliedFilterTree(tree);
     setAppliedSorts(presetSorts);
     setPage(1);
@@ -495,7 +495,6 @@ export function DataTable({
 
   /** 清除工具栏全部已应用条件（筛选/排序/预设），桌面「清除全部条件」与移动端「更多」菜单共用。 */
   const clearAllConditions = () => {
-    setSorts([]);
     setAppliedFilterTree({ id: crypto.randomUUID(), logic: 'AND', children: [] });
     setAppliedSorts([]);
     setActivePresetId(undefined);
@@ -771,27 +770,17 @@ export function DataTable({
         onCancel={() => setFilterOpen(false)}
       />
 
-      <Drawer title="排序" placement="right" open={sortOpen} onClose={() => { setSorts(appliedSorts); setSortOpen(false); }} width="min(92vw, 420px)">
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {sorts.map((sort, index) => (
-            <Card key={`${sort.field}-${index}`} size="small">
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                <Select aria-label="排序字段" value={sort.field} options={sortableColumns.map((column) => ({ label: column.title, value: column.key }))} onChange={(value) => setSorts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, field: value } : item)))} />
-                <Select aria-label="排序方向" value={sort.direction} options={[{ label: '升序', value: 'ASC' }, { label: '降序', value: 'DESC' }]} onChange={(value: 'ASC' | 'DESC') => setSorts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, direction: value } : item)))} />
-                <Button danger type="link" onClick={() => setSorts((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
-                  移除排序
-                </Button>
-              </Space>
-            </Card>
-          ))}
-          <Button onClick={() => setSorts((current) => [...current, { field: sortableColumns[0]?.key ?? 'id', direction: 'ASC' }])} disabled={sortableColumns.length === 0}>
-            添加排序字段
-          </Button>
-          <Button type="primary" block onClick={() => { setAppliedSorts(sorts); setPage(1); setSortOpen(false); }}>
-            应用排序
-          </Button>
-        </Space>
-      </Drawer>
+      <SortPanel
+        open={sortOpen}
+        sortableColumns={sortableColumns.map((column) => ({ key: column.key, title: column.title }))}
+        appliedSorts={appliedSorts}
+        onApply={(nextSorts) => {
+          setAppliedSorts(nextSorts);
+          setPage(1);
+          setSortOpen(false);
+        }}
+        onCancel={() => setSortOpen(false)}
+      />
 
       <Drawer title="列设置" placement="right" open={columnOpen} onClose={() => setColumnOpen(false)} width="min(92vw, 360px)">
         <Checkbox.Group value={visibleKeys} onChange={(values) => void saveColumns(values.map(String))} style={{ width: '100%' }}>
@@ -819,7 +808,25 @@ export function DataTable({
                       }}
                       onBlur={() => void saveColumns(visibleKeys, columnWidths, columnFixed)}
                     />
-                    <Select size="small" allowClear placeholder="固定" value={columnFixed[column.key] ?? column.fixed} options={[{ label: '固定左侧', value: 'left' }, { label: '固定右侧', value: 'right' }]} onChange={(value: 'left' | 'right' | undefined) => { const next = { ...columnFixed, [column.key]: value }; void saveColumns(visibleKeys, columnWidths, next); }} />
+                    <Tooltip title="固定列：表格横向滚动时该列保持可见">
+                      <Select
+                        size="small"
+                        allowClear
+                        placeholder="不固定"
+                        aria-label={`${column.title}固定位置`}
+                        style={{ minWidth: 120 }}
+                        value={columnFixed[column.key] ?? column.fixed ?? ''}
+                        options={[
+                          { label: '不固定', value: '' },
+                          { label: '固定在左侧', value: 'left' },
+                          { label: '固定在右侧', value: 'right' },
+                        ]}
+                        onChange={(value: '' | 'left' | 'right' | undefined) => {
+                          const next = { ...columnFixed, [column.key]: value === '' || value === undefined ? undefined : value };
+                          void saveColumns(visibleKeys, columnWidths, next);
+                        }}
+                      />
+                    </Tooltip>
                   </Space>
                 </Space>
               </Card>

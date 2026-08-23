@@ -53,7 +53,7 @@ async function renderDataTable(columns: DataColumn[]) {
   });
 }
 
-describe('DataTable 排序抽屉', () => {
+describe('DataTable 排序面板', () => {
   beforeEach(() => {
     vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid' });
   });
