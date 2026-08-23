@@ -37,7 +37,7 @@ interface RenderGroup {
   children: Array<RenderLeaf | RenderGroup>;
 }
 
-/** 按 AppShell 聚合语义投影为可序列化的渲染结构（不含系统首页/搜索）：顶层叶子与分组块按数组序混排，分组按 groupPath 任意嵌套 */
+/** 按 AppShell 聚合语义投影为可序列化的渲染结构（不含系统首页）：顶层叶子与分组块按数组序混排，分组按 groupPath 任意嵌套 */
 function projectForRender(items: NavigationItem[]): Array<RenderLeaf | RenderGroup> {
   const top: Array<RenderLeaf | RenderGroup> = [];
   const groupByPath = new Map<string, RenderGroup>();

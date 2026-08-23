@@ -1,5 +1,5 @@
-import { AppstoreOutlined, LogoutOutlined, MenuOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
-import { Avatar, Breadcrumb, Button, Drawer, Grid, Input, Layout, Menu, Space, Typography, theme, type MenuProps } from 'antd';
+import { AppstoreOutlined, LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons';
+import { Avatar, Breadcrumb, Button, Drawer, Grid, Layout, Menu, Space, Typography, theme, type MenuProps } from 'antd';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useFeedback } from '../request/feedback';
@@ -7,6 +7,11 @@ import { useSession } from '../request/session';
 import { HistoryNavButtons } from './HistoryNavButtons';
 
 const { Header, Sider, Content } = Layout;
+
+/** 平台品牌名：作为各业务系统侧边栏顶部 LOGO 的标题展示。 */
+const PLATFORM_BRAND_NAME = 'WBME';
+/** 平台统一门户路径：LOGO 点击后回到系统入口首页。 */
+const PORTAL_PATH = '/portal';
 
 export interface NavigationItem {
   key: string;
@@ -32,12 +37,9 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-interface MenuNode {
-  key: string;
-  label: string;
-  icon?: ReactNode;
-  children?: MenuNode[];
-}
+type MenuNode =
+  | { key: string; label: string; icon?: ReactNode }
+  | { key: string; label: string; icon?: ReactNode; children: MenuNode[] };
 
 /**
  * 菜单项的祖先分组显示名路径：菜单管理归并产物 groupPath 优先，
@@ -53,8 +55,8 @@ const groupMenuKey = (path: string[]): string => `group:${path.join('/')}`;
  * 业务系统与管理后台共用的响应式页面壳。
  *
  * 菜单按祖先分组路径递归渲染：分组可自由嵌套（代码默认最多两级，菜单管理可突破）；
- * 未分组的项作为顶层叶子。提供菜单内搜索；Header 左侧为全站统一的回退/前进/刷新，
- * Header 内展示当前页面位置面包屑（系统名 → 各级分组 → 页面）。
+ * 未分组的项作为顶层叶子。侧边栏顶部为可点击的品牌 LOGO（返回统一门户）；
+ * Header 左侧为全站统一的回退/前进/刷新，Header 内展示当前页面位置面包屑（系统名 → 各级分组 → 页面）。
  * 菜单只渲染当前会话被授予的功能；路由及接口的最终访问控制仍由服务端负责。
  */
 export function AppShell({ systemName, homePath, items, children }: AppShellProps) {
@@ -65,7 +67,6 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
   const location = useLocation();
   const screens = Grid.useBreakpoint();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState('');
   /** 软刷新：递增 key 重挂载内容区，重新拉数且不丢 SPA 状态。 */
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -82,14 +83,9 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
     return nested;
   }, [location.pathname, visibleItems]);
 
-  /** 菜单结构：首页 + 按数组序混排的顶层叶子与分组子菜单（分组按 groupPath 任意嵌套，空分组不渲染）；搜索关键字非空时扁平显示命中项。 */
+  /** 菜单结构：首页 + 按数组序混排的顶层叶子与分组子菜单（分组按 groupPath 任意嵌套，空分组不渲染）。 */
   const menuItems = useMemo<MenuProps['items']>(() => {
     const homeItem: MenuNode = { key: homePath, label: '系统首页', icon: <AppstoreOutlined /> };
-    if (searchKeyword.trim()) {
-      const keyword = searchKeyword.trim();
-      const matched = visibleItems.filter((item) => item.label.includes(keyword) || item.path.includes(keyword));
-      return [homeItem, ...matched.map((item) => ({ key: item.path, label: item.label }))];
-    }
     const topLevel: MenuNode[] = [];
     // 已创建的分组节点索引（key = 显示名路径）；同名同级合并、跨分支独立
     const groupIndex = new Map<string, MenuNode>();
@@ -109,12 +105,12 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
           groupIndex.set(key, group);
           siblings.push(group);
         }
-        siblings = group.children ?? [];
+        siblings = 'children' in group ? group.children : [];
       }
       siblings.push(leaf);
     }
     return [homeItem, ...topLevel];
-  }, [homePath, searchKeyword, visibleItems]);
+  }, [homePath, visibleItems]);
 
   const selectedKeys = useMemo(() => [current?.path ?? homePath], [current, homePath]);
   /** 当前页祖先分组 key（直链/刷新时自动展开）；用户手动折叠由受控 openKeys 保留。 */
@@ -132,8 +128,12 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
 
   const onMenuSelect: MenuProps['onClick'] = ({ key }) => {
     setMobileNavOpen(false);
-    setSearchKeyword('');
     navigate(key);
+  };
+
+  const handleLogoClick = () => {
+    setMobileNavOpen(false);
+    navigate(PORTAL_PATH);
   };
 
   const handleLogout = async () => {
@@ -149,15 +149,27 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
 
   const navigation = (
     <>
-      <div style={{ padding: '8px 12px' }}>
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder="搜索菜单"
-          aria-label="搜索菜单"
-          value={searchKeyword}
-          onChange={(event) => setSearchKeyword(event.target.value)}
-        />
+      <div style={{ padding: '16px 20px' }}>
+        <button
+          type="button"
+          onClick={handleLogoClick}
+          aria-label="返回门户首页"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: 0,
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            fontSize: 16,
+            fontWeight: 600,
+            color: token.colorText,
+          }}
+        >
+          <AppstoreOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
+          {PLATFORM_BRAND_NAME}
+        </button>
       </div>
       <Menu
         mode="inline"
@@ -181,9 +193,6 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
             {current ? <Breadcrumb items={breadcrumbItems} /> : <Typography.Text strong>{systemName}</Typography.Text>}
           </Space>
           <Space>
-            <Button type="text" icon={<AppstoreOutlined />} onClick={() => navigate('/portal')}>
-              门户
-            </Button>
             <Button type="text" icon={<UserOutlined />} onClick={() => navigate('/me')}>
               {user?.name ?? '个人中心'}
             </Button>
