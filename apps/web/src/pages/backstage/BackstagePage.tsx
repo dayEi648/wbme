@@ -280,6 +280,11 @@ function UserManagement() {
   };
   const update = async (values: RecordValue) => {
     if (!detailId) return;
+    if (detail && String(values.name ?? '') === String(detail.name ?? '') && values.gender === detail.gender) {
+      feedback.info('未修改任何内容');
+      setEditing(false);
+      return;
+    }
     await http.put(`/users/${detailId}`, values);
     feedback.success('用户资料已更新');
     setEditing(false);
@@ -407,7 +412,7 @@ function UserManagement() {
           </Space>
         ) : <Typography.Text>正在加载...</Typography.Text>}
       </Drawer>
-      <ResourceFormModal title="编辑用户资料" open={editing} onCancel={() => setEditing(false)} onSubmit={update} initialValues={detail ?? {}} fields={[
+      <ResourceFormModal title="编辑用户资料" open={editing} onCancel={() => setEditing(false)} onSubmit={update} initialValues={detail ?? {}} submitDisabled={(values) => Boolean(detail && String(values.name ?? '') === String(detail.name ?? '') && values.gender === detail.gender)} fields={[
         { key: 'name', label: '姓名', required: true, maxLength: 50 },
         { key: 'gender', label: '性别', type: 'select', required: true, options: [{ label: '男', value: 'MALE' }, { label: '女', value: 'FEMALE' }], width: 'narrow' },
       ]} />
@@ -472,6 +477,10 @@ function PermissionEmployees() {
       const groupIds = Array.isArray(rawGroupIds)
         ? rawGroupIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
         : [];
+      if (grants.length === 0 && groupIds.length === 0) {
+        feedback.info('请至少添加一项功能授权或权限组');
+        return;
+      }
       await http.post('/permission/grants/batch', {
         userIds: selectedIds.map(Number),
         grants,
@@ -506,7 +515,11 @@ function PermissionEmployees() {
       rowActions={(row) => <Button size="small" type="primary" ghost onClick={() => setTarget({ id: Number(row.id), name: String(row.name ?? '') })}>修改权限</Button>}
     />
     <PermissionGrantDrawer target={target} hidePermissionManage={hidePermissionManage} onClose={() => setTarget(null)} onSaved={() => setVersion((value) => value + 1)} />
-    <ResourceFormModal title={`批量追加授权（${selectedIds.length} 人）`} open={batchOpen} onCancel={() => setBatchOpen(false)} onSubmit={batchGrant} initialValues={{ grants: [], groupIds: [] }} fields={[
+    <ResourceFormModal title={`批量追加授权（${selectedIds.length} 人）`} open={batchOpen} onCancel={() => setBatchOpen(false)} onSubmit={batchGrant} initialValues={{ grants: [], groupIds: [] }} submitDisabled={(values) => {
+      const grants = Array.isArray(values.grants) ? values.grants : [];
+      const groupIds = Array.isArray(values.groupIds) ? values.groupIds : [];
+      return grants.length === 0 && groupIds.length === 0;
+    }} fields={[
       { key: 'grants', label: '直接授权', type: 'permission-grants', permissionVariant: 'tree', width: 'full', hidePermissionManage },
       { key: 'groupIds', label: '权限组', type: 'remote-multi-select', remote: permissionGroupsSource, placeholder: '选择一个或多个权限组展开追加', width: 'full' },
     ]} />

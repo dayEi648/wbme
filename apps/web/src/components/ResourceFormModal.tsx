@@ -76,6 +76,8 @@ interface ResourceFormModalProps {
   initialValues?: Record<string, unknown>;
   submitting?: boolean;
   submitText?: string;
+  /** 动态禁用提交按钮：根据当前表单值判断“无变化/无参数”时禁止提交。 */
+  submitDisabled?: (values: Record<string, unknown>) => boolean;
   onCancel: () => void;
   onSubmit: (values: Record<string, unknown>) => Promise<void>;
 }
@@ -93,11 +95,13 @@ export function ResourceFormModal({
   initialValues,
   submitting,
   submitText = '保存',
+  submitDisabled,
   onCancel,
   onSubmit,
 }: ResourceFormModalProps) {
   const [form] = Form.useForm<Record<string, unknown>>();
   const watchedValues = Form.useWatch([], form) as Record<string, unknown> | undefined;
+  const isSubmitDisabled = submitDisabled ? submitDisabled(watchedValues ?? {}) : false;
   const visibleFields = fields.filter((field) => !field.hidden && matchesFieldCondition(field.visibleWhen, watchedValues));
   const modalWidth = resolveModalWidth(visibleFields);
 
@@ -205,7 +209,7 @@ export function ResourceFormModal({
         ))}
         <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button onClick={onCancel}>取消</Button>
-          <Button type="primary" htmlType="submit" loading={submitting}>
+          <Button type="primary" htmlType="submit" loading={submitting} disabled={isSubmitDisabled}>
             {submitText}
           </Button>
         </Space>

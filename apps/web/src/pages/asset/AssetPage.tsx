@@ -415,6 +415,7 @@ function FixedAssets() {
   const scannedAssetId = searchParams.get('assetId');
   const [version, setVersion] = useState(0);
   const [scheduleId, setScheduleId] = useState<number | null>(null);
+  const [scheduleRow, setScheduleRow] = useState<RecordValue | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   // 扫码直达：组件不卸载时再次扫码仅 query 变化，需监听 assetId 同步打开详情抽屉。
   useEffect(() => {
@@ -424,10 +425,19 @@ function FixedAssets() {
   }, [scannedAssetId]);
   const schedule = async (values: RecordValue) => {
     if (!scheduleId) return;
+    if (scheduleRow
+      && Number(values.toDepartmentId) === Number(scheduleRow.departmentId)
+      && Number(values.toUserId) === Number(scheduleRow.responsibleUserId)) {
+      feedback.info('部门与责任人均未变化，无需调度');
+      setScheduleId(null);
+      setScheduleRow(null);
+      return;
+    }
     try {
       await http.post(`/assets/${scheduleId}/schedule`, values, { service: 'asset' });
       feedback.success('资产调度已完成');
       setScheduleId(null);
+      setScheduleRow(null);
       setVersion((value) => value + 1);
     } catch (error) {
       feedback.error(error, '资产调度失败');
@@ -491,7 +501,7 @@ function FixedAssets() {
       rowActions={canMaintain ? (row) => (
         <Space size="small">
           <Button size="small" onClick={() => setDetailId(Number(row.id))}>详情</Button>
-          <Button size="small" onClick={() => setScheduleId(Number(row.id))}>调度</Button>
+          <Button size="small" onClick={() => { setScheduleRow(row); setScheduleId(Number(row.id)); }}>调度</Button>
           {row.usageStatus !== 'SCRAPPED' ? (
             <Popconfirm title="确认报废该资产？报废是业务状态变更，不会删除台账。" onConfirm={() => void scrap(Number(row.id))}>
               <Button size="small" danger>报废</Button>
@@ -500,7 +510,7 @@ function FixedAssets() {
         </Space>
       ) : (row) => <Button size="small" onClick={() => setDetailId(Number(row.id))}>详情</Button>}
     />
-    <ResourceFormModal title="资产调度" open={scheduleId !== null} onCancel={() => setScheduleId(null)} onSubmit={schedule} fields={[{ key: 'toDepartmentId', label: '目标部门', type: 'tree-select', remote: assetMaintainDepartmentsSource, required: true }, { key: 'toUserId', label: '目标责任人', type: 'remote-select', remote: assetMaintainEmployeesSource, dependsOn: 'toDepartmentId', required: true }, { key: 'remark', label: '调度备注', type: 'textarea', maxLength: 200 }]} />
+    <ResourceFormModal title="资产调度" open={scheduleId !== null} onCancel={() => { setScheduleId(null); setScheduleRow(null); }} onSubmit={schedule} submitDisabled={(values) => Boolean(scheduleRow && Number(values.toDepartmentId) === Number(scheduleRow.departmentId) && Number(values.toUserId) === Number(scheduleRow.responsibleUserId))} fields={[{ key: 'toDepartmentId', label: '目标部门', type: 'tree-select', remote: assetMaintainDepartmentsSource, required: true }, { key: 'toUserId', label: '目标责任人', type: 'remote-select', remote: assetMaintainEmployeesSource, dependsOn: 'toDepartmentId', required: true }, { key: 'remark', label: '调度备注', type: 'textarea', maxLength: 200 }]} />
     <AssetDetailDrawer assetId={detailId} onClose={() => setDetailId(null)} />
   </>;
 }

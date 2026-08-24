@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../request/feedback', () => {
   // 稳定引用：每次调用返回新对象会触发 useMeData 的 effect 依赖抖动、重复拉数
-  const feedback = { success: vi.fn(), error: vi.fn() };
+  const feedback = { success: vi.fn(), error: vi.fn(), info: vi.fn() };
   return { useFeedback: () => feedback };
 });
 
@@ -87,8 +87,21 @@ describe('个人中心 Tab 结构', () => {
     expect(screen.getByRole('radio', { name: '女' })).toBeTruthy();
     fireEvent.change(nameInput, { target: { value: '张三三' } });
     // antd 对两个汉字的按钮自动插入空格（"保 存"），用正则匹配
-    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    const saveButton = screen.getByRole('button', { name: /保\s*存/ }) as HTMLButtonElement;
+    await waitFor(() => expect(saveButton.disabled).toBe(false));
+    fireEvent.click(saveButton);
     await waitFor(() => expect(http.put).toHaveBeenCalledWith('/me/profile', { name: '张三三', gender: 'MALE' }));
+  });
+
+  it('修改资料未改动时保存按钮禁用且不调用接口', async () => {
+    renderMe();
+    fireEvent.click(await screen.findByRole('button', { name: '修改资料' }));
+    const nameInput = await screen.findByLabelText('姓名');
+    expect((nameInput as HTMLInputElement).value).toBe('张三');
+    const saveButton = screen.getByRole('button', { name: /保\s*存/ }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(http.put).not.toHaveBeenCalled());
   });
 
   it('账户安全：手机号只读展示且说明不可修改，无换绑入口；修改密码可弹窗', async () => {

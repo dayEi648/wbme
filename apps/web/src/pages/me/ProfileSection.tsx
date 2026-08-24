@@ -20,12 +20,20 @@ export function ProfileSection() {
   const [editOpen, setEditOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<ProfileFormValues>();
+  const watchedName = Form.useWatch('name', form);
+  const watchedGender = Form.useWatch('gender', form);
+  const noChange = Boolean(me && watchedName === me.user.name && watchedGender === me.user.gender);
 
   function openEdit() {
     setEditOpen(true);
   }
 
   async function submit(values: ProfileFormValues) {
+    if (me && values.name === me.user.name && values.gender === me.user.gender) {
+      feedback.info('没有需要保存的修改');
+      setEditOpen(false);
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await http.put<{ applied: boolean; requestId?: number }>('/me/profile', values);
@@ -88,7 +96,7 @@ export function ProfileSection() {
           </Form.Item>
           <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button onClick={() => setEditOpen(false)}>取消</Button>
-            <Button type="primary" htmlType="submit" loading={submitting}>
+            <Button type="primary" htmlType="submit" loading={submitting} disabled={noChange}>
               保存
             </Button>
           </Space>
