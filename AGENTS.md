@@ -41,72 +41,9 @@
 
 ---
 
-## 1. Project Charter
+## 1. Project Overview
 
-### 1.1 Basic Information
-
-- **Project Name**: WBME Enterprise Management Platform
-- **Subsystems**: Asset system, HR system, Finance system, etc.
-- **Project Description**: A unified management platform for internal company employees, aiming to develop the multiple subsystems required by the company, including those needed for logistics and engineering maintenance, covering asset, HR, finance, engineering maintenance, etc. Each subsystem can be advanced in parallel and iterated independently, sharing a unified entry, login authentication and permission system, as well as common capabilities such as Agent intelligent dialogue, DingTalk integration, operation logs, and data backup.
-
-### 1.2 Tech Stack
-
-The business stack is built entirely on TypeScript (frontend + business backend), and Python handles complex AI services.
-
-| Layer | Component | Version/Status |
-| --- | --- | --- |
-| Full-stack Language | TypeScript | 6.0 |
-| Frontend Framework | React | 19.2 |
-| Frontend Build Tool | Vite | 8.2 |
-| UI Component Library | Ant Design | 6.5 |
-| AI SDK | Vercel AI SDK | 7.0 |
-| Frontend Testing | Vitest | 4.1 |
-| E2E Testing | Playwright | 1.62 |
-| Business Backend Framework | NestJS | 11.1 |
-| ORM | Prisma | 7.9 |
-| AI Backend Framework | FastAPI | 0.141 |
-| AI Orchestration | LangChain | 1.3 |
-| AI Graph Framework | LangGraph | 1.2 |
-| In-memory Storage | Redis | 8.8 |
-| Database | PostgreSQL | 18 |
-| Deployment | Ubuntu + Docker + Nginx | - |
-| Object Storage | Alibaba Cloud OSS | - |
-
-### 1.3 Project Structure
-
-When the directory structure of this project changes, the `AGENTS.md` file needs to be updated.
-
-```
-wbme/
-├── apps/                        # Deployment units and frontend
-│   ├── platform-core/           # base + backstage backend (auth, permissions, platform infrastructure)
-│   ├── asset/                   # Asset system backend (ledger/inventory/borrow-return/approval/QR code)
-│   ├── hr/                      # HR system backend (organization/overtime/approval/account lifecycle)
-│   ├── fin/                     # Finance system backend (contracts/profit analysis/Excel import-export)
-│   ├── web/                     # Frontend (Vite + React + Ant Design)
-│   ├── worker/                  # BullMQ Worker (Outbox scheduling + background task consumption)
-│   ├── recovery-executor/       # Database recovery executor
-│   └── migration-runner/        # Migration executor (unified migrations for dev/release)
-├── packages/                    # @wbme shared packages
-│   ├── contracts/               # Shared contracts (error codes/DTOs/enums/permission catalog)
-│   ├── server/                  # NestJS shared infrastructure (request tracing/session/internal REST/export)
-│   ├── approval/                # Unified approval engine
-│   ├── logging/                 # Operation log templates and restricted logging statements
-│   ├── tasks/                   # Unified background task restricted interfaces (Outbox SQL)
-│   └── files/                   # File storage and OSS conventions
-├── docs/                        # Project documentation
-│   ├── prds/                    # PRDs (main PRD + each subsystem)
-│   ├── api-documentations/      # API docs and OpenAPI build-time artifacts
-│   ├── database-design/         # Database schema design
-│   ├── for-frontend/            # Frontend design guidelines
-│   └── references/              # Reference materials (profit analysis Excel templates, etc.)
-├── scripts/                     # Engineering scripts (one-click startup, E2E seeding)
-│   └── db-views/                # Read-only view scripts (executed uniformly by Migration Runner)
-├── deploy/                      # Production deployment (Dockerfile/Compose/Nginx/release scripts/disaster recovery drills)
-├── .agents/                     # Internal working directory (plans, temporary images)
-│   └── plans/                   # Plans and todo lists
-└── .github/                     # CI workflows
-```
+Project introduction, tech stack, and directory structure: see [README.md](./README.md).
 
 ---
 
@@ -140,7 +77,7 @@ Every time you finish developing the front-end page/component/button and other v
 
 ### 3.3 Document maintenance
 
-- If the project structure changes, update the Project Structure section (`### 1.3`) in `AGENTS.md`
+- If the project structure changes, update the Project Structure section in `README.md`
 - If the requirements expressed in user's message conflict with the PRD or are not documented in the PRD, then you need to update the prd. (Before making the modification, you should first ask user for confirmation whether to modify the PRD.)
 - When writing or modifying any document content or code comments, do not leave any traces. Do not write "After being approved by the user ……" "It was originally xxx ……" I do not need them. You can just write down the information that is relevant and useful for the present, and delete the outdated and useless information.
 
@@ -150,7 +87,7 @@ Every time you finish developing the front-end page/component/button and other v
 - Commit titles are written in bilingual Chinese and English conveying the same meaning, with Chinese and English separated by `/`.
 - Format example:
   ```
-  docs: 更新 AGENTS.md 中的项目目录结构 / Update the project structure in AGENTS.md
+  docs: 更新 README.md 中的项目目录结构 / Update the project structure in README.md
   ```
 - Before executing `git commit` or `git push`, it is necessary to obtain the explicit consent of the user. Unauthorized submission or pushing is strictly prohibited.
 
