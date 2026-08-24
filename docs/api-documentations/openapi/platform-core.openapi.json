@@ -700,6 +700,21 @@
         ],
         "type": "object"
       },
+      "NotificationRuntimeSettingsResponse": {
+        "properties": {
+          "notificationDurationSeconds": {
+            "description": "悬浮通知自动关闭时长（秒）",
+            "example": 5,
+            "maximum": 60,
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "notificationDurationSeconds"
+        ],
+        "type": "object"
+      },
       "PositionApplicationSubmitDto": {
         "properties": {
           "idempotencyKey": {
@@ -3845,6 +3860,29 @@
         "summary": "签发恢复控制会话（超管；恢复失败后人工介入通道，backstage PRD §10）。\nCookie 透传设置（path=/recovery；维护状态下浏览器经 Nginx /recovery/ 反代\n到恢复执行器携带本 Cookie 操作，非维护状态 /recovery/ 一律 404）。",
         "tags": [
           "数据备份"
+        ]
+      }
+    },
+    "/api/v1/runtime-settings/notifications": {
+      "get": {
+        "operationId": "RuntimeSettingsController_notifications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationRuntimeSettingsResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [],
+        "summary": "获取全站悬浮通知的自动关闭时长。",
+        "tags": [
+          "前端运行设置"
         ]
       }
     },

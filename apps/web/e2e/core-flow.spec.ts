@@ -15,6 +15,13 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
   await expect(page).toHaveURL(/\/portal/, { timeout: 15_000 });
 }
 
+/** 操作链路继续前关闭上一条浮层反馈，避免其遮挡同一位置的后续确认按钮。 */
+async function dismissFloatingNotifications(page: import('@playwright/test').Page): Promise<void> {
+  const closeButtons = page.locator('.wbme-floating-notification .ant-notification-notice-close');
+  await closeButtons.evaluateAll((buttons) => buttons.forEach((button) => button.click()));
+  await expect(closeButtons).toHaveCount(0, { timeout: 2_000 });
+}
+
 test.describe('核心业务链路', () => {
   test('管理后台操作日志表格加载并可筛选', async ({ page }) => {
     await login(page);
@@ -77,6 +84,7 @@ test.describe('核心业务链路', () => {
     await dialog.getByRole('button', { name: '保 存' }).click();
     const row = page.locator('tr', { hasText: title });
     await expect(row).toBeVisible({ timeout: 15_000 });
+    await dismissFloatingNotifications(page);
     // 草稿态：仅「发布」入口（L32 门控：不显示撤回）
     await expect(row.getByText('发 布')).toBeVisible();
     await expect(row.getByText('撤 回')).toHaveCount(0);

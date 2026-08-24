@@ -604,6 +604,7 @@ const SETTING_LABELS: Readonly<Record<string, string>> = {
   'backup.retention.days': '备份保留天数',
   'upload.unassociated.image.retention.hours': '图片保留时长',
   'approval.timeout.cancel.days': '审批超时取消',
+  'ui.notification.duration.seconds': '悬浮通知时长',
   'log.cleanup.interval.hours': '清理执行间隔',
   'log.cleanup.error_log.days': '错误日志保留',
   'log.cleanup.security_log.days': '安全日志保留',
@@ -656,6 +657,9 @@ const SETTING_PRESENTATIONS: Readonly<Record<string, SystemSettingPresentation>>
   'approval.timeout.cancel.days': {
     unit: '天', integer: true,
   },
+  'ui.notification.duration.seconds': {
+    unit: '秒', integer: true,
+  },
   'log.cleanup.interval.hours': {
     unit: '小时', integer: true,
   },
@@ -698,6 +702,11 @@ const SETTING_GROUPS: SystemSettingsGroup[] = [
     id: 'approval',
     title: '审批',
     keys: ['approval.timeout.cancel.days'],
+  },
+  {
+    id: 'notifications',
+    title: '界面通知',
+    keys: ['ui.notification.duration.seconds'],
   },
   {
     id: 'log-cleanup',

@@ -5,6 +5,30 @@
   }
 }
 
+/* 全局反馈卡片由 Ant Design Notification 承载：右侧固定、顺序堆叠与入场动效均沿用组件默认行为。 */
+.wbme-floating-notification .ant-notification-notice-wrapper {
+  overflow: hidden;
+}
+
+.wbme-floating-notification .wbme-floating-notification__title {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.wbme-floating-notification .wbme-floating-notification__description,
+.wbme-notification-detail-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wbme-floating-notification {
+  cursor: pointer;
+}
+
+.wbme-floating-notification .ant-notification-notice-close {
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
   .wbme-desktop-table,
   .wbme-desktop-toolbar {

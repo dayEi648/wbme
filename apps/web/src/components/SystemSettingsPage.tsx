@@ -68,6 +68,9 @@ export interface SystemSettingsPageProps {
   emptyText?: string;
 }
 
+/** 保存该设置后需要立刻刷新全局反馈服务的运行参数。 */
+const NOTIFICATION_DURATION_SETTING_KEY = 'ui.notification.duration.seconds';
+
 function settingUnit(key: string, units?: Record<string, string>, presentation?: SystemSettingPresentation): string {
   if (presentation?.unit) {
     return presentation.unit;
@@ -250,6 +253,9 @@ export function SystemSettingsPage({ service, endpoint, groups, labels, units, p
       setSettings((current) => current.map((item) => (
         patches[item.key] === undefined ? item : { ...item, value: String(patches[item.key]) }
       )));
+      if (Object.hasOwn(patches, NOTIFICATION_DURATION_SETTING_KEY)) {
+        await feedback.refreshNotificationDuration();
+      }
       feedback.success('设置已保存');
     } catch (error) {
       feedback.error(error, '设置保存失败');

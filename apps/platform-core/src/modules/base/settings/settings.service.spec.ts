@@ -25,14 +25,14 @@ describe.skipIf(!DATABASE_URL)('SettingsService 平台设置（T4-5）', () => {
 
   afterAll(async () => {
     await prisma.client.systemSetting.deleteMany({
-      where: { key: { in: [SETTING_KEYS.QUERY_DEFAULT_WINDOW_DAYS] } },
+      where: { key: { in: [SETTING_KEYS.QUERY_DEFAULT_WINDOW_DAYS, SETTING_KEYS.NOTIFICATION_DURATION_SECONDS] } },
     });
     await prisma.client.$disconnect();
   });
 
   it('listPlatformSettings 返回全部 PLATFORM 键与默认值', async () => {
     const result = await service.listPlatformSettings();
-    expect(result.settings.length).toBe(23);
+    expect(result.settings.length).toBe(24);
     const queryWindow = result.settings.find((s) => s.key === SETTING_KEYS.QUERY_DEFAULT_WINDOW_DAYS);
     expect(queryWindow?.defaultValue).toBe(30);
     expect(queryWindow?.value).toBe(30);
@@ -41,5 +41,10 @@ describe.skipIf(!DATABASE_URL)('SettingsService 平台设置（T4-5）', () => {
   it('getNumber 读取新键默认值', async () => {
     const days = await service.getNumber(SETTING_KEYS.BACKUP_RETENTION_DAYS);
     expect(days).toBe(30);
+  });
+
+  it('getNumber 读取悬浮通知时长默认值', async () => {
+    const seconds = await service.getNumber(SETTING_KEYS.NOTIFICATION_DURATION_SECONDS);
+    expect(seconds).toBe(5);
   });
 });

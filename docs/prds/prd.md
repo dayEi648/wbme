@@ -467,7 +467,9 @@ WBME 是企业内部自用的统一管理平台，通过统一入口承载多个
 
 ### 10.5 统一反馈
 
-- 全站统一使用 Ant Design 原生 `Message`、`Notification` 和 `Modal` 提供反馈（通过统一的前端反馈服务封装），不自行重造通知组件；业务页面不得直接调用 `message.xxx`、`notification.xxx` 或自行实现 Toast。
+- 全站即时反馈由统一的前端反馈服务封装，复用 Ant Design 原生 `App`、`Notification` 和 `Modal`，不自行重造通知组件；业务页面不得直接调用 `notification.xxx` 或自行实现 Toast。
+- 常规成功、提示和请求错误使用页面右侧固定的 `Notification` 悬浮卡片：同屏多条自动纵向堆叠；每条显示简洁标题和内容，默认显示 5 秒并展示倒计时进度，悬停时暂停。卡片提供“×”提前关闭；点击卡片在页面中央以 `Modal` 展示完整详情。管理员在管理后台「系统设置 → 界面通知」维护显示时长，默认 5 秒，允许范围为 1～60 秒；前端初始化时读取该参数，设置保存后当前页面后续产生的通知立即使用新值，其他已打开页面在重新加载后生效。
+- 操作确认、危险确认继续使用 `Modal` 或控件就近的 `Popconfirm`；字段校验保留在字段旁，不以会自动消失的全局通知取代。
 - 请求层集中消费 §9.5 的错误类型/错误码进行统一反馈（如会话失效时提示并引导重新登录）；未知异常只展示统一安全文案与 `requestId`。通知内容只能使用 React 文本节点和受控组件，禁止把后端文案作为 HTML 注入。前端显示通知不代替 backstage PRD §8 系统日志、§3.3 操作日志或领域审计。
 - 本节"反馈/通知"仅指当前页面中的即时 UI 提示，不等于系统公告、站内消息中心或钉钉消息推送，也不因此把站内消息中心、钉钉消息推送等 MVP 阶段暂不提供的能力引入本版本。
 
@@ -515,7 +517,7 @@ WBME 是企业内部自用的统一管理平台，通过统一入口承载多个
 
 > 本版本确定的技术实现基线，供开发阶段细化。
 
-- **前端**：TypeScript + React 18 或更高兼容版本 + Vite + Ant Design v6；根 `ConfigProvider` 使用 `docs/for-frontend/ant-design/theme.json`，组件与 Token 规范遵循 `docs/for-frontend/ant-design/design.md`。利润分析桌面端复用 Ant Design `Table` 的 Editable Cells 范式，不引入第二套表格组件库；全局反馈复用 Ant Design `App`、`Message`、`Notification` 和 `Modal`。
+- **前端**：TypeScript + React 18 或更高兼容版本 + Vite + Ant Design v6；根 `ConfigProvider` 使用 `docs/for-frontend/ant-design/theme.json`，组件与 Token 规范遵循 `docs/for-frontend/ant-design/design.md`。利润分析桌面端复用 Ant Design `Table` 的 Editable Cells 范式，不引入第二套表格组件库；全局反馈复用 Ant Design `App`、`Notification` 和 `Modal`，具体交互遵循 §10.5。
 - **业务后端**：TypeScript + NestJS + Prisma 7.x（multiSchema 与 multi-file schema；各部署单元迁移元数据表落位于各自默认 schema 并相互隔离，见 §9.9）；HTTP、数据库、Redis、OSS 与文件流采用请求内非阻塞异步 I/O，CPU 密集型 Excel 解析/序列化使用有界 Node.js Worker Threads 工作池，边界见 §9.1。
 - **AI 后端**：Python + FastAPI + LangChain/LangGraph（智能模块启用后）。
 - **接口**：面向前端的版本化 REST 本期前缀为 `/api/v1`；不同部署单元之间的内部 REST 前缀为 `/internal/v1`，base/backstage 在 `platform-core` 内使用类型明确的应用服务接口而非 HTTP；按 DTO 生成 OpenAPI 文档；SSE 流式接口仅为后续智能模块预留。内部 REST 仅经 Docker 私网访问，使用一个部署级共享令牌和调用方白名单，不引入 JWT、mTLS 或独立认证中心。

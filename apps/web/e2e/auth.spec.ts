@@ -55,8 +55,8 @@ test.describe('认证链路', () => {
     await page.getByLabel('手机号', { exact: true }).fill(PHONE);
     await page.getByLabel('密码', { exact: true }).fill('wrong-password-1');
     await page.locator('button[type="submit"]').click();
-    // 服务端统一错误提示（antd message），且不跳转门户
-    await expect(page.getByText(/失败|错误|不存在|锁定/)).toBeVisible({ timeout: 15_000 });
+    // 服务端错误统一进入右侧悬浮通知卡片，且不跳转门户。
+    await expect(page.locator('.wbme-floating-notification')).toContainText(/失败|错误|不存在|锁定/, { timeout: 15_000 });
     await expect(page).toHaveURL(/\/login/);
   });
 

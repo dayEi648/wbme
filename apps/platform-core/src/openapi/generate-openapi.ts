@@ -34,6 +34,7 @@ process.env.INTERNAL_SERVICE_TOKEN ??= 'openapi-generation-internal-token-32+';
  * 含 /api/v1 全局前缀；健康探针免前缀（main.ts setGlobalPrefix exclude）。
  */
 const PUBLIC_PATHS: readonly string[] = [
+  '/api/v1/runtime-settings/notifications',
   '/api/v1/auth/login/password',
   '/api/v1/auth/dingtalk/authorize',
   '/api/v1/auth/dingtalk/callback',
