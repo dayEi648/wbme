@@ -17,6 +17,10 @@ import { AdminAuthController } from '../../base/auth/admin-auth.controller';
 import { ApprovalController } from '../../base/approval-proxy/approval.controller';
 import { AuthorizationService } from '../permission/authorization.service';
 import { FunctionPermissionGuard, REQUIRED_FUNCTION_KEY } from '../permission/function-permission.guard';
+import { PasswordService } from '../../base/auth/password.service';
+import { FakeDingtalkGateway } from '../../base/dingtalk/dingtalk.gateway.fake';
+import type { DingtalkDirectoryMember } from '../../base/dingtalk/dingtalk.gateway';
+import { DingtalkImportService } from './dingtalk-import.service';
 import { UserAdminController } from './user-admin.controller';
 import { UserAdminService } from './user-admin.service';
 
@@ -26,6 +30,24 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const TEST_NAME_PREFIX = 'T35_';
 const TEST_PHONE_PREFIX = '+8613935';
 const KEY_PREFIX = 't35-';
+
+/** 钉钉导入的短时快照在本规格中用内存替代 Redis，避免测试依赖额外服务。 */
+class InMemorySnapshotRedis {
+  private readonly values = new Map<string, string>();
+
+  async get(key: string): Promise<string | null> {
+    return this.values.get(key) ?? null;
+  }
+
+  async set(key: string, value: string): Promise<'OK'> {
+    this.values.set(key, value);
+    return 'OK';
+  }
+
+  clear(): void {
+    this.values.clear();
+  }
+}
 
 /**
  * 用户管理集成测试（backstage PRD §3；实现规划 T3-5 前半；真实 PostgreSQL）。
@@ -69,7 +91,9 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
     const ids = legacy.map((row) => row.id);
     if (ids.length > 0) {
       await prisma.client.employeeGrant.deleteMany({ where: { OR: [{ userId: { in: ids } }, { grantedBy: { in: ids } }] } });
+      await prisma.client.securityLog.deleteMany({ where: { OR: [{ actorId: { in: ids } }, { targetUserId: { in: ids } }] } });
       await prisma.client.backstageOperationLog.deleteMany({ where: { operatorId: { in: ids } } });
+      await prisma.client.dingtalkBinding.deleteMany({ where: { userId: { in: ids } } });
       await prisma.client.user.deleteMany({ where: { id: { in: ids } } });
     }
   }
@@ -132,6 +156,70 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
     ).rejects.toMatchObject({ entry: { code: 'VALIDATION_FAILED' } });
   });
 
+  it('钉钉导入：完整手机号候选与禁选原因、ACTIVE 创建和绑定、幂等重放、确认阶段复查', async () => {
+    const occupiedByPhone = await createUser({ name: `${TEST_NAME_PREFIX}钉钉手机号占用` });
+    const occupiedUser = await prisma.client.user.findUniqueOrThrow({ where: { id: occupiedByPhone.id } });
+    const occupiedByBinding = await createUser({ name: `${TEST_NAME_PREFIX}钉钉身份占用` });
+    const boundUnionId = `${KEY_PREFIX}bound-${Date.now()}`;
+    await prisma.client.dingtalkBinding.create({
+      data: { userId: occupiedByBinding.id, dingtalkUnionId: boundUnionId, status: 'BOUND', createdBy: superOp.id },
+    });
+    const importUnionId = `${KEY_PREFIX}import-${Date.now()}`;
+    const recheckUnionId = `${KEY_PREFIX}recheck-${Date.now()}`;
+    const directoryMembers: DingtalkDirectoryMember[] = [
+      { unionId: importUnionId, name: `${TEST_NAME_PREFIX}钉钉导入`, mobile: '13935654321', stateCode: '86', active: true },
+      { unionId: `${KEY_PREFIX}phone-${Date.now()}`, name: `${TEST_NAME_PREFIX}手机号占用`, mobile: occupiedUser.phone.slice(3), stateCode: '86', active: true },
+      { unionId: boundUnionId, name: `${TEST_NAME_PREFIX}身份占用`, mobile: '13935654322', stateCode: '86', active: true },
+      { unionId: `${KEY_PREFIX}no-phone-${Date.now()}`, name: `${TEST_NAME_PREFIX}无手机号`, mobile: '', stateCode: '86', active: true },
+      { unionId: recheckUnionId, name: `${TEST_NAME_PREFIX}导入复查`, mobile: '13935654323', stateCode: '86', active: true },
+    ];
+    const gateway = new FakeDingtalkGateway({ directoryMembers });
+    const snapshots = new InMemorySnapshotRedis();
+    const config = {
+      getImportCredentials: vi.fn().mockResolvedValue({ appKey: 'test-key', appSecret: 'test-secret', corpId: 'test-corp', defaultPassword: 'E2ePassw0rd!' }),
+    };
+    const password = new PasswordService();
+    const importService = new DingtalkImportService(prisma, snapshots as never, gateway, config as never, password);
+
+    const candidates = await importService.listCandidates(superOp.id, { page: 1, pageSize: 20 });
+    expect(candidates.data.find((item) => item.unionId === importUnionId)).toMatchObject({
+      name: `${TEST_NAME_PREFIX}钉钉导入`,
+      phone: '+8613935654321',
+      importable: true,
+    });
+    expect(candidates.data.find((item) => item.unionId === boundUnionId)?.disabledReason).toBe('钉钉 ID 已绑定平台账号');
+    expect(candidates.data.find((item) => item.name === `${TEST_NAME_PREFIX}手机号占用`)?.disabledReason).toBe('手机号已被平台账号使用');
+    expect(candidates.data.find((item) => item.name === `${TEST_NAME_PREFIX}无手机号`)?.disabledReason).toBe('未获取到有效手机号');
+
+    const firstImport = await importService.importUsers(superOp.id, {
+      snapshotId: candidates.snapshotId,
+      unionIds: [importUnionId],
+      idempotencyKey: `${KEY_PREFIX}dingtalk-import`,
+    });
+    expect(firstImport.importedCount).toBe(1);
+    const imported = await prisma.client.user.findUniqueOrThrow({ where: { id: firstImport.userIds[0] } });
+    expect(imported).toMatchObject({ name: `${TEST_NAME_PREFIX}钉钉导入`, phone: '+8613935654321', gender: 'MALE', status: 'ACTIVE' });
+    expect(await password.verifyPassword('E2ePassw0rd!', imported.passwordHash ?? '')).toBe(true);
+    expect(await prisma.client.dingtalkBinding.findFirst({ where: { userId: imported.id, dingtalkUnionId: importUnionId, status: 'BOUND' } })).not.toBeNull();
+
+    // 快照失效后同幂等键仍直接回放首次结果，不重复调钉钉或创建账号。
+    snapshots.clear();
+    await expect(importService.importUsers(superOp.id, {
+      snapshotId: candidates.snapshotId,
+      unionIds: [importUnionId],
+      idempotencyKey: `${KEY_PREFIX}dingtalk-import`,
+    })).resolves.toEqual(firstImport);
+
+    const recheckCandidates = await importService.listCandidates(superOp.id, { page: 1, pageSize: 20, refresh: true });
+    gateway.behavior.directoryMembers = directoryMembers.filter((member) => member.unionId !== recheckUnionId);
+    await expect(importService.importUsers(superOp.id, {
+      snapshotId: recheckCandidates.snapshotId,
+      unionIds: [recheckUnionId],
+      idempotencyKey: `${KEY_PREFIX}dingtalk-recheck`,
+    })).rejects.toMatchObject({ entry: { code: 'USER_BATCH_BLOCKED' } });
+    expect(await prisma.client.dingtalkBinding.findFirst({ where: { dingtalkUnionId: recheckUnionId } })).toBeNull();
+  });
+
   it('列表与详情：状态筛选（已注销为管理专用例外）、激活/钉钉绑定状态字段、模糊检索', async () => {
     const pending = await service.createUser(superOp.id, { name: `${TEST_NAME_PREFIX}待激活`, phone: '13935009902', gender: 'MALE' });
     const active = await createUser({ name: `${TEST_NAME_PREFIX}正常` });
@@ -158,7 +246,7 @@ describe.skipIf(!DATABASE_URL)('用户管理（T3-5 前半：创建/编辑/守�
 
     const detail = await service.getUserDetail(pending.id);
     expect(detail).toMatchObject({ status: 'PENDING_ACTIVATION', hasDingtalkBinding: false, gender: 'MALE' });
-    expect(detail.phoneMasked).toContain('****');
+    expect(detail.phone).toBe('+8613935009902');
     await expect(service.getUserDetail(999999999)).rejects.toMatchObject({ entry: { code: 'RESOURCE_NOT_FOUND' } });
   });
 

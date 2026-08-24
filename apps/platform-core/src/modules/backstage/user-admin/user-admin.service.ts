@@ -50,7 +50,7 @@ const USER_FILTER_FIELDS = {
 interface UserView {
   id: number;
   name: string;
-  phoneMasked: string;
+  phone: string;
   gender: 'MALE' | 'FEMALE';
   status: UserStatus;
   isSuperAdmin: boolean;
@@ -292,7 +292,7 @@ export class UserAdminService {
     return new Set(bindings.map((binding) => binding.userId));
   }
 
-  /** 组装展示项（手机号脱敏；deactivatedAt 取注销时间） */
+  /** 组装用户管理展示项（含完整手机号；deactivatedAt 取注销时间）。 */
   private toView(
     user: {
       id: number;
@@ -309,7 +309,7 @@ export class UserAdminService {
     return {
       id: user.id,
       name: user.name,
-      phoneMasked: maskPhone(user.phone),
+      phone: user.phone,
       gender: user.gender,
       status: user.status,
       isSuperAdmin: user.isSuperAdmin,

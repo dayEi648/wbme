@@ -6,7 +6,7 @@ export const deactivatedUsersSource: RemoteOptionSource = {
   endpoint: '/users?status=DEACTIVATED',
   labelKey: 'name',
   valueKey: 'id',
-  secondaryKey: 'phoneMasked',
+  secondaryKey: 'phone',
 };
 
 /** 权限管理可见的在职/待激活员工。 */

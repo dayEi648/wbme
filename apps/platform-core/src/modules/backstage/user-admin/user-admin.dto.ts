@@ -1,9 +1,10 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -49,6 +50,40 @@ export class ListUsersDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(50)
   keyword?: string;
+}
+
+/** 钉钉导入候选列表：短时通讯录快照内按姓名或手机号搜索、分页。 */
+export class ListDingtalkImportCandidatesDto extends PaginationQueryDto {
+  /** 首次请求省略，服务端刷新钉钉组织架构并返回新的 snapshotId；后续翻页/搜索原样回传。 */
+  @IsOptional()
+  @IsUUID()
+  snapshotId?: string;
+
+  /** 强制重新拉取组织架构（可用于弹窗刷新）。 */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  refresh?: boolean;
+
+  /** 按姓名或完整手机号检索。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  keyword?: string;
+}
+
+/** 确认从钉钉批量导入：客户端只提交快照标识和 unionId，不信任姓名/手机号。 */
+export class ImportDingtalkUsersDto extends IdempotentDto {
+  @IsUUID()
+  snapshotId!: string;
+
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(BATCH_LIMIT)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MaxLength(128, { each: true })
+  unionIds!: string[];
 }
 
 /** 编辑用户基本资料（仅姓名和性别；手机号只读，不提供修改入口） */

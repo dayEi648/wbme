@@ -368,6 +368,7 @@
                   "DICT_SEMANTIC_LOCKED",
                   "DINGTALK_ALREADY_BOUND",
                   "DINGTALK_CONFIG_MISSING",
+                  "DINGTALK_IMPORT_CONFIG_MISSING",
                   "DINGTALK_ORG_MISMATCH",
                   "DINGTALK_STATE_INVALID",
                   "DINGTALK_UNAVAILABLE",
@@ -607,6 +608,33 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "ImportDingtalkUsersDto": {
+        "properties": {
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "snapshotId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "unionIds": {
+            "items": {
+              "maxLength": 128,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "snapshotId",
+          "unionIds"
+        ],
         "type": "object"
       },
       "LoginPasswordDto": {
@@ -988,6 +1016,36 @@
           "groups",
           "items"
         ],
+        "type": "object"
+      },
+      "UpdateDingtalkImportSettingsDto": {
+        "properties": {
+          "appKey": {
+            "description": "钉钉企业内部应用 AppKey",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "appSecret": {
+            "description": "钉钉企业内部应用 AppSecret",
+            "maxLength": 512,
+            "type": "string"
+          },
+          "corpId": {
+            "description": "钉钉组织 CorpId",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "defaultPassword": {
+            "description": "导入员工时使用的默认密码（8～32 位）",
+            "maxLength": 32,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "客户端为一次用户意图生成的幂等键；网络重试时保持不变",
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "UpdatePermissionGroupDto": {
@@ -4659,6 +4717,58 @@
         ]
       }
     },
+    "/api/v1/system-settings/dingtalk-import": {
+      "get": {
+        "operationId": "SystemSettingsController_getDingtalkImportSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "获取钉钉导入配置状态；仅返回是否已配置，不泄露 AppSecret 或默认密码。",
+        "tags": [
+          "系统设置"
+        ]
+      },
+      "put": {
+        "operationId": "SystemSettingsController_updateDingtalkImportSettings",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDingtalkImportSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "更新钉钉导入配置；接口不回传已保存的明文。",
+        "tags": [
+          "系统设置"
+        ]
+      }
+    },
     "/api/v1/systems": {
       "get": {
         "operationId": "SystemStructureController_listSystems",
@@ -5121,6 +5231,133 @@
           }
         },
         "summary": "批量注销（整批全有或全无；同事务：账号注销 + 待审批资料修改取消 + 生命周期任务）",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/dingtalk-import": {
+      "post": {
+        "operationId": "UserAdminController_importDingtalkUsers",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportDingtalkUsersDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "确认导入钉钉员工（服务端重新读取组织架构并在事务内复查手机号/unionId 占用）。",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/users/dingtalk-import/candidates": {
+      "get": {
+        "operationId": "UserAdminController_listDingtalkImportCandidates",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "首次请求省略，服务端刷新钉钉组织架构并返回新的 snapshotId；后续翻页/搜索原样回传。",
+            "in": "query",
+            "name": "snapshotId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "强制重新拉取组织架构（可用于弹窗刷新）。",
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "按姓名或完整手机号检索。",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "钉钉组织架构候选员工（按操作人隔离的五分钟快照，服务端分页与检索）。",
         "tags": [
           "用户管理"
         ]

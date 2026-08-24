@@ -90,6 +90,14 @@ export const accountErrors = {
     httpStatus: 503,
     message: '钉钉登录暂未配置，请使用手机号登录',
   },
+  /** 钉钉组织架构导入依赖系统设置中的凭证和默认密码。 */
+  DINGTALK_IMPORT_CONFIG_MISSING: {
+    code: 'DINGTALK_IMPORT_CONFIG_MISSING',
+    type: 'DEPENDENCY',
+    domain: 'ACCOUNT',
+    httpStatus: 503,
+    message: '请先在系统设置完成钉钉导入配置',
+  },
   /** 钉钉授权结果未返回手机号（base PRD §2：无手机号不能注册/激活） */
   PHONE_MISSING_FROM_DINGTALK: {
     code: 'PHONE_MISSING_FROM_DINGTALK',

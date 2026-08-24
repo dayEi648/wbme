@@ -1,4 +1,11 @@
-import { DingtalkNotMemberError, type DingtalkGateway, type DingtalkOrgMember, type DingtalkUserInfo } from './dingtalk.gateway';
+import {
+  DingtalkNotMemberError,
+  DingtalkUnavailableError,
+  type DingtalkDirectoryMember,
+  type DingtalkGateway,
+  type DingtalkOrgMember,
+  type DingtalkUserInfo,
+} from './dingtalk.gateway';
 
 /**
  * 测试用 FakeDingtalkGateway：可编程 unionId/手机号/组织不匹配/超时。
@@ -15,6 +22,7 @@ export class FakeDingtalkGateway implements DingtalkGateway {
     notMember?: boolean;
     /** 模拟钉钉超时/不可用 */
     unavailable?: boolean;
+    directoryMembers?: DingtalkDirectoryMember[];
   };
 
   constructor(
@@ -28,14 +36,14 @@ export class FakeDingtalkGateway implements DingtalkGateway {
     };
   }
 
-  buildAuthorizeUrl(params: { state: string; redirectUri: string }): string {
+  async buildAuthorizeUrl(params: { state: string; redirectUri: string }): Promise<string> {
     const search = new URLSearchParams({ state: params.state, redirect_uri: params.redirectUri });
     return `https://login.dingtalk.com/oauth2/auth?${search.toString()}`;
   }
 
   async exchangeCodeForUserToken(code: string): Promise<{ accessToken: string; corpId: string }> {
     if (this.behavior.unavailable) {
-      throw new Error('fetch failed: ETIMEDOUT');
+      throw new DingtalkUnavailableError('测试钉钉网关不可用');
     }
     if (this.behavior.orgMismatch) {
       return { accessToken: `token-${code}`, corpId: 'wrong-corp' };
@@ -45,14 +53,14 @@ export class FakeDingtalkGateway implements DingtalkGateway {
 
   async getUserInfo(): Promise<DingtalkUserInfo> {
     if (this.behavior.unavailable) {
-      throw new Error('fetch failed: ETIMEDOUT');
+      throw new DingtalkUnavailableError('测试钉钉网关不可用');
     }
     return this.behavior.user;
   }
 
   async getOrgMemberByUnionId(): Promise<DingtalkOrgMember> {
     if (this.behavior.unavailable) {
-      throw new Error('fetch failed: ETIMEDOUT');
+      throw new DingtalkUnavailableError('测试钉钉网关不可用');
     }
     if (this.behavior.notMember) {
       throw new DingtalkNotMemberError('钉钉成员查询返回非本组织成员');
@@ -60,7 +68,26 @@ export class FakeDingtalkGateway implements DingtalkGateway {
     return this.behavior.member;
   }
 
-  isConfigured(): boolean {
+  async listDirectoryMembers(): Promise<DingtalkDirectoryMember[]> {
+    if (this.behavior.unavailable) {
+      throw new DingtalkUnavailableError('测试钉钉网关不可用');
+    }
+    return this.behavior.directoryMembers ?? [
+      {
+        unionId: this.behavior.member.unionId,
+        name: this.behavior.user.nick,
+        mobile: this.behavior.member.mobile,
+        stateCode: this.behavior.member.stateCode,
+        active: this.behavior.member.active,
+      },
+    ];
+  }
+
+  async isConfigured(): Promise<boolean> {
     return this.configured;
+  }
+
+  async getConfiguredCorpId(): Promise<string> {
+    return process.env.DINGTALK_CORP_ID ?? 'test-corp';
   }
 }

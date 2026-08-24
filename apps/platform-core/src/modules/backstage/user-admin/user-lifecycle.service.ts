@@ -63,7 +63,7 @@ interface DeactivationTarget {
 export interface RestorePreviewItem {
   userId: number;
   name: string;
-  phoneMasked: string;
+  phone: string;
   lifecycleVersion: number;
   restoreStatus: 'PENDING_ACTIVATION' | 'ACTIVE';
   restorable: boolean;
@@ -223,7 +223,7 @@ export class UserLifecycleService {
         return {
           userId,
           name: '',
-          phoneMasked: '',
+          phone: '',
           lifecycleVersion: 0,
           restoreStatus: 'PENDING_ACTIVATION',
           restorable: false,
@@ -242,7 +242,7 @@ export class UserLifecycleService {
       return {
         userId: user.id,
         name: user.name,
-        phoneMasked: maskPhone(user.phone),
+        phone: user.phone,
         lifecycleVersion: user.lifecycleVersion,
         // 恢复后状态推导：无密码账号只能是注销前的待激活（CHECK 约束 ACTIVE 必有密码，激活事务必然写密码）
         restoreStatus: user.passwordHash === null ? 'PENDING_ACTIVATION' : 'ACTIVE',

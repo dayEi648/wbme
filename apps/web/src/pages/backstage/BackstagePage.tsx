@@ -19,6 +19,7 @@ import { catalogFunctionOptions } from '../../permission/catalog';
 import { useFeedback } from '../../request/feedback';
 import { http } from '../../request/http';
 import { useSession } from '../../request/session';
+import { DingtalkImportModal } from './DingtalkImportModal';
 
 type RecordValue = Record<string, unknown>;
 
@@ -39,7 +40,7 @@ const NAVIGATION: NavigationItem[] = [
 /** 用户管理列表列（/users 载荷：无部门/授权字段；状态枚举中文化）。 */
 const USER_COLUMNS = [
   { key: 'name', title: '姓名', sortable: true },
-  { key: 'phoneMasked', title: '手机号' },
+  { key: 'phone', title: '手机号' },
   { key: 'status', title: '状态', enumKind: 'userStatus' as const, sortable: true },
   { key: 'isSuperAdmin', title: '超级管理员', render: (value: unknown) => (value === true ? '是' : '否') },
   { key: 'createdAt', title: '创建时间', sortable: true },
@@ -99,7 +100,7 @@ const SECURITY_EVENT_TYPE_OPTIONS = [
 /** 用户详情字段中文名（含解锁状态，解锁显隐见 UserManagement）。 */
 const USER_DETAIL_LABELS: Readonly<Record<string, string>> = {
   name: '姓名',
-  phoneMasked: '手机号',
+  phone: '手机号',
   gender: '性别',
   status: '状态',
   isSuperAdmin: '超级管理员',
@@ -112,7 +113,7 @@ const USER_DETAIL_LABELS: Readonly<Record<string, string>> = {
 /** 恢复预览逐目标字段中文名。 */
 const RESTORE_ITEM_LABELS: Readonly<Record<string, string>> = {
   name: '姓名',
-  phoneMasked: '手机号',
+  phone: '手机号',
   lifecycleVersion: '生命周期版本',
   restoreStatus: '恢复后状态',
   restorable: '可恢复',
@@ -269,6 +270,7 @@ function UserManagement() {
   const feedback = useFeedback();
   const { user } = useSession();
   const [createOpen, setCreateOpen] = useState(false);
+  const [dingtalkImportOpen, setDingtalkImportOpen] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [detail, setDetail] = useState<RecordValue | null>(null);
   const [editing, setEditing] = useState(false);
@@ -397,7 +399,7 @@ function UserManagement() {
           { key: 'keyword', title: '姓名或手机号', type: 'text' },
           { key: 'status', title: '状态', type: 'enum', options: [{ label: '待激活', value: 'PENDING_ACTIVATION' }, { label: '正常', value: 'ACTIVE' }, { label: '已注销', value: 'DEACTIVATED' }] },
         ]}
-        actions={<Space wrap><Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建用户</Button><Button onClick={() => setRestoreOpen(true)}>恢复已注销用户</Button></Space>}
+        actions={<Space wrap><Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建用户</Button><Button onClick={() => setDingtalkImportOpen(true)}>从钉钉导入</Button><Button onClick={() => setRestoreOpen(true)}>恢复已注销用户</Button></Space>}
         emptyAction={{ label: '去创建', onExecute: () => setCreateOpen(true) }}
         onRowClick={(row) => setDetailId(Number(row.id))}
         batchAction={{ label: '批量注销', danger: true, onExecute: async (userIds) => { await http.post('/users/deactivations/batch', { userIds: userIds.map(Number) }); } }}
@@ -407,6 +409,11 @@ function UserManagement() {
         { key: 'phone', label: '手机号', required: true, maxLength: 32 },
         { key: 'gender', label: '性别', type: 'select', required: true, options: [{ label: '男', value: 'MALE' }, { label: '女', value: 'FEMALE' }], width: 'narrow' },
       ]} />
+      <DingtalkImportModal
+        open={dingtalkImportOpen}
+        onCancel={() => setDingtalkImportOpen(false)}
+        onImported={() => setVersion((value) => value + 1)}
+      />
       <Drawer title="用户详情" open={detailId !== null} onClose={() => { setDetailId(null); setInvitationUrl(null); }} width="min(92vw, 520px)">
         {detail ? (
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -817,8 +824,107 @@ function SettingsBookmarkPage() {
       labels={SETTING_LABELS}
       presentations={SETTING_PRESENTATIONS}
       save={(patches) => http.put('/system-settings', { patches })}
-      extraSections={[{ id: 'system-status', title: '系统状态', content: <SystemStatusTab /> }]}
+      extraSections={[
+        { id: 'dingtalk-import', title: '钉钉员工导入', content: <DingtalkImportSettingsCard /> },
+        { id: 'system-status', title: '系统状态', content: <SystemStatusTab /> },
+      ]}
     />
+  );
+}
+
+interface DingtalkImportSettingsStatus {
+  appKeyConfigured: boolean;
+  appSecretConfigured: boolean;
+  corpIdConfigured: boolean;
+  defaultPasswordConfigured: boolean;
+  ready: boolean;
+}
+
+type DingtalkImportSettingsDraft = Record<'appKey' | 'appSecret' | 'corpId' | 'defaultPassword', string>;
+
+/** 钉钉导入设置仅展示配置状态；敏感值保存后立即清空，后端也不会回显。 */
+function DingtalkImportSettingsCard() {
+  const feedback = useFeedback();
+  const [status, setStatus] = useState<DingtalkImportSettingsStatus | null>(null);
+  const [draft, setDraft] = useState<DingtalkImportSettingsDraft>({ appKey: '', appSecret: '', corpId: '', defaultPassword: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setStatus(await http.get<DingtalkImportSettingsStatus>('/system-settings/dingtalk-import', { active: true }));
+    } catch (error) {
+      feedback.error(error, '钉钉导入设置加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const updateDraft = (key: keyof DingtalkImportSettingsDraft, value: string) => {
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const save = async () => {
+    const patches = Object.fromEntries(Object.entries(draft).filter(([, value]) => value.trim() !== ''));
+    if (Object.keys(patches).length === 0) {
+      feedback.info('请至少填写一项需要更新的配置');
+      return;
+    }
+    const confirmed = await feedback.confirm({
+      title: '确认保存钉钉员工导入配置？',
+      content: '保存后不会再次显示 AppSecret 和默认密码的明文。',
+      okText: '保存',
+    });
+    if (!confirmed) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const nextStatus = await http.put<DingtalkImportSettingsStatus>('/system-settings/dingtalk-import', patches);
+      setStatus(nextStatus);
+      setDraft({ appKey: '', appSecret: '', corpId: '', defaultPassword: '' });
+      feedback.success('钉钉导入配置已保存');
+    } catch (error) {
+      feedback.error(error, '钉钉导入配置保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const configurationStatus = (configured: boolean) => configured ? <Tag color="success">已配置</Tag> : <Tag>未配置</Tag>;
+
+  return (
+    <Spin spinning={loading}>
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Row gutter={[16, 0]}>
+          <Col xs={24} md={12}>
+            <Typography.Paragraph style={{ marginBottom: 6 }}>AppKey {configurationStatus(status?.appKeyConfigured === true)}</Typography.Paragraph>
+            <Input aria-label="钉钉 AppKey" autoComplete="off" value={draft.appKey} onChange={(event) => updateDraft('appKey', event.target.value)} maxLength={128} />
+          </Col>
+          <Col xs={24} md={12}>
+            <Typography.Paragraph style={{ marginBottom: 6 }}>AppSecret {configurationStatus(status?.appSecretConfigured === true)}</Typography.Paragraph>
+            <Input.Password aria-label="钉钉 AppSecret" autoComplete="new-password" value={draft.appSecret} onChange={(event) => updateDraft('appSecret', event.target.value)} maxLength={512} />
+          </Col>
+          <Col xs={24} md={12}>
+            <Typography.Paragraph style={{ marginBottom: 6 }}>组织 CorpId {configurationStatus(status?.corpIdConfigured === true)}</Typography.Paragraph>
+            <Input aria-label="钉钉组织 CorpId" autoComplete="off" value={draft.corpId} onChange={(event) => updateDraft('corpId', event.target.value)} maxLength={128} />
+          </Col>
+          <Col xs={24} md={12}>
+            <Typography.Paragraph style={{ marginBottom: 6 }}>导入默认密码 {configurationStatus(status?.defaultPasswordConfigured === true)}</Typography.Paragraph>
+            <Input.Password aria-label="钉钉导入默认密码" autoComplete="new-password" value={draft.defaultPassword} onChange={(event) => updateDraft('defaultPassword', event.target.value)} maxLength={32} />
+          </Col>
+        </Row>
+        <Space>
+          <Button onClick={() => void load()}>刷新状态</Button>
+          <Button type="primary" loading={saving} onClick={() => void save()}>保存钉钉导入配置</Button>
+        </Space>
+      </Space>
+    </Spin>
   );
 }
 

@@ -68,6 +68,17 @@
 
 **行为**：校验边界和整数单位、确保空闲超时不大于对应的绝对过期 → 写入 `backstage.system_settings` → 失效进程内缓存 → Redis `config:broadcast` 广播 → 记录操作日志。
 
+### GET `/system-settings/dingtalk-import`
+
+返回钉钉员工导入配置状态，不返回 AppKey、AppSecret、CorpId 或默认密码明文。
+
+**响应**：`{ appKeyConfigured, appSecretConfigured, corpIdConfigured, defaultPasswordConfigured, ready }`
+
+### PUT `/system-settings/dingtalk-import`
+
+更新钉钉员工导入设置（支持幂等键）；空字段保持已保存值。请求体为
+`{ appKey?, appSecret?, corpId?, defaultPassword?, idempotencyKey? }`。响应仅返回上述配置状态，不回显 AppSecret 或默认密码；默认密码长度为 8～32 位。
+
 ---
 
 ## 2. 操作日志

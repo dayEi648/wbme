@@ -19,7 +19,6 @@ import { PrismaService } from '../../../prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { FlowSessionService } from '../auth/flows/flow-session.service';
 import { DINGTALK_GATEWAY, DingtalkNotMemberError, DingtalkUnavailableError, type DingtalkGateway } from './dingtalk.gateway';
-import { DingtalkGatewayImpl } from './dingtalk.gateway.impl';
 import { DINGTALK_PURPOSES, DingtalkStateService, type DingtalkPurpose, type DingtalkStateData } from './dingtalk.state.service';
 
 /** 会话 Cookie Secure 属性（生产必须 true；本地 http 开发设 false） */
@@ -80,12 +79,11 @@ export class DingtalkController {
         throw new BusinessException(accountErrors.FLOW_SESSION_INVALID);
       }
     }
-    const impl = this.gateway as DingtalkGatewayImpl;
-    if (!impl.isConfigured?.()) {
+    if (!(await this.gateway.isConfigured())) {
       throw new BusinessException(accountErrors.DINGTALK_CONFIG_MISSING);
     }
     const state = await this.state.issue(purpose, flowId);
-    return { authorizeUrl: this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
+    return { authorizeUrl: await this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
   }
 
   /**
@@ -96,8 +94,7 @@ export class DingtalkController {
   @UseGuards(RateLimitGuard)
   @RateLimit({ scope: 'dingtalk-bind-authorize', keyType: 'ip', limit: 30, windowSeconds: 60 })
   async bindAuthorize(@CurrentUser() userId: number): Promise<{ authorizeUrl: string }> {
-    const impl = this.gateway as DingtalkGatewayImpl;
-    if (!impl.isConfigured?.()) {
+    if (!(await this.gateway.isConfigured())) {
       throw new BusinessException(accountErrors.DINGTALK_CONFIG_MISSING);
     }
     // 已有有效绑定：前端按绑定状态隐藏入口，此处服务端兜底拒绝
@@ -109,7 +106,7 @@ export class DingtalkController {
       throw new BusinessException(accountErrors.DINGTALK_ALREADY_BOUND);
     }
     const state = await this.state.issue('BIND', undefined, userId);
-    return { authorizeUrl: this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
+    return { authorizeUrl: await this.gateway.buildAuthorizeUrl({ state, redirectUri: dingtalkRedirectUri() }) };
   }
 
   /** A5 钉钉回调（公开 GET；CSRF 风险由一次性 state 承担） */
@@ -134,7 +131,7 @@ export class DingtalkController {
 
       // 授权码兑换 + 组织校验（corpId 与部署配置一致；配置了公司组织时缺失/不一致均拒绝）
       const token = await this.gateway.exchangeCodeForUserToken(code);
-      const configuredCorpId = process.env.DINGTALK_CORP_ID;
+      const configuredCorpId = await this.gateway.getConfiguredCorpId();
       if (configuredCorpId && token.corpId !== configuredCorpId) {
         throw new BusinessException(accountErrors.DINGTALK_ORG_MISMATCH);
       }

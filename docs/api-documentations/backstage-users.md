@@ -31,13 +31,27 @@
 
 - 入参（query）：`status?`（`PENDING_ACTIVATION / ACTIVE / DEACTIVATED`；缺省 = 未注销全部——
   已注销列表为主 PRD §2.6 默认过滤的管理专用例外）、`keyword?`（姓名模糊；含数字同时匹配手机号片段）、`page?`、`pageSize?`
-- 成功：`{ data: [{ id, name, phoneMasked, gender, status, isSuperAdmin, hasDingtalkBinding, createdAt, deactivatedAt }], pagination }`
+- 成功：`{ data: [{ id, name, phone, gender, status, isSuperAdmin, hasDingtalkBinding, createdAt, deactivatedAt }], pagination }`
 - 失败：`FORBIDDEN`(403) / `VALIDATION_FAILED`(400)
 
 ## U3 用户详情 `GET /users/{id}`
 
 - 成功：单用户展示项（字段同 U2；含已注销账号）
 - 失败：`RESOURCE_NOT_FOUND`(404) / `FORBIDDEN`(403)
+
+## U2.1 钉钉导入候选 `GET /users/dingtalk-import/candidates`
+
+- 入参（query）：`snapshotId?`（首次省略；后续分页/搜索回传）、`refresh?`（`true` 强制更新通讯录快照）、`keyword?`（姓名或手机号）、`page?`、`pageSize?`
+- 成功：`{ snapshotId, data: [{ unionId, name, phone, importable, disabledReason? }], pagination }`。`phone` 为完整手机号；`importable=false` 的行不可勾选，原因包括平台手机号已使用、钉钉 ID 已绑定、离职、资料无效或通讯录内手机号重复。
+- 语义：按当前操作人隔离的五分钟通讯录快照服务端搜索与分页；首次打开及刷新会从钉钉组织架构重新读取当前应用获授范围。
+- 失败：`DINGTALK_IMPORT_CONFIG_MISSING`(503) / `DINGTALK_UNAVAILABLE`(503) / `FORBIDDEN`(403) / `RATE_LIMITED`(429)
+
+## U2.2 确认钉钉导入 `POST /users/dingtalk-import`
+
+- 入参：`{ snapshotId: uuid, unionIds: string[]（1～100）, idempotencyKey? }`；客户端不得提交或信任姓名、手机号。
+- 语义：服务端重新读取钉钉组织架构，并在单事务内复查所有手机号和钉钉 ID 占用；任一目标不可导入时整批零写入。成功时逐人创建 `ACTIVE` 账号、写入默认密码的 Argon2 摘要、默认性别 `MALE`、建立 `BOUND` 钉钉绑定并写安全日志。
+- 成功：`{ userIds, importedCount }`（幂等重放返回首次结果）
+- 失败：`USER_BATCH_BLOCKED`(422，`details.failures` 含逐人原因) / `CONFLICT`(409，快照已过期) / `DINGTALK_IMPORT_CONFIG_MISSING`(503) / `DINGTALK_UNAVAILABLE`(503) / `FORBIDDEN`(403) / `IDEMPOTENCY_KEY_REUSED`(409)
 
 ## U4 编辑基本资料 `PUT /users/{id}`
 
@@ -67,7 +81,7 @@
 - 入参：`{ userIds: number[]（≤100 且不重复） }`
 - 语义：实际调用 hr `restore-preview` 内部接口（就绪检查——hr 停止/未就绪/超时/无效响应 →
   `HR_SERVICE_UNAVAILABLE` 503，零变更）；返回逐目标差异供确认页展示
-- 成功：`{ restoreRequestId: uuid, items: [{ userId, name, phoneMasked, lifecycleVersion, restoreStatus,
+- 成功：`{ restoreRequestId: uuid, items: [{ userId, name, phone, lifecycleVersion, restoreStatus,
   restorable, blockedReason?, revokedGrants: [{ functionCode, dataScope, name }], removedDepartmentNames?, positionCleared? }] }`
   - `blockedReason`（本地侧）：`TARGET_NOT_FOUND / TARGET_NOT_DEACTIVATED / SUPER_ADMIN_TARGET / PHONE_OCCUPIED`
     （手机号被其他待激活/正常账号占用，待占用解除后重试）；hr 侧原因码原样透传

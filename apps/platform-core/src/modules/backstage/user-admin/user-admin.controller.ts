@@ -6,7 +6,17 @@ import { FunctionPermissionGuard, RequireFunction } from '../permission/function
 import { SuperAdminService } from './super-admin.service';
 import { UserAdminService } from './user-admin.service';
 import { UserLifecycleService } from './user-lifecycle.service';
-import { BatchDeactivateDto, CreateUserDto, ListUsersDto, RestoreConfirmDto, RestorePreviewDto, UpdateUserDto } from './user-admin.dto';
+import {
+  BatchDeactivateDto,
+  CreateUserDto,
+  ImportDingtalkUsersDto,
+  ListDingtalkImportCandidatesDto,
+  ListUsersDto,
+  RestoreConfirmDto,
+  RestorePreviewDto,
+  UpdateUserDto,
+} from './user-admin.dto';
+import { DingtalkImportService } from './dingtalk-import.service';
 
 /**
  * 用户管理（backstage PRD §3）。
@@ -24,6 +34,7 @@ export class UserAdminController {
     private readonly users: UserAdminService,
     private readonly lifecycle: UserLifecycleService,
     private readonly superAdmins: SuperAdminService,
+    private readonly dingtalkImport: DingtalkImportService,
   ) {}
 
   /** 创建用户（待激活基础账号；手机号在待激活与正常账号间唯一） */
@@ -36,6 +47,25 @@ export class UserAdminController {
   @Get()
   listUsers(@Query() dto: ListUsersDto): Promise<unknown> {
     return this.users.listUsers(dto);
+  }
+
+  /** 钉钉组织架构候选员工（按操作人隔离的五分钟快照，服务端分页与检索）。 */
+  @Get('dingtalk-import/candidates')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'dingtalk-import-list', keyType: 'user', limit: 20, windowSeconds: 60 })
+  listDingtalkImportCandidates(
+    @CurrentUser() operatorId: number,
+    @Query() dto: ListDingtalkImportCandidatesDto,
+  ): Promise<unknown> {
+    return this.dingtalkImport.listCandidates(operatorId, dto);
+  }
+
+  /** 确认导入钉钉员工（服务端重新读取组织架构并在事务内复查手机号/unionId 占用）。 */
+  @Post('dingtalk-import')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ scope: 'dingtalk-import-confirm', keyType: 'user', limit: 10, windowSeconds: 60 })
+  importDingtalkUsers(@CurrentUser() operatorId: number, @Body() dto: ImportDingtalkUsersDto): Promise<unknown> {
+    return this.dingtalkImport.importUsers(operatorId, dto);
   }
 
   /** 用户详情（含已注销账号） */
