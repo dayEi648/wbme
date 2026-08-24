@@ -128,6 +128,13 @@ function buildServiceEnv(ports) {
   env.ASSET_URL = `http://localhost:${ports.asset}`;
   env.HR_URL = `http://localhost:${ports.hr}`;
   env.FIN_URL = `http://localhost:${ports.fin}`;
+  // 健康状态页探针基址（backstage PRD §11）：仅注入 dev 脚本实际启动的服务；
+  // health-status.service 会自动追加 /healthz 与 /readyz
+  env.PLATFORM_CORE_HEALTH_URL = `http://localhost:${ports['platform-core']}`;
+  env.ASSET_HEALTH_URL = `http://localhost:${ports.asset}`;
+  env.HR_HEALTH_URL = `http://localhost:${ports.hr}`;
+  env.FIN_HEALTH_URL = `http://localhost:${ports.fin}`;
+  env.WORKER_HEALTH_URL = `http://localhost:${ports.worker}`;
   // 服务间内部 base URL（docker-compose 内网口径的本地等价）：统一裸 host:port，
   // 请求路径自带 /internal/v1 前缀（客户端约定），这里不得再带前缀，否则拼接成双前缀
   env.PLATFORM_CORE_INTERNAL_BASE_URL = `http://localhost:${ports['platform-core']}`;
