@@ -89,7 +89,7 @@ export function PositionApplicationsSection() {
           { key: 'applicationNo', title: '申请编号' },
           { key: 'targetDepartmentName', title: '目标部门' },
           { key: 'targetPositionName', title: '目标岗位' },
-          { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
+          { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} enumKind="approvalStatus" /> },
           { key: 'submittedAt', title: '提交时间' },
         ]}
       />

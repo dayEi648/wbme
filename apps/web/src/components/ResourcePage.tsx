@@ -207,7 +207,7 @@ export function ResourcePage({
 
   const detailItems = columns
     .filter((column) => detailRow && column.key in detailRow)
-    .map((column) => ({ key: column.key, label: column.title, children: <span style={{ whiteSpace: 'pre-wrap' }}>{formatDisplayValue(detailRow?.[column.key], column.key)}</span> }));
+    .map((column) => ({ key: column.key, label: column.title, children: <span style={{ whiteSpace: 'pre-wrap' }}>{formatDisplayValue(detailRow?.[column.key], column.key, column.enumKind)}</span> }));
 
   return (
     <>

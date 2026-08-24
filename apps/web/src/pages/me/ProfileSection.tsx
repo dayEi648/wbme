@@ -1,6 +1,7 @@
 import { Button, Card, Descriptions, Form, Input, Modal, Radio, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { formatBeijingDateTime } from '../../components/display-format';
+import { formatEnumLabel } from '../../components/enum-display';
 import { useFeedback } from '../../request/feedback';
 import { ApiError, http } from '../../request/http';
 import { useMeData } from './use-me-data';
@@ -67,9 +68,9 @@ export function ProfileSection() {
     >
       <Descriptions column={{ xs: 1, sm: 2 }} size="small">
         <Descriptions.Item label="姓名">{me?.user.name}</Descriptions.Item>
-        <Descriptions.Item label="性别">{me?.user.gender === 'MALE' ? '男' : '女'}</Descriptions.Item>
+        <Descriptions.Item label="性别">{formatEnumLabel('gender', me?.user.gender)}</Descriptions.Item>
         <Descriptions.Item label="手机号">{me?.user.phoneMasked}</Descriptions.Item>
-        <Descriptions.Item label="账号状态">{me?.user.status === 'ACTIVE' ? '正常' : me?.user.status}</Descriptions.Item>
+        <Descriptions.Item label="账号状态">{formatEnumLabel('userStatus', me?.user.status)}</Descriptions.Item>
         <Descriptions.Item label="部门">{departmentNames}</Descriptions.Item>
         <Descriptions.Item label="岗位">{positionNames}</Descriptions.Item>
         <Descriptions.Item label="注册时间">{me ? formatBeijingDateTime(me.user.createdAt) : '—'}</Descriptions.Item>

@@ -38,7 +38,8 @@ import { SystemSettingsPage, type SystemSettingPresentation, type SystemSettings
 import { SystemHome } from '../../components/SystemHome';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
-import { formatBeijingDateTime } from '../../components/display-format';
+import { formatBeijingDateTime, formatDisplayValue } from '../../components/display-format';
+import { enumOptions, formatEnumLabel, type EnumKind } from '../../components/enum-display';
 import { openQrPrintWindow } from '../../components/qr-print';
 import { useFeedback } from '../../request/feedback';
 import { http } from '../../request/http';
@@ -77,14 +78,14 @@ const ASSET_COLUMNS = [
   { key: 'name', title: '资产名称', sortable: true },
   { key: 'categoryName', title: '分类' },
   { key: 'departmentName', title: '所属部门' },
-  { key: 'usageStatus', title: '状态', render: (value: unknown) => <StatusTag value={value} />, sortable: true },
+  { key: 'usageStatus', title: '状态', enumKind: 'assetStatus' as const, render: (value: unknown) => <StatusTag value={value} enumKind="assetStatus" />, sortable: true },
   { key: 'responsibleUserName', title: '责任人' },
   { key: 'updatedAt', title: '更新时间', sortable: true },
 ];
 
 const COMMON_COLUMNS = [
   { key: 'name', title: '名称' },
-  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
+  { key: 'status', title: '状态', enumKind: 'dictionaryStatus' as const, render: (value: unknown) => <StatusTag value={value} enumKind="dictionaryStatus" /> },
   { key: 'createdAt', title: '创建时间' },
 ];
 
@@ -102,13 +103,38 @@ const nameColWithDeactivatedFlag = (key: 'applicantName' | 'userName', title: st
 });
 
 const REQUEST_COLUMNS = [
-  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} />, sortable: true },
+  { key: 'status', title: '状态', enumKind: 'approvalStatus' as const, render: (value: unknown) => <StatusTag value={value} enumKind="approvalStatus" />, sortable: true },
   { key: 'submittedAt', title: '提交时间', sortable: true },
 ];
 
+const REPAIR_COLUMNS: DataColumn[] = [
+  { key: 'name', title: '名称' },
+  { key: 'assetName', title: '资产' },
+  { key: 'status', title: '维修状态', enumKind: 'repairStatus', render: (value: unknown) => <StatusTag value={value} enumKind="repairStatus" /> },
+  { key: 'createdAt', title: '创建时间' },
+];
+
+const ASSET_CHANGE_FIELD_LABELS: Readonly<Record<string, string>> = {
+  name: '资产名称',
+  specModel: '规格型号',
+  amount: '金额',
+  usageStatus: '使用状态',
+  currentUserId: '使用者',
+  remark: '备注',
+};
+
+const ASSET_CHANGE_FIELD_ENUM_KINDS: Readonly<Record<string, EnumKind>> = {
+  usageStatus: 'assetStatus',
+};
+
+function formatAssetChangeValue(field: unknown, value: unknown): string {
+  const enumKind = ASSET_CHANGE_FIELD_ENUM_KINDS[String(field ?? '')];
+  return enumKind ? formatEnumLabel(enumKind, value) : formatDisplayValue(value, String(field ?? ''));
+}
+
 /** 借还历史列（契约：对齐后端 borrow.service listHistory SELECT 字段，asset-page-columns.spec 断言）。 */
 export const BORROW_HISTORY_COLUMNS = [
-  { key: 'recordType', title: '记录类型' },
+  { key: 'recordType', title: '记录类型', enumKind: 'borrowType' as const },
   nameColWithDeactivatedFlag('userName', '借用人/代交人', 'userDeactivated'),
   { key: 'consumableName', title: '物品', sortable: true },
   { key: 'qty', title: '数量', sortable: true },
@@ -121,7 +147,7 @@ export const BORROW_HISTORY_COLUMNS = [
 
 /** 待处置列（契约：对齐后端 disposal.service listPending SELECT 字段，asset-page-columns.spec 断言）。 */
 export const DISPOSAL_PENDING_COLUMNS = [
-  { key: 'recordType', title: '记录类型' },
+  { key: 'recordType', title: '记录类型', enumKind: 'borrowType' as const },
   { key: 'userName', title: '目标用户' },
   { key: 'consumableName', title: '物品' },
   { key: 'qty', title: '数量' },
@@ -130,11 +156,11 @@ export const DISPOSAL_PENDING_COLUMNS = [
 
 /** 处置记录列（契约：对齐后端 disposal.service listRecords SELECT 字段，asset-page-columns.spec 断言）。 */
 export const DISPOSAL_RECORDS_COLUMNS = [
-  { key: 'recordType', title: '记录类型' },
+  { key: 'recordType', title: '记录类型', enumKind: 'borrowType' as const },
   { key: 'userName', title: '目标用户', sortable: true },
   { key: 'consumableName', title: '物品' },
   { key: 'qty', title: '数量' },
-  { key: 'disposalType', title: '处置方式', sortable: true },
+  { key: 'disposalType', title: '处置方式', enumKind: 'disposalType' as const, sortable: true },
   { key: 'processorName', title: '处理人', sortable: true },
   { key: 'createdAt', title: '处理时间', sortable: true },
 ];
@@ -225,11 +251,6 @@ const CONSUMABLE_EDIT_FIELDS: FormField[] = [
   { key: 'safetyStock', label: '安全库存', type: 'number', required: true, group: '库存参数', width: 'narrow' },
   { key: 'status', label: '状态', type: 'select', required: true, options: ENABLED_STATUS_OPTIONS, group: '状态', width: 'narrow' },
 ];
-
-const ASSET_STATUS_LABELS: Readonly<Record<string, string>> = {
-  IDLE: '闲置', IN_USE: '使用中', PENDING_REPAIR: '待维修', REPAIRING: '维修中', SCRAPPED: '已报废',
-};
-const OWNERSHIP_LABELS: Readonly<Record<string, string>> = { COMPANY: '公司', PARTNER: '合作方' };
 
 /** 资产系统路由容器。 */
 export default function AssetPage() {
@@ -374,7 +395,7 @@ function AssetDetailDrawer({ assetId, onClose }: { assetId: number | null; onClo
     ] as Array<[string, string]>
   ).filter(([key]) => detail?.[key] !== undefined && detail[key] !== null).map(([key, label]) => ({
     label,
-    children: <span>{key === 'usageStatus' ? ASSET_STATUS_LABELS[String(detail?.[key] ?? '')] ?? String(detail?.[key] ?? '—') : key === 'ownership' ? OWNERSHIP_LABELS[String(detail?.[key] ?? '')] ?? String(detail?.[key] ?? '—') : key === 'purchaseAt' || key === 'updatedAt' ? formatBeijingDateTime(String(detail?.[key] ?? '')) : String(detail?.[key] ?? '—')}</span>,
+    children: <span>{key === 'usageStatus' ? formatEnumLabel('assetStatus', detail?.[key]) : key === 'ownership' ? formatEnumLabel('assetOwnership', detail?.[key]) : key === 'purchaseAt' || key === 'updatedAt' ? formatBeijingDateTime(String(detail?.[key] ?? '')) : String(detail?.[key] ?? '—')}</span>,
   }));
   return <Drawer title="资产详情" open={assetId !== null} onClose={onClose} width="min(92vw, 720px)">
     {detail ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -393,18 +414,18 @@ function AssetDetailDrawer({ assetId, onClose }: { assetId: number | null; onClo
           { key: 'createdAt', title: '时间' }, { key: 'toDepartmentName', title: '目标部门' }, { key: 'toUserName', title: '目标责任人' }, { key: 'remark', title: '备注' },
         ]) },
         { key: 'changes', label: `变更记录（${changes.length}）`, children: historyTable(changes, [
-          { key: 'createdAt', title: '时间' }, { key: 'changedField', title: '变更字段' }, { key: 'oldValue', title: '变更前' }, { key: 'newValue', title: '变更后' }, { key: 'operatorName', title: '操作人' },
+          { key: 'createdAt', title: '时间' }, { key: 'changedField', title: '变更字段', render: (value: unknown) => ASSET_CHANGE_FIELD_LABELS[String(value ?? '')] ?? '未知字段' }, { key: 'oldValue', title: '变更前', render: (value: unknown, row: RecordValue) => formatAssetChangeValue(row.changedField, value) }, { key: 'newValue', title: '变更后', render: (value: unknown, row: RecordValue) => formatAssetChangeValue(row.changedField, value) }, { key: 'operatorName', title: '操作人' },
         ]) },
         { key: 'repairs', label: `维修单（${repairOrders.length}）`, children: historyTable(repairOrders, [
-          { key: 'createdAt', title: '登记时间' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'faultDescription', title: '故障/维修事项' }, { key: 'result', title: '维修结果' }, { key: 'actualCost', title: '实际费用' },
+          { key: 'createdAt', title: '登记时间' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} enumKind="repairStatus" /> }, { key: 'faultDescription', title: '故障/维修事项' }, { key: 'result', title: '维修结果' }, { key: 'actualCost', title: '实际费用' },
         ]) },
       ]} />
     </Space> : <Typography.Text>正在加载...</Typography.Text>}
   </Drawer>;
 }
 
-function historyTable(rows: Array<RecordValue>, columns: Array<{ key: string; title: string; render?: (value: unknown) => React.ReactNode }>) {
-  return <Table<RecordValue> size="small" rowKey={(row, index) => `${String(row.id ?? '')}-${String(index)}`} pagination={false} dataSource={rows} locale={{ emptyText: '暂无记录' }} columns={columns.map((column) => ({ ...column, dataIndex: column.key, render: column.render ?? ((value: unknown) => <span style={{ whiteSpace: 'pre-wrap' }}>{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</span>) }))} />;
+function historyTable(rows: Array<RecordValue>, columns: Array<{ key: string; title: string; render?: (value: unknown, row: RecordValue) => React.ReactNode }>) {
+  return <Table<RecordValue> size="small" rowKey={(row, index) => `${String(row.id ?? '')}-${String(index)}`} pagination={false} dataSource={rows} locale={{ emptyText: '暂无记录' }} columns={columns.map((column) => ({ ...column, dataIndex: column.key, render: column.render ?? ((value: unknown) => <span style={{ whiteSpace: 'pre-wrap' }}>{formatDisplayValue(value, column.key)}</span>) }))} />;
 }
 
 function FixedAssets() {
@@ -519,7 +540,7 @@ function FixedAssets() {
 function InventoryItems() {
   const [detailId, setDetailId] = useState<number | null>(null);
   return <>
-    <DataTable title="库存条目" service="asset" endpoint="/inventory/items" pageKey="asset-inventory" columns={[{ key: 'consumableName', title: '品种' }, { key: 'warehouseName', title: '库位', sortable: true }, { key: 'availableQty', title: '可用数量' }, { key: 'bookQty', title: '账面数量', sortable: true }, { key: 'reservedQty', title: '占用数量', sortable: true }, { key: 'lowStock', title: '低库存', render: (value: unknown) => <StatusTag value={value ? 'PENDING' : 'NORMAL'} /> }]} filterFields={[{ key: 'consumableId', title: '品种', type: 'remote', remote: consumablesSource }, { key: 'warehouseId', title: '库位', type: 'tree', remote: warehouseTreeSource }]} onRowClick={(row) => setDetailId(Number(row.id))} />
+    <DataTable title="库存条目" service="asset" endpoint="/inventory/items" pageKey="asset-inventory" columns={[{ key: 'consumableName', title: '品种' }, { key: 'warehouseName', title: '库位', sortable: true }, { key: 'availableQty', title: '可用数量' }, { key: 'bookQty', title: '账面数量', sortable: true }, { key: 'reservedQty', title: '占用数量', sortable: true }, { key: 'lowStock', title: '低库存', render: (value: unknown) => <StatusTag value={value ? 'PENDING' : 'NORMAL'} enumKind="lowStockStatus" /> }]} filterFields={[{ key: 'consumableId', title: '品种', type: 'remote', remote: consumablesSource }, { key: 'warehouseId', title: '库位', type: 'tree', remote: warehouseTreeSource }]} onRowClick={(row) => setDetailId(Number(row.id))} />
     <InventoryItemDrawer itemId={detailId} onClose={() => setDetailId(null)} />
   </>;
 }
@@ -607,7 +628,7 @@ function StockFlows() {
       endpoint="/inventory/stock-flows"
       pageKey="asset-stock-flows"
       columns={[
-        { key: 'flowType', title: '类型', render: (value: unknown) => <StatusTag value={value} />, sortable: true },
+        { key: 'flowType', title: '类型', render: (value: unknown) => <StatusTag value={value} enumKind="stockFlowType" />, sortable: true },
         { key: 'consumableName', title: '品种', sortable: true },
         { key: 'qty', title: '数量', sortable: true },
         { key: 'warehouseName', title: '库位', sortable: true },
@@ -648,7 +669,7 @@ function RepairManagement() {
     }
   };
   return <>
-    <ResourcePage key={version} title="维修管理" service="asset" endpoint="/repair-orders" pageKey="asset-repairs" columns={markSortable([...COMMON_COLUMNS, { key: 'assetName', title: '资产' }, { key: 'status', title: '维修状态', render: (value: unknown) => <StatusTag value={value} /> }], ['name', 'status', 'createdAt'])} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待维修', value: 'PENDING' }, { label: '维修中', value: 'REPAIRING' }, { label: '已取消', value: 'CANCELLED' }, { label: '已完成', value: 'COMPLETED' }] }, { key: 'assetId', title: '固定资产', type: 'remote', remote: assetsSource }]} create={{ title: '登记维修', endpoint: '/repair-orders', fields: [{ key: 'assetId', label: '固定资产', type: 'remote-select', remote: assetsSource, required: true, width: 'wide' }, { key: 'faultDescription', label: '故障/维修事项', type: 'textarea', required: true, maxLength: 1000 }] }} rowActions={(row) => <Space size="small">{row.status === 'PENDING' ? <><Popconfirm title="确认开始维修？" onConfirm={() => void run(Number(row.id), 'start')}><Button size="small">开始</Button></Popconfirm><Popconfirm title="确认取消维修登记？" onConfirm={() => void run(Number(row.id), 'cancel')}><Button size="small" danger>取消</Button></Popconfirm></> : null}{row.status === 'REPAIRING' ? <Button size="small" type="primary" onClick={() => setCompleteId(Number(row.id))}>完成维修</Button> : null}</Space>} />
+    <ResourcePage key={version} title="维修管理" service="asset" endpoint="/repair-orders" pageKey="asset-repairs" columns={markSortable(REPAIR_COLUMNS, ['name', 'status', 'createdAt'])} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待维修', value: 'PENDING' }, { label: '维修中', value: 'REPAIRING' }, { label: '已取消', value: 'CANCELLED' }, { label: '已完成', value: 'COMPLETED' }] }, { key: 'assetId', title: '固定资产', type: 'remote', remote: assetsSource }]} create={{ title: '登记维修', endpoint: '/repair-orders', fields: [{ key: 'assetId', label: '固定资产', type: 'remote-select', remote: assetsSource, required: true, width: 'wide' }, { key: 'faultDescription', label: '故障/维修事项', type: 'textarea', required: true, maxLength: 1000 }] }} rowActions={(row) => <Space size="small">{row.status === 'PENDING' ? <><Popconfirm title="确认开始维修？" onConfirm={() => void run(Number(row.id), 'start')}><Button size="small">开始</Button></Popconfirm><Popconfirm title="确认取消维修登记？" onConfirm={() => void run(Number(row.id), 'cancel')}><Button size="small" danger>取消</Button></Popconfirm></> : null}{row.status === 'REPAIRING' ? <Button size="small" type="primary" onClick={() => setCompleteId(Number(row.id))}>完成维修</Button> : null}</Space>} />
     <ResourceFormModal title="完成维修" open={completeId !== null} onCancel={() => setCompleteId(null)} onSubmit={complete} fields={[{ key: 'result', label: '维修结果', type: 'textarea', required: true, maxLength: 1000 }, { key: 'actualCost', label: '实际费用', type: 'number', required: true, width: 'narrow' }, { key: 'postStatus', label: '恢复资产状态', type: 'select', required: true, options: [{ label: '闲置', value: 'IDLE' }, { label: '使用中', value: 'IN_USE' }], width: 'narrow' }]} />
   </>;
 }
@@ -709,9 +730,6 @@ function AgentSharedList() {
 }
 
 /** 二维码管理专属页：卡片网格 + 查看/打印 + 停用/恢复/重新生成（asset PRD §11）。 */
-const QR_TARGET_TYPE_LABELS: Readonly<Record<string, string>> = { ASSET: '固定资产', INVENTORY_ITEM: '库存条目', SCAN_CATALOG: '长期申领目录' };
-const QR_STATUS_LABELS: Readonly<Record<string, string>> = { ACTIVE: '有效', DISABLED: '已停用', REVOKED: '已作废' };
-
 function QrCodeManagement() {
   const feedback = useFeedback();
   const [createOpen, setCreateOpen] = useState(false);
@@ -736,8 +754,8 @@ function QrCodeManagement() {
         : '—'),
     },
     { key: 'targetName', title: '目标' },
-    { key: 'targetType', title: '类型', sortable: true, render: (value) => QR_TARGET_TYPE_LABELS[String(value ?? '')] ?? String(value ?? '—') },
-    { key: 'status', title: '状态', sortable: true, render: (value) => <Tag color={value === 'ACTIVE' ? 'green' : value === 'DISABLED' ? 'orange' : 'default'}>{QR_STATUS_LABELS[String(value ?? '')] ?? String(value ?? '—')}</Tag> },
+    { key: 'targetType', title: '类型', enumKind: 'qrTargetType', sortable: true },
+    { key: 'status', title: '状态', sortable: true, render: (value) => <StatusTag value={value} enumKind="qrStatus" /> },
     { key: 'createdAt', title: '创建时间', sortable: true, render: (value) => value ? formatBeijingDateTime(String(value)) : '—' },
   ];
   return <>
@@ -972,7 +990,7 @@ function AssetConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
       /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="ASSET" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
       { key: 'categories', label: '资产分类', children: <ResourcePage title="资产分类" service="asset" endpoint="/categories" pageKey="asset-categories" columns={COMMON_COLUMNS} create={{ title: '新建分类', endpoint: '/categories', fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'parentId', label: '父分类', type: 'tree-select', remote: assetCategoryTreeSource, required: true }] }} edit={{ title: '编辑资产分类', endpoint: (id) => `/categories/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/categories/batch', bodyKey: 'ids', previewEndpoint: '/categories/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `现存资产 ${String(item.assetCount ?? 0)} 个；消耗品品种 ${String(item.consumableCount ?? 0)} 个` }) }} /> },
-      { key: 'dicts', label: '业务字典', children: <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={markSortable([...COMMON_COLUMNS, { key: 'dictType', title: '类型' }], ['name', 'status', 'createdAt', 'dictType'])} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids', previewEndpoint: '/dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 处` }) }} /> },
+      { key: 'dicts', label: '业务字典', children: <ResourcePage title="业务字典" service="asset" endpoint="/dict-items" pageKey="asset-dicts" columns={markSortable([...COMMON_COLUMNS, { key: 'dictType', title: '类型', enumKind: 'assetDictType' as const }], ['name', 'status', 'createdAt', 'dictType'])} create={{ title: '新建字典项', endpoint: '/dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: enumOptions('assetDictType') }, { key: 'name', label: '名称', required: true, maxLength: 100 }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dict-items/${id}`, fields: [{ key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', required: true, options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dict-items/batch', bodyKey: 'ids', previewEndpoint: '/dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 处` }) }} /> },
     ]} />
   </Card>;
 }

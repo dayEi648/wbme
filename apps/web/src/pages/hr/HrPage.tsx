@@ -14,6 +14,7 @@ import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { RemoteSelect } from '../../components/selectors/RemoteSelect';
 import { departmentLeaderEmployeesSource, departmentTreeSource, overtimeEmployeesSource, positionsSource } from '../../components/selectors';
+import { enumOptions } from '../../components/enum-display';
 import { useFeedback } from '../../request/feedback';
 import { http } from '../../request/http';
 import { useSession } from '../../request/session';
@@ -37,14 +38,12 @@ const NAVIGATION: NavigationItem[] = [
 
 const COMMON_COLUMNS = [
   { key: 'name', title: '名称' },
-  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
+  { key: 'status', title: '状态', enumKind: 'dictionaryStatus' as const, render: (value: unknown) => <StatusTag value={value} enumKind="dictionaryStatus" /> },
   { key: 'updatedAt', title: '更新时间' },
 ];
 
-/** 人事字典类型中文标签（取值与 contracts HR_DICT_TYPES 对齐；不直接 import DTO 文件，避免 NestJS 进浏览器包） */
-const HR_DICT_TYPE_LABELS: Record<string, string> = { PLACEHOLDER: '占位类型' };
-const HR_DICT_TYPE_OPTIONS = Object.entries(HR_DICT_TYPE_LABELS).map(([value, label]) => ({ label, value }));
-const displayDictType = (value: unknown): string => HR_DICT_TYPE_LABELS[String(value)] ?? String(value ?? '—');
+/** 人事字典类型由集中枚举字典提供，接口仍提交稳定的英文编码。 */
+const HR_DICT_TYPE_OPTIONS = enumOptions('hrDictType');
 
 const TITLE_RULE_FIELDS: FormField[] = [
   { key: 'titleName', label: '职称名称', required: true, maxLength: 100 },
@@ -98,7 +97,7 @@ export default function HrPage() {
       case 'positions':
         return <ResourcePage title="岗位管理" service="hr" endpoint="/positions?includeDisabled=true" pageKey="hr-positions" columns={[...COMMON_COLUMNS, { key: 'description', title: '说明' }, { key: 'allowSelfApply', title: '允许自助申请' }, { key: 'departments', title: '适用部门' }]} create={{ title: '新建岗位', endpoint: '/positions', fields: POSITION_CREATE_FIELDS, transform: (values) => ({ ...values, departmentIds: Array.isArray(values.departmentIds) ? values.departmentIds.map(Number) : [] }) }} edit={{ title: '编辑岗位', endpoint: (id) => `/positions/${id}`, fields: POSITION_EDIT_FIELDS }} batchDelete={{ endpoint: '/positions/delete', bodyKey: 'ids', previewEndpoint: '/positions/delete-preview', previewItem: (item) => ({ name: `#${String(item.id)}`, refs: `在岗员工 ${String(item.assignedEmployees ?? 0)} 人；待审批申请 ${String(item.pendingRequests ?? 0)} 条；职称规则引用 ${String(item.titleRuleRefs ?? 0)} 条` }) }} />;
       case 'titles':
-        return <ResourcePage title="职称规则" service="hr" endpoint="/title-rules" pageKey="hr-title-rules" columns={markSortable([...COMMON_COLUMNS, { key: 'titleName', title: '职称' }, { key: 'sort', title: '排序' }, { key: 'conditions', title: '条件' }], ['status', 'createdAt', 'titleName', 'sort'])} filterFields={[{ key: 'keyword', title: '关键字', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }]} create={{ title: '新建职称规则', endpoint: '/title-rules', fields: TITLE_RULE_FIELDS }} edit={{ title: '编辑职称规则', endpoint: (id) => `/title-rules/${id}`, fields: TITLE_RULE_FIELDS }} batchDelete={{ endpoint: '/title-rules/delete', bodyKey: 'ids' }} />;
+        return <ResourcePage title="职称规则" service="hr" endpoint="/title-rules" pageKey="hr-title-rules" columns={markSortable([...COMMON_COLUMNS, { key: 'titleName', title: '职称' }, { key: 'roleCondition', title: '匹配站点角色', enumKind: 'siteRole' as const }, { key: 'sort', title: '排序' }], ['status', 'createdAt', 'titleName', 'sort'])} filterFields={[{ key: 'keyword', title: '关键字', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }] }]} create={{ title: '新建职称规则', endpoint: '/title-rules', fields: TITLE_RULE_FIELDS }} edit={{ title: '编辑职称规则', endpoint: (id) => `/title-rules/${id}`, fields: TITLE_RULE_FIELDS }} batchDelete={{ endpoint: '/title-rules/delete', bodyKey: 'ids' }} />;
       case 'overtime':
         return <PageTabs items={[
           { key: 'apply', label: '加班申请', permission: ['overtime_apply', 'proxy_overtime'], children: <OvertimeApply /> },
@@ -194,13 +193,13 @@ function OrganizationEmployees() {
   };
   const detailItems = target ? [
     { label: '姓名', children: String(target.name ?? '—') },
-    { label: '状态', children: <StatusTag value={target.status} /> },
+    { label: '状态', children: <StatusTag value={target.status} enumKind="userStatus" /> },
     { label: '部门', children: Array.isArray(target.departmentNames) ? target.departmentNames.join('、') : String(target.departmentNames ?? '—') },
     { label: '岗位', children: String(target.positionName ?? '—') },
     { label: '职称', children: String(target.titleName ?? '—') },
   ] : [];
   return <>
-    <DataTable key={version} title="组织成员" service="hr" endpoint="/org/employees" pageKey="hr-employees" columns={[{ key: 'name', title: '姓名', sortable: true }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} />, sortable: true }, { key: 'departmentNames', title: '部门' }, { key: 'positionName', title: '岗位' }, { key: 'titleName', title: '职称' }]} filterFields={[{ key: 'keyword', title: '姓名关键字', type: 'text' }, { key: 'departmentId', title: '部门', type: 'tree', remote: departmentTreeSource }, { key: 'positionId', title: '岗位', type: 'remote', remote: positionsSource }, { key: 'status', title: '账号状态', type: 'enum', options: [{ label: '在职', value: 'ACTIVE' }, { label: '已注销', value: 'DEACTIVATED' }] }]} onRowClick={setTarget} rowActions={(row) => <Space size="small"><Button size="small" onClick={() => { setTarget(row); setMode('departments'); }}>调整部门</Button><Button size="small" onClick={() => { setTarget(row); setMode('position'); }}>调整岗位</Button></Space>} />
+    <DataTable key={version} title="组织成员" service="hr" endpoint="/org/employees" pageKey="hr-employees" columns={[{ key: 'name', title: '姓名', sortable: true }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} enumKind="userStatus" />, sortable: true }, { key: 'departmentNames', title: '部门' }, { key: 'positionName', title: '岗位' }, { key: 'titleName', title: '职称' }]} filterFields={[{ key: 'keyword', title: '姓名关键字', type: 'text' }, { key: 'departmentId', title: '部门', type: 'tree', remote: departmentTreeSource }, { key: 'positionId', title: '岗位', type: 'remote', remote: positionsSource }, { key: 'status', title: '账号状态', type: 'enum', options: [{ label: '在职', value: 'ACTIVE' }, { label: '已注销', value: 'DEACTIVATED' }] }]} onRowClick={setTarget} rowActions={(row) => <Space size="small"><Button size="small" onClick={() => { setTarget(row); setMode('departments'); }}>调整部门</Button><Button size="small" onClick={() => { setTarget(row); setMode('position'); }}>调整岗位</Button></Space>} />
     <Drawer title="组织成员详情" open={target !== null} onClose={() => setTarget(null)} width="min(92vw, 520px)"><Descriptions bordered column={1} size="small" items={detailItems} /></Drawer>
     <ResourceFormModal title="调整员工部门" open={mode === 'departments'} onCancel={() => setMode(null)} onSubmit={saveDepartments} initialValues={{ departmentIds: Array.isArray(target?.departmentIds) ? target.departmentIds : [] }} fields={[{ key: 'departmentIds', label: '部门', type: 'tree-multi-select', remote: departmentTreeSource, required: true }]} />
     <ResourceFormModal title="调整员工岗位" open={mode === 'position'} onCancel={() => setMode(null)} onSubmit={savePosition} initialValues={{ positionId: target?.positionId }} fields={[{ key: 'positionId', label: '岗位', type: 'remote-select', remote: positionsSource, width: 'full' }]} />
@@ -332,10 +331,10 @@ function OvertimeMine() {
         { key: 'overtimeDate', title: '日期', dataIndex: 'overtimeDate' },
         { key: 'hours', title: '小时', dataIndex: 'hours' },
         { key: 'minutes', title: '分钟', dataIndex: 'minutes' },
-        { key: 'dateType', title: '日期类型', dataIndex: 'dateType' },
+        { key: 'dateType', title: '日期类型', dataIndex: 'dateType', render: (value: unknown) => <StatusTag value={value} enumKind="holidayDateType" /> },
       ]} />
     </Card>
-    <DataTable title="我的加班记录" service="hr" endpoint="/overtime/mine" pageKey="hr-overtime-mine-history" columns={[{ key: 'applicationNo', title: '申请编号' }, { key: 'overtimeDate', title: '日期', sortable: true }, { key: 'minutes', title: '分钟', sortable: true }, { key: 'hours', title: '小时', sortable: true }, { key: 'dateType', title: '日期类型' }, { key: 'reason', title: '事由' }]} filterFields={[{ key: 'month', title: '月份', type: 'text' }]} />
+    <DataTable title="我的加班记录" service="hr" endpoint="/overtime/mine" pageKey="hr-overtime-mine-history" columns={[{ key: 'applicationNo', title: '申请编号' }, { key: 'overtimeDate', title: '日期', sortable: true }, { key: 'minutes', title: '分钟', sortable: true }, { key: 'hours', title: '小时', sortable: true }, { key: 'dateType', title: '日期类型', enumKind: 'holidayDateType' }, { key: 'reason', title: '事由' }]} filterFields={[{ key: 'month', title: '月份', type: 'text' }]} />
   </Space>;
 }
 
@@ -373,7 +372,7 @@ function HrSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
         save={async (patches) => http.put('/hr-settings', { patches }, { service: 'hr' })}
       /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="HR" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
-      { key: 'dicts', label: '人事字典', children: <ResourcePage title="人事字典" service="hr" endpoint="/dicts" pageKey="hr-dicts" columns={markSortable([...COMMON_COLUMNS, { key: 'dictType', title: '类型', render: (value: unknown) => displayDictType(value) }], ['name', 'status', 'createdAt', 'dictType'])} create={{ title: '新建字典项', endpoint: '/dicts', fields: [{ key: 'dictType', label: '字典类型', type: 'select' as const, options: HR_DICT_TYPE_OPTIONS, required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' as const, width: 'narrow' as const }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dicts/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dicts/delete', bodyKey: 'ids', previewEndpoint: '/dicts/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 条` }) }} /> },
+      { key: 'dicts', label: '人事字典', children: <ResourcePage title="人事字典" service="hr" endpoint="/dicts" pageKey="hr-dicts" columns={markSortable([...COMMON_COLUMNS, { key: 'dictType', title: '类型', enumKind: 'hrDictType' as const }], ['name', 'status', 'createdAt', 'dictType'])} create={{ title: '新建字典项', endpoint: '/dicts', fields: [{ key: 'dictType', label: '字典类型', type: 'select' as const, options: HR_DICT_TYPE_OPTIONS, required: true }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'sort', label: '排序', type: 'number' as const, width: 'narrow' as const }] }} edit={{ title: '编辑字典项', endpoint: (id) => `/dicts/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/dicts/delete', bodyKey: 'ids', previewEndpoint: '/dicts/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `业务引用 ${String(item.referencedCount ?? 0)} 条` }) }} /> },
     ]} />
   </Card>;
 }

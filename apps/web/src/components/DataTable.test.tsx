@@ -31,9 +31,9 @@ const emptyListResponse = {
 const emptyPresetsResponse = { items: [] };
 const emptyColumnsResponse = { item: null };
 
-async function renderDataTable(columns: DataColumn[]) {
+async function renderDataTable(columns: DataColumn[], data: Record<string, unknown>[] = []) {
   vi.mocked(http.get)
-    .mockResolvedValueOnce(emptyListResponse)
+    .mockResolvedValueOnce({ ...emptyListResponse, data })
     .mockResolvedValueOnce(emptyPresetsResponse)
     .mockResolvedValueOnce(emptyColumnsResponse);
 
@@ -111,5 +111,15 @@ describe('DataTable 排序面板', () => {
     await user.click(screen.getByRole('button', { name: '添加排序字段' }));
     const fieldSelect = screen.getByRole('combobox', { name: '排序字段' });
     expect(fieldSelect.parentElement?.textContent).toBe('名称');
+  });
+
+  it('带枚举领域的列不会直接展示接口英文编码', async () => {
+    await renderDataTable(
+      [{ key: 'actionType', title: '操作', enumKind: 'operationAction' }],
+      [{ id: 1, actionType: 'QUERY' }],
+    );
+
+    expect((await screen.findAllByText('查询')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('QUERY')).toBeNull();
   });
 });

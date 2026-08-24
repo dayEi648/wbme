@@ -40,3 +40,15 @@ export function catalogFunctionOptions(system?: string): CatalogFunctionOption[]
       ),
     );
 }
+
+/** 将持久化的功能编码转换为权限目录中的用户可读功能名称。 */
+export function catalogFunctionLabel(code: unknown): string {
+  const value = String(code ?? '');
+  for (const system of PERMISSION_CATALOG) {
+    for (const section of system.sections) {
+      const fn = section.functions.find((item) => item.code === value);
+      if (fn) return fn.name;
+    }
+  }
+  return '未知功能';
+}

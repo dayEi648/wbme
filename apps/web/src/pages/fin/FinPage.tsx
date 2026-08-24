@@ -13,6 +13,7 @@ import { SystemHome } from '../../components/SystemHome';
 import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { formatDisplayValue, formatMoney } from '../../components/display-format';
+import { formatEnumLabel } from '../../components/enum-display';
 import {
   buildFilterTreePayload,
   flattenConditions,
@@ -357,16 +358,6 @@ function toProjectFormValues(row: RecordValue): RecordValue {
 type DetailKind = 'invoice' | 'receipt' | 'subcontract-payment';
 interface DetailItem extends RecordValue { id: number; amount: string; occurredDate?: string | null; remark?: string | null; }
 
-/** 操作记录动作中文标签（与后端 ProjectAction 枚举一致）。 */
-const OPERATION_ACTION_LABELS: Readonly<Record<string, string>> = {
-  CREATE: '新建',
-  EDIT: '编辑',
-  DELETE: '删除',
-  IMPORT_CREATE: '导入新增',
-  IMPORT_OVERWRITE: '导入覆盖',
-  IMPORT_SKIP: '导入跳过',
-};
-
 /** 操作记录变更字段中文标签（在项目资料标签上补充快照/审计字段）。 */
 const OPERATION_FIELD_LABELS: Readonly<Record<string, string>> = {
   ...PROJECT_FIELD_LABELS,
@@ -386,8 +377,9 @@ interface OperationChangeRow {
 }
 
 /** 变更值展示：空值 —，数组按名称拼接（{id, name} 快照取 name），对象 JSON 序列化。 */
-function formatOperationValue(value: unknown): string {
+function formatOperationValue(value: unknown, field?: string): string {
   if (value === null || value === undefined || value === '') return '—';
+  if (field === 'progressSemantic') return formatEnumLabel('amountSemantic', value);
   if (Array.isArray(value)) {
     return value.length === 0
       ? '—'
@@ -425,19 +417,19 @@ function ProjectOperations() {
     })();
   }, [detailTarget, feedback]);
   return <>
-    <DataTable title="项目操作记录" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'projectName', title: '项目' }, { key: 'action', title: '操作', sortable: true }, { key: 'operatorName', title: '操作者', sortable: true }, { key: 'createdAt', title: '时间', sortable: true }]} filterFields={[{ key: 'projectId', title: '项目', type: 'remote', remote: finProjectsSource }]} onRowClick={(row) => setDetailTarget({ id: Number(row.id), projectName: typeof row.projectName === 'string' ? row.projectName : null })} />
+    <DataTable title="项目操作记录" service="fin" endpoint="/project-operations" pageKey="fin-project-operations" columns={[{ key: 'projectName', title: '项目' }, { key: 'action', title: '操作', enumKind: 'financeProjectAction', sortable: true }, { key: 'operatorName', title: '操作者', sortable: true }, { key: 'createdAt', title: '时间', sortable: true }]} filterFields={[{ key: 'projectId', title: '项目', type: 'remote', remote: finProjectsSource }]} onRowClick={(row) => setDetailTarget({ id: Number(row.id), projectName: typeof row.projectName === 'string' ? row.projectName : null })} />
     <Drawer title="操作记录详情" open={detailTarget !== null} onClose={() => setDetailTarget(null)} width="min(92vw, 720px)">
       {detail ? <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Descriptions bordered column={1} size="small" items={[
           { key: 'project', label: '项目', children: detailTarget?.projectName ?? '—' },
-          { key: 'action', label: '操作', children: OPERATION_ACTION_LABELS[String(detail.action ?? '')] ?? String(detail.action ?? '—') },
+          { key: 'action', label: '操作', children: formatEnumLabel('financeProjectAction', detail.action) },
           { key: 'operatorName', label: '操作者', children: String(detail.operatorName ?? '—') },
           { key: 'createdAt', label: '时间', children: formatDisplayValue(detail.createdAt, 'createdAt') },
         ]} />
         <Table<OperationChangeRow> size="small" rowKey="key" pagination={false} dataSource={buildOperationChanges(detail)} locale={{ emptyText: '无变更明细' }} columns={[
           { key: 'label', title: '字段', dataIndex: 'label', width: 160 },
-          { key: 'before', title: '变更前', render: (_, row) => <span style={{ whiteSpace: 'pre-wrap' }}>{formatOperationValue(row.before)}</span> },
-          { key: 'after', title: '变更后', render: (_, row) => <span style={{ whiteSpace: 'pre-wrap' }}>{formatOperationValue(row.after)}</span> },
+          { key: 'before', title: '变更前', render: (_, row) => <span style={{ whiteSpace: 'pre-wrap' }}>{formatOperationValue(row.before, row.key)}</span> },
+          { key: 'after', title: '变更后', render: (_, row) => <span style={{ whiteSpace: 'pre-wrap' }}>{formatOperationValue(row.after, row.key)}</span> },
         ]} />
       </Space> : <Typography.Text>正在加载...</Typography.Text>}
     </Drawer>
@@ -1146,14 +1138,6 @@ function ImportCard() {
   </Card>;
 }
 
-/** 财务字典类型中文标签（删除预览引用明细展示）。 */
-const FIN_DICT_TYPE_LABELS: Readonly<Record<string, string>> = {
-  PROGRESS: '项目进度',
-  COMPLETENESS: '资料齐全度',
-  BIZ_CATEGORY: '业务分类',
-  REGION: '地区',
-};
-
 function FinanceConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
   return <Card>
     <Tabs items={[
@@ -1164,7 +1148,7 @@ function FinanceConfig({ onMenuSaved }: { onMenuSaved: () => void }) {
         save={async () => undefined}
       /> },
       { key: 'menu', label: '菜单管理', children: <MenuManagementTab systemCode="FIN" defaults={NAVIGATION} onSaved={onMenuSaved} /> },
-      { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'dictType', title: '类型', sortable: true }, { key: 'name', title: '名称', sortable: true }, { key: 'semantic', title: '金额语义', sortable: true }, { key: 'status', title: '状态', sortable: true }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids', previewEndpoint: '/finance-dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `被工程合同引用 ${String(item.referencedCount ?? 0)} 处（${FIN_DICT_TYPE_LABELS[String(item.dictType ?? '')] ?? String(item.dictType ?? '未知类型')}）` }) }} /> },
+      { key: 'dicts', label: '财务字典', children: <ResourcePage title="财务字典" service="fin" endpoint="/finance-dict-items" pageKey="fin-dicts" columns={[{ key: 'dictType', title: '类型', enumKind: 'financeDictType', sortable: true }, { key: 'name', title: '名称', sortable: true }, { key: 'semantic', title: '金额语义', enumKind: 'amountSemantic', sortable: true }, { key: 'status', title: '状态', enumKind: 'dictionaryStatus', sortable: true }]} filterFields={[{ key: 'dictType', title: '类型', type: 'enum', options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }]} create={{ title: '新建财务字典项', endpoint: '/finance-dict-items', fields: [{ key: 'dictType', label: '字典类型', type: 'select', required: true, options: [{ label: '项目进度', value: 'PROGRESS' }, { label: '资料齐全度', value: 'COMPLETENESS' }, { label: '业务分类', value: 'BIZ_CATEGORY' }, { label: '地区', value: 'REGION' }] }, { key: 'name', label: '名称', required: true, maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }] }} edit={{ title: '编辑财务字典项', endpoint: (id) => `/finance-dict-items/${id}`, fields: [{ key: 'name', label: '名称', maxLength: 100 }, { key: 'semantic', label: '金额语义', type: 'select', options: [{ label: '暂定', value: 'TENTATIVE' }, { label: '审定', value: 'AUDITED' }], width: 'narrow' }, { key: 'sort', label: '排序', type: 'number', width: 'narrow' }, { key: 'status', label: '状态', type: 'select', options: [{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'DISABLED' }], width: 'narrow' }] }} batchDelete={{ endpoint: '/finance-dict-items/batch', bodyKey: 'ids', previewEndpoint: '/finance-dict-items/delete-preview', previewItem: (item) => ({ name: String(item.name ?? '—'), refs: `被工程合同引用 ${String(item.referencedCount ?? 0)} 处（${formatEnumLabel('financeDictType', item.dictType)}）` }) }} /> },
     ]} />
   </Card>;
 }

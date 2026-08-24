@@ -1,3 +1,5 @@
+import { formatEnumLabel, type EnumKind } from './enum-display';
+
 /** 北京时间展示格式，保持接口中的 UTC 时间语义不变。 */
 const BEIJING_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai',
@@ -142,9 +144,12 @@ export function formatDetailValue(value: unknown, labelMap?: Readonly<Record<str
 }
 
 /** 通用表格/详情值展示。 */
-export function formatDisplayValue(value: unknown, key?: string): string {
+export function formatDisplayValue(value: unknown, key?: string, enumKind?: EnumKind): string {
   if (value === null || value === undefined || value === '') {
     return '—';
+  }
+  if (enumKind) {
+    return formatEnumLabel(enumKind, value);
   }
   if (typeof value === 'boolean') {
     return value ? '是' : '否';

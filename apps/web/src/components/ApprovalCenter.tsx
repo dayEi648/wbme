@@ -3,27 +3,12 @@ import { useEffect, useState } from 'react';
 import { DataTable, StatusTag } from './DataTable';
 import { ConfirmAction } from './ConfirmAction';
 import { formatBeijingDateTime } from './display-format';
+import { enumOptions, formatEnumLabel, type EnumKind } from './enum-display';
 import { useFeedback } from '../request/feedback';
 import { http, type ApiService } from '../request/http';
 import { useSession } from '../request/session';
 
 type RecordValue = Record<string, unknown>;
-
-/** 处理动作中文（主 PRD §3.2 处理记录时间线）。 */
-const ACTION_LABELS: Readonly<Record<string, string>> = {
-  SUBMIT: '提交',
-  APPROVE: '批准',
-  REJECT: '驳回',
-  CANCEL: '取消',
-  AUTO_CANCEL: '超时自动取消',
-};
-
-/** 取消来源中文（主 PRD §3.2：人工取消 / 账号注销 / 超时自动取消）。 */
-const CANCEL_SOURCE_LABELS: Readonly<Record<string, string>> = {
-  USER: '申请人/代交人取消',
-  ACCOUNT_DEACTIVATED: '账号注销自动取消',
-  OVERDUE: '超时自动取消',
-};
 
 /** 处理动作时间线颜色（终态动作区分语义）。 */
 const ACTION_COLORS: Readonly<Record<string, string>> = {
@@ -60,6 +45,13 @@ interface ApprovalCenterProps {
   pageKey: string;
 }
 
+/** 不同服务的申请类型编码相同也可能语义不同，必须选择对应领域。 */
+function approvalRequestEnumKind(service: ApiService): EnumKind {
+  if (service === 'asset') return 'assetRequestType';
+  if (service === 'hr') return 'hrRequestType';
+  return 'profileRequestType';
+}
+
 /**
  * 统一审批中心：在当前页面抽屉展示申请信息、申请对象列表、处理记录时间线与当前状态，
  * 支持「上一条 / 下一条」切换待办（主 PRD §3.2）。
@@ -76,19 +68,8 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
   const [now, setNow] = useState(() => new Date());
   const [form] = Form.useForm<{ opinion?: string }>();
   const current = currentIndex === null ? null : rows[currentIndex] ?? null;
-  const requestTypeOptions = service === 'asset'
-    ? [
-        { label: '入库申请', value: 'STOCK_IN' },
-        { label: '库存变更', value: 'STOCK_CHANGE' },
-        { label: '消耗品申领', value: 'CONSUMABLE_REQUEST' },
-        { label: '代领申请', value: 'AGENT_REQUEST' },
-        { label: '归还申请', value: 'RETURN' },
-        { label: '核销申请', value: 'WRITE_OFF' },
-        { label: '代领结清', value: 'AGENT_SETTLEMENT' },
-      ]
-    : service === 'hr'
-      ? [{ label: '加班申请', value: 'OVERTIME' }, { label: '岗位变更', value: 'POSITION_CHANGE' }]
-      : [];
+  const requestTypeKind = approvalRequestEnumKind(service);
+  const requestTypeOptions = enumOptions(requestTypeKind);
 
   // 已等待时长实时刷新（每分钟；主 PRD §3.2 页面展示提交时间与已等待时长）
   useEffect(() => {
@@ -151,7 +132,7 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
 
   const request = isRecord(detail?.request) ? detail.request : null;
   const actions = Array.isArray(detail?.actions) ? detail.actions as RecordValue[] : [];
-  const requestTypeLabel = (value: unknown) => requestTypeOptions.find((option) => option.value === value)?.label ?? String(value ?? '—');
+  const requestTypeLabel = (value: unknown) => formatEnumLabel(requestTypeKind, value);
 
   /** 申请信息（中文标签 + 关联名称；待审批附已等待时长与超时自动取消规则提示）。 */
   const infoItems = (() => {
@@ -164,7 +145,7 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
     if (request.proxyName !== null && request.proxyName !== undefined) {
       items.push({ label: '代交人', children: String(request.proxyName) });
     }
-    items.push({ label: '状态', children: <StatusTag value={request.status} /> });
+    items.push({ label: '状态', children: <StatusTag value={request.status} enumKind="approvalStatus" /> });
     if (request.submittedAt) {
       items.push({ label: '提交时间', children: formatBeijingDateTime(String(request.submittedAt)) });
     }
@@ -182,7 +163,7 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
       items.push({ label: '处理意见', children: String(request.opinion) });
     }
     if (request.cancelSource) {
-      items.push({ label: '取消来源', children: CANCEL_SOURCE_LABELS[String(request.cancelSource)] ?? String(request.cancelSource) });
+      items.push({ label: '取消来源', children: formatEnumLabel('cancelSource', request.cancelSource) });
     }
     if (request.cancelledAt) {
       items.push({ label: '取消时间', children: formatBeijingDateTime(String(request.cancelledAt)) });
@@ -231,12 +212,12 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
           color: ACTION_COLORS[String(action.action)] ?? 'gray',
           children: <div>
             <Space size="small">
-              <Typography.Text strong>{ACTION_LABELS[String(action.action)] ?? String(action.action)}</Typography.Text>
+              <Typography.Text strong>{formatEnumLabel('approvalAction', action.action)}</Typography.Text>
               {action.actorName ? <Typography.Text type="secondary">{String(action.actorName)}</Typography.Text> : null}
             </Space>
             <div><Typography.Text type="secondary">{formatBeijingDateTime(String(action.createdAt))}</Typography.Text></div>
             {action.opinion ? <Typography.Paragraph style={{ marginBottom: 0 }}>{String(action.opinion)}</Typography.Paragraph> : null}
-            {action.cancelSource ? <Typography.Text type="secondary">取消来源：{CANCEL_SOURCE_LABELS[String(action.cancelSource)] ?? String(action.cancelSource)}</Typography.Text> : null}
+            {action.cancelSource ? <Typography.Text type="secondary">取消来源：{formatEnumLabel('cancelSource', action.cancelSource)}</Typography.Text> : null}
           </div>,
         }))} />
       : <Typography.Text type="secondary">暂无处理记录</Typography.Text>}
@@ -250,9 +231,9 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
       endpoint="/approval-requests"
       pageKey={pageKey}
       columns={[
-        { key: 'requestType', title: '申请类型', sortable: true },
+        { key: 'requestType', title: '申请类型', enumKind: requestTypeKind, sortable: true },
         { key: 'applicantName', title: '申请人', sortable: service !== 'platform' },
-        { key: 'status', title: '状态', render: (value) => <StatusTag value={value} />, sortable: true },
+        { key: 'status', title: '状态', render: (value) => <StatusTag value={value} enumKind="approvalStatus" />, sortable: true },
         { key: 'submittedAt', title: '提交时间', sortable: service !== 'platform' },
       ]}
       filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '待处理', value: 'PENDING' }, { label: '已批准', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }, { label: '已取消', value: 'CANCELLED' }] }, ...(requestTypeOptions.length > 0 ? [{ key: 'requestType', title: '申请类型', type: 'enum' as const, options: requestTypeOptions }] : []), { key: 'keyword', title: '关键字', type: 'text' }]}
@@ -285,18 +266,6 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
 function isRecord(value: unknown): value is RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-
-/** asset 核销类型中文（借还核销/代领结清明细展示）。 */
-const WRITE_OFF_TYPE_LABELS: Readonly<Record<string, string>> = {
-  LOST: '遗失',
-  DAMAGED: '损坏',
-};
-
-/** asset 代领结清处理方式中文。 */
-const SETTLE_METHOD_LABELS: Readonly<Record<string, string>> = {
-  RETURN: '归还',
-  WRITE_OFF: '核销',
-};
 
 type ObjectColumn = {
   key: string;
@@ -343,8 +312,6 @@ function assetBorrowItemTable(rows: RecordValue[], extra: ObjectColumn[]): React
 
 /** asset 申请对象区块（按申请类型分支；无匹配类型或无数据返回 null）。 */
 function assetObjectBlock(requestType: string, objectDetail: unknown): React.ReactNode {
-  const label = (value: unknown, labels: Readonly<Record<string, string>>) =>
-    value === null || value === undefined || value === '' ? '—' : labels[String(value)] ?? String(value);
   const dateOnly = (value: unknown) => String(value ?? '').slice(0, 10) || '—';
   switch (requestType) {
     case 'STOCK_IN':
@@ -383,13 +350,13 @@ function assetObjectBlock(requestType: string, objectDetail: unknown): React.Rea
       return Array.isArray(objectDetail) ? <Card size="small" title="申请对象">{assetBorrowItemTable(objectDetail, [])}</Card> : null;
     case 'WRITE_OFF':
       return Array.isArray(objectDetail) ? <Card size="small" title="申请对象">{assetBorrowItemTable(objectDetail, [
-        { key: 'writeOffType', title: '核销类型', dataIndex: 'writeOffType', render: (value) => label(value, WRITE_OFF_TYPE_LABELS), width: 90 },
+        { key: 'writeOffType', title: '核销类型', dataIndex: 'writeOffType', render: (value) => formatEnumLabel('writeOffType', value), width: 90 },
         { key: 'reason', title: '原因', dataIndex: 'reason' },
       ])}</Card> : null;
     case 'AGENT_SETTLEMENT':
       return Array.isArray(objectDetail) ? <Card size="small" title="申请对象">{assetBorrowItemTable(objectDetail, [
-        { key: 'method', title: '处理方式', dataIndex: 'method', render: (value) => label(value, SETTLE_METHOD_LABELS), width: 90 },
-        { key: 'writeOffType', title: '核销类型', dataIndex: 'writeOffType', render: (value) => label(value, WRITE_OFF_TYPE_LABELS), width: 90 },
+        { key: 'method', title: '处理方式', dataIndex: 'method', render: (value) => formatEnumLabel('settleMethod', value), width: 90 },
+        { key: 'writeOffType', title: '核销类型', dataIndex: 'writeOffType', render: (value) => formatEnumLabel('writeOffType', value), width: 90 },
         { key: 'reason', title: '原因', dataIndex: 'reason' },
       ])}</Card> : null;
     default:

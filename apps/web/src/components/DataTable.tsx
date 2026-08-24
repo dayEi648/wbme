@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFeedback } from '../request/feedback';
 import { download, http, type ApiService } from '../request/http';
 import { formatDisplayValue, isMoneyField } from './display-format';
+import { enumTagColor, formatEnumLabel, type EnumKind } from './enum-display';
 import { AdvancedFilter } from './AdvancedFilter';
 import { SortPanel } from './SortPanel';
 import {
@@ -53,6 +54,8 @@ export interface DataColumn {
   fixed?: 'left' | 'right';
   /** 字段类型（L29：number 列渲染使用等宽数字字体 tabular-nums） */
   type?: 'text' | 'enum' | 'number' | 'date';
+  /** 接口枚举所属领域；用于统一把机器编码转换为中文展示文案。 */
+  enumKind?: EnumKind;
   /** 将原始行字段转换为受控 React 节点。 */
   render?: (value: unknown, row: RecordValue) => ReactNode;
   /**
@@ -190,8 +193,8 @@ function normalizeRow(row: RecordValue): RecordValue {
   return normalized;
 }
 
-function asText(value: unknown, key?: string): string {
-  return formatDisplayValue(value, key);
+function asText(value: unknown, key?: string, enumKind?: EnumKind): string {
+  return formatDisplayValue(value, key, enumKind);
 }
 
 /**
@@ -384,7 +387,7 @@ export function DataTable({
       fixed: columnFixed[column.key] ?? column.fixed,
       // L29：数字/金额列使用等宽数字字体（tabular-nums），列内数字上下对齐（isNumericCell）
       render: (_: unknown, row: RecordValue) => {
-        const content = column.render?.(row[column.key], row) ?? asText(row[column.key], column.key);
+        const content = column.render?.(row[column.key], row) ?? asText(row[column.key], column.key, column.enumKind);
         return isNumericCell(column, row[column.key]) ? <span style={{ fontVariantNumeric: 'tabular-nums' }}>{content}</span> : content;
       },
     })),
@@ -783,7 +786,7 @@ export function DataTable({
                           <Typography.Text type="secondary">{column.title}</Typography.Text>
                           {/* L29：数字/金额列使用等宽数字字体，与桌面表格一致（isNumericCell） */}
                           <span style={isNumericCell(column, row[column.key]) ? { fontVariantNumeric: 'tabular-nums' } : undefined}>
-                            {column.render?.(row[column.key], row) ?? asText(row[column.key], column.key)}
+                            {column.render?.(row[column.key], row) ?? asText(row[column.key], column.key, column.enumKind)}
                           </span>
                         </div>
                       ))}
@@ -941,10 +944,8 @@ export function DataTable({
 }
 
 /** 统一状态标签；不把后端输入作为 HTML。 */
-export function StatusTag({ value }: { value: unknown }) {
-  const text = asText(value);
-  const color = text.includes('APPROVED') || text.includes('ACTIVE') || text.includes('OPEN') || text.includes('COMPLETED') ? 'green' : text.includes('REJECTED') || text.includes('DEACTIVATED') || text.includes('FAILED') || text.includes('SCRAPPED') ? 'red' : text.includes('PENDING') || text.includes('PROCESSING') ? 'orange' : 'default';
-  return <Tag color={color}>{text}</Tag>;
+export function StatusTag({ value, enumKind }: { value: unknown; enumKind: EnumKind }) {
+  return <Tag color={enumTagColor(enumKind, value)}>{formatEnumLabel(enumKind, value)}</Tag>;
 }
 
 /** 从列表结果安全提取行；供非表格化页面的轻量展示复用。 */

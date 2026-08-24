@@ -88,19 +88,19 @@ test.describe('核心业务链路', () => {
     // 草稿态：仅「发布」入口（L32 门控：不显示撤回）
     await expect(row.getByText('发 布')).toBeVisible();
     await expect(row.getByText('撤 回')).toHaveCount(0);
-    await expect(row.getByText('DRAFT')).toBeVisible();
+    await expect(row.getByText('草稿')).toBeVisible();
 
     // 发布 → 展示中：仅「撤回」入口
     await row.getByText('发 布').click();
     await page.getByRole('button', { name: '确 定' }).click();
     await expect(row.getByText('撤 回')).toBeVisible({ timeout: 15_000 });
     await expect(row.getByText('发 布')).toHaveCount(0);
-    await expect(row.getByText('PUBLISHING')).toBeVisible();
+    await expect(row.getByText('展示中')).toBeVisible();
 
     // 撤回 → 终态：行内不再有任何操作入口
     await row.getByText('撤 回').click();
     await page.getByRole('button', { name: '确 定' }).click();
-    await expect(row.getByText('REVOKED')).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByText('已撤回')).toBeVisible({ timeout: 15_000 });
     await expect(row.getByText('发 布')).toHaveCount(0);
     await expect(row.getByText('撤 回')).toHaveCount(0);
 

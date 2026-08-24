@@ -14,6 +14,7 @@ import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { deactivatedUsersSource, permissionEmployeesSource, permissionGroupsSource, PermissionGrantDrawer, type GrantItem, type RemoteOptionSource } from '../../components/selectors';
 import { EllipsisLines } from '../../components/EllipsisLines';
 import { displayLabel, formatBeijingDateTime, formatDetailValue, formatMoney } from '../../components/display-format';
+import { formatEnumLabel } from '../../components/enum-display';
 import { catalogFunctionOptions } from '../../permission/catalog';
 import { useFeedback } from '../../request/feedback';
 import { http } from '../../request/http';
@@ -39,14 +40,14 @@ const NAVIGATION: NavigationItem[] = [
 const USER_COLUMNS = [
   { key: 'name', title: '姓名', sortable: true },
   { key: 'phoneMasked', title: '手机号' },
-  { key: 'status', title: '状态', render: (value: unknown) => USER_STATUS_LABELS[String(value ?? '')] ?? String(value ?? '—'), sortable: true },
+  { key: 'status', title: '状态', enumKind: 'userStatus' as const, sortable: true },
   { key: 'isSuperAdmin', title: '超级管理员', render: (value: unknown) => (value === true ? '是' : '否') },
   { key: 'createdAt', title: '创建时间', sortable: true },
 ];
 
 const LIST_COLUMNS = [
   { key: 'name', title: '名称' },
-  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> },
+  { key: 'status', title: '状态', enumKind: 'dictionaryStatus' as const, render: (value: unknown) => <StatusTag value={value} enumKind="dictionaryStatus" /> },
   { key: 'createdAt', title: '创建时间' },
   { key: 'updatedAt', title: '更新时间' },
 ];
@@ -121,22 +122,6 @@ const RESTORE_ITEM_LABELS: Readonly<Record<string, string>> = {
   positionCleared: '岗位置空',
 };
 
-const RESTORE_BLOCKED_REASON_LABELS: Readonly<Record<string, string>> = {
-  TARGET_NOT_FOUND: '目标账号不存在',
-  TARGET_NOT_DEACTIVATED: '目标账号未处于已注销状态',
-  SUPER_ADMIN_TARGET: '超级管理员账号仅可由超级管理员管理',
-  PHONE_OCCUPIED: '手机号已被其他待激活/正常账号占用',
-  VERSION_CONFLICT: '账号状态已变化，请重新预览',
-};
-
-const GENDER_LABELS: Readonly<Record<string, string>> = { MALE: '男', FEMALE: '女' };
-const USER_STATUS_LABELS: Readonly<Record<string, string>> = {
-  PENDING_ACTIVATION: '待激活',
-  ACTIVE: '正常',
-  DEACTIVATED: '已注销',
-};
-const DISK_STATUS_LABELS: Readonly<Record<string, string>> = { OK: '正常', WARN: '预警', CRITICAL: '严重' };
-
 /** 错误日志详情字段中文名（嵌套对象常见键同表标签化；未命中键回退通用映射 displayLabel）。 */
 const ERROR_LOG_DETAIL_LABELS: Readonly<Record<string, string>> = {
   level: '级别',
@@ -159,8 +144,36 @@ const ERROR_LOG_DETAIL_LABELS: Readonly<Record<string, string>> = {
   stack: '调用栈',
 };
 
-const ERROR_LOG_STATUS_LABELS: Readonly<Record<string, string>> = { PENDING: '待处理', HANDLED: '已处理', IGNORED: '已忽略' };
-const LOG_LEVEL_LABELS: Readonly<Record<string, string>> = { INFO: '信息', WARN: '警告', ERROR: '错误', CRITICAL: '严重' };
+const ERROR_LOG_COLUMNS = [
+  { key: 'level', title: '级别', enumKind: 'logLevel' as const, sortable: true },
+  { key: 'service', title: '服务', sortable: true },
+  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} enumKind="errorStatus" />, sortable: true },
+  { key: 'occurrenceCount', title: '发生次数', sortable: true },
+  { key: 'lastSeenAt', title: '最近发生', sortable: true },
+  { key: 'createdAt', title: '首次发生', sortable: true },
+];
+
+const SECURITY_LOG_COLUMNS = [
+  { key: 'eventType', title: '事件', enumKind: 'securityEventType' as const, sortable: true },
+  { key: 'actorName', title: '操作者' },
+  { key: 'targetUserName', title: '目标用户' },
+  { key: 'result', title: '结果', render: (value: unknown) => <StatusTag value={value} enumKind="securityResult" />, sortable: true },
+  { key: 'createdAt', title: '发生时间', sortable: true },
+];
+
+const BACKUP_COLUMNS = [
+  { key: 'taskType', title: '类型', enumKind: 'backupType' as const },
+  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} enumKind="backupStatus" /> },
+  { key: 'backupTime', title: '备份时间' },
+  { key: 'finishedAt', title: '完成时间' },
+];
+
+const RESTORE_COLUMNS = [
+  { key: 'backupId', title: '来源备份' },
+  { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} enumKind="restoreStatus" /> },
+  { key: 'initiatedAt', title: '发起时间' },
+  { key: 'finishedAt', title: '完成时间' },
+];
 
 /** 恢复预检结果字段中文名（backupId 已在步骤上下文展示，不重复列出）。 */
 const RESTORE_PRECHECK_LABELS: Readonly<Record<string, string>> = {
@@ -192,8 +205,8 @@ function restorePrecheckItems(precheck: RecordValue): Array<{ key: string; label
 function errorLogDetailItems(detail: RecordValue): Array<{ key: string; label: string; children: React.ReactNode }> {
   return Object.entries(detail).filter(([key]) => key !== 'id' && key !== 'handledBy').map(([key, value]) => {
     let text: unknown = value;
-    if (key === 'status') text = ERROR_LOG_STATUS_LABELS[String(value ?? '')] ?? value;
-    if (key === 'level') text = LOG_LEVEL_LABELS[String(value ?? '')] ?? value;
+    if (key === 'status') text = formatEnumLabel('errorStatus', value);
+    if (key === 'level') text = formatEnumLabel('logLevel', value);
     if (key === 'bucketStart' || key === 'firstSeenAt' || key === 'lastSeenAt' || key === 'handledAt') text = value ? formatBeijingDateTime(String(value)) : value;
     return {
       key,
@@ -244,8 +257,8 @@ function userDetailItems(detail: RecordValue): Array<{ label: string; children: 
   return Object.entries(USER_DETAIL_LABELS).map(([key, label]) => {
     const value = detail[key];
     let text: unknown = value;
-    if (key === 'gender') text = GENDER_LABELS[String(value ?? '')] ?? value;
-    if (key === 'status') text = USER_STATUS_LABELS[String(value ?? '')] ?? value;
+    if (key === 'gender') text = formatEnumLabel('gender', value);
+    if (key === 'status') text = formatEnumLabel('userStatus', value);
     if (key === 'isSuperAdmin' || key === 'hasDingtalkBinding' || key === 'accountLocked') text = value === true ? '是' : value === false ? '否' : value;
     if (key === 'createdAt' || key === 'deactivatedAt') text = formatBeijingDateTime(String(value ?? ''));
     return { label, children: <span>{text === null || text === undefined || text === '' ? '—' : String(text)}</span> };
@@ -438,13 +451,13 @@ function RestorePreviewItem({ item }: { item: RecordValue }) {
         const value = item[key];
         if (value === undefined || value === null) return null;
         if (key === 'blockedReason') {
-          return <div key={key}>{label}：<Tag color="red">{RESTORE_BLOCKED_REASON_LABELS[String(value)] ?? String(value)}</Tag></div>;
+          return <div key={key}>{label}：<Tag color="red">{formatEnumLabel('restoreBlockedReason', value)}</Tag></div>;
         }
         if (key === 'restoreStatus') {
-          return <div key={key}>{label}：{USER_STATUS_LABELS[String(value)] ?? String(value)}</div>;
+          return <div key={key}>{label}：{formatEnumLabel('userStatus', value)}</div>;
         }
         if (key === 'revokedGrants' && Array.isArray(value)) {
-          return <div key={key}>{label}：{value.length === 0 ? '无' : value.map((grant) => isRecord(grant) ? `${String(grant.name ?? grant.functionCode)}（${String(grant.dataScope ?? '—')}）` : String(grant)).join('、')}</div>;
+          return <div key={key}>{label}：{value.length === 0 ? '无' : value.map((grant) => isRecord(grant) ? `${String(grant.name ?? grant.functionCode)}（${formatEnumLabel('dataScope', grant.dataScope)}）` : String(grant)).join('、')}</div>;
         }
         if (key === 'removedDepartmentNames' && Array.isArray(value)) {
           return <div key={key}>{label}：{value.length === 0 ? '无' : value.join('、')}</div>;
@@ -580,7 +593,7 @@ function PermissionGroups() {
     <Drawer title="权限组详情" open={groupId !== null} onClose={() => setGroupId(null)} width="min(92vw, 640px)">
       {group ? <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Card size="small" title="基本信息">名称：{String(group.name ?? '—')}；说明：{String(group.description ?? '—')}</Card>
-        <Card size="small" title="授权明细">{Array.isArray(group.items) && group.items.length > 0 ? group.items.map((item, index) => <Typography.Paragraph key={index}>{isRecord(item) ? `${String(item.name ?? item.functionCode)}（${String(item.dataScope ?? '—')}）${item.valid === false ? '，已失效' : ''}` : String(item)}</Typography.Paragraph>) : <Typography.Text type="secondary">当前是空权限组。</Typography.Text>}</Card>
+        <Card size="small" title="授权明细">{Array.isArray(group.items) && group.items.length > 0 ? group.items.map((item, index) => <Typography.Paragraph key={index}>{isRecord(item) ? `${String(item.name ?? item.functionCode)}（${formatEnumLabel('dataScope', item.dataScope)}）${item.valid === false ? '，已失效' : ''}` : String(item)}</Typography.Paragraph>) : <Typography.Text type="secondary">当前是空权限组。</Typography.Text>}</Card>
         <Button type="primary" onClick={() => setEditing(true)}>编辑权限组</Button>
       </Space> : <Typography.Text>正在加载...</Typography.Text>}
     </Drawer>
@@ -882,7 +895,7 @@ function SystemStatusTab() {
 }
 
 function OperationLogs() {
-  return <DataTable title="操作日志" service="platform" endpoint="/operation-logs" pageKey="backstage-operation-logs" columns={[{ key: 'operatorName', title: '操作者', sortable: true }, { key: 'actionType', title: '操作', render: (value: unknown) => <StatusTag value={value} />, sortable: true }, { key: 'summary', title: '摘要', sortable: true }, { key: 'createdAt', title: '时间', sortable: true }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: OPERATION_SYSTEM_OPTIONS }, { key: 'feature', title: '功能', type: 'enum', options: operationFeatureOptions }, { key: 'operatorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'departmentId', title: '部门', type: 'tree', remote: operationLogDepartmentTreeSource }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }, { label: '查询', value: 'QUERY' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/operation-logs/export', filename: 'operation-logs.xlsx', method: 'POST' }} />;
+  return <DataTable title="操作日志" service="platform" endpoint="/operation-logs" pageKey="backstage-operation-logs" columns={[{ key: 'operatorName', title: '操作者', sortable: true }, { key: 'actionType', title: '操作', render: (value: unknown) => <StatusTag value={value} enumKind="operationAction" />, sortable: true }, { key: 'summary', title: '摘要', sortable: true }, { key: 'createdAt', title: '时间', sortable: true }]} filterFields={[{ key: 'system', title: '系统', type: 'enum', options: OPERATION_SYSTEM_OPTIONS }, { key: 'feature', title: '功能', type: 'enum', options: operationFeatureOptions }, { key: 'operatorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'departmentId', title: '部门', type: 'tree', remote: operationLogDepartmentTreeSource }, { key: 'actionType', title: '操作', type: 'enum', options: [{ label: '新增', value: 'CREATE' }, { label: '修改', value: 'UPDATE' }, { label: '删除', value: 'DELETE' }, { label: '导出', value: 'EXPORT' }, { label: '查询', value: 'QUERY' }] }, { key: 'createdAt', title: '时间', type: 'date' }]} exportConfig={{ allEndpoint: '/operation-logs/export', filename: 'operation-logs.xlsx', method: 'POST' }} />;
 }
 
 function SystemLogs() {
@@ -909,8 +922,8 @@ function SystemLogs() {
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Tabs
       items={[
-        { key: 'errors', label: '错误日志', children: <DataTable key={`errors-${version}`} title="错误日志" service="platform" endpoint="/system-logs/errors" pageKey="backstage-error-logs" columns={[{ key: 'level', title: '级别', sortable: true }, { key: 'service', title: '服务', sortable: true }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} />, sortable: true }, { key: 'occurrenceCount', title: '发生次数', sortable: true }, { key: 'lastSeenAt', title: '最近发生', sortable: true }, { key: 'createdAt', title: '首次发生', sortable: true }]} filterFields={[{ key: 'service', title: '服务', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: [{ label: '待处理', value: 'PENDING' }, { label: '已处理', value: 'HANDLED' }, { label: '已忽略', value: 'IGNORED' }] }]} onRowClick={(row) => setDetailId(Number(row.id))} exportConfig={{ allEndpoint: '/system-logs/errors/export', filename: 'errors-logs.xlsx', method: 'POST' }} rowActions={(row) => row.status === 'PENDING' ? <Space size="small"><Popconfirm title="确认标记为已处理？" onConfirm={() => void dispose(Number(row.id), 'HANDLED')}><Button size="small">已处理</Button></Popconfirm><Popconfirm title="确认忽略此错误？" onConfirm={() => void dispose(Number(row.id), 'IGNORED')}><Button size="small" danger>忽略</Button></Popconfirm></Space> : null} /> },
-        { key: 'security', label: '安全日志', children: <DataTable title="安全日志" service="platform" endpoint="/system-logs/security" pageKey="backstage-security-logs" columns={[{ key: 'eventType', title: '事件', sortable: true }, { key: 'actorName', title: '操作者' }, { key: 'targetUserName', title: '目标用户' }, { key: 'result', title: '结果', render: (value: unknown) => <StatusTag value={value} />, sortable: true }, { key: 'createdAt', title: '发生时间', sortable: true }]} filterFields={[{ key: 'eventType', title: '事件类型', type: 'enum', options: SECURITY_EVENT_TYPE_OPTIONS }, { key: 'actorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'targetUserId', title: '目标用户', type: 'remote', remote: permissionEmployeesSource }, { key: 'result', title: '结果', type: 'enum', options: [{ label: '成功', value: 'SUCCESS' }, { label: '失败', value: 'FAILURE' }] }]} exportConfig={{ allEndpoint: '/system-logs/security/export', filename: 'security-logs.xlsx', method: 'POST' }} /> },
+        { key: 'errors', label: '错误日志', children: <DataTable key={`errors-${version}`} title="错误日志" service="platform" endpoint="/system-logs/errors" pageKey="backstage-error-logs" columns={ERROR_LOG_COLUMNS} filterFields={[{ key: 'service', title: '服务', type: 'text' }, { key: 'status', title: '状态', type: 'enum', options: [{ label: '待处理', value: 'PENDING' }, { label: '已处理', value: 'HANDLED' }, { label: '已忽略', value: 'IGNORED' }] }]} onRowClick={(row) => setDetailId(Number(row.id))} exportConfig={{ allEndpoint: '/system-logs/errors/export', filename: 'errors-logs.xlsx', method: 'POST' }} rowActions={(row) => row.status === 'PENDING' ? <Space size="small"><Popconfirm title="确认标记为已处理？" onConfirm={() => void dispose(Number(row.id), 'HANDLED')}><Button size="small">已处理</Button></Popconfirm><Popconfirm title="确认忽略此错误？" onConfirm={() => void dispose(Number(row.id), 'IGNORED')}><Button size="small" danger>忽略</Button></Popconfirm></Space> : null} /> },
+        { key: 'security', label: '安全日志', children: <DataTable title="安全日志" service="platform" endpoint="/system-logs/security" pageKey="backstage-security-logs" columns={SECURITY_LOG_COLUMNS} filterFields={[{ key: 'eventType', title: '事件类型', type: 'enum', options: SECURITY_EVENT_TYPE_OPTIONS }, { key: 'actorId', title: '操作者', type: 'remote', remote: permissionEmployeesSource }, { key: 'targetUserId', title: '目标用户', type: 'remote', remote: permissionEmployeesSource }, { key: 'result', title: '结果', type: 'enum', options: [{ label: '成功', value: 'SUCCESS' }, { label: '失败', value: 'FAILURE' }] }]} exportConfig={{ allEndpoint: '/system-logs/security/export', filename: 'security-logs.xlsx', method: 'POST' }} /> },
       ]}
     />
     <Drawer title="错误日志详情" open={detailId !== null} onClose={() => setDetailId(null)} width="min(92vw, 620px)">{detail ? <Descriptions bordered column={1} size="small" items={errorLogDetailItems(detail)} /> : <Typography.Text>正在加载...</Typography.Text>}</Drawer>
@@ -931,7 +944,7 @@ function Announcements() {
     }
   };
   return <>
-    <DataTable key={version} title="系统公告" service="platform" endpoint="/announcements" pageKey="backstage-announcements" columns={[{ key: 'title', title: '标题', sortable: true }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} />, sortable: true }, { key: 'publishedAt', title: '发布时间', sortable: true }, { key: 'createdAt', title: '创建时间' }, { key: 'updatedAt', title: '更新时间' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '草稿', value: 'DRAFT' }, { label: '展示中', value: 'PUBLISHING' }, { label: '已撤回', value: 'REVOKED' }] }]} actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建公告</Button>} emptyAction={{ label: '去创建', onExecute: () => setOpen(true) }} batchAction={{ label: '删除公告', danger: true, onExecute: async (ids) => { await http.delete('/announcements/batch', { ids: ids.map(Number) }); setVersion((value) => value + 1); } }} rowActions={(row) => { const status = String(row.status ?? ''); return <Space size="small">{status === 'DRAFT' ? <Popconfirm title="确认发布此公告？" onConfirm={() => void changeStatus(Number(row.id), 'publish')}><Button size="small">发布</Button></Popconfirm> : null}{status === 'PUBLISHING' ? <Popconfirm title="确认撤回此公告？" onConfirm={() => void changeStatus(Number(row.id), 'revoke')}><Button size="small" danger>撤回</Button></Popconfirm> : null}</Space>; }} />
+    <DataTable key={version} title="系统公告" service="platform" endpoint="/announcements" pageKey="backstage-announcements" columns={[{ key: 'title', title: '标题', sortable: true }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} enumKind="announcementStatus" />, sortable: true }, { key: 'publishedAt', title: '发布时间', sortable: true }, { key: 'createdAt', title: '创建时间' }, { key: 'updatedAt', title: '更新时间' }]} filterFields={[{ key: 'status', title: '状态', type: 'enum', options: [{ label: '草稿', value: 'DRAFT' }, { label: '展示中', value: 'PUBLISHING' }, { label: '已撤回', value: 'REVOKED' }] }]} actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建公告</Button>} emptyAction={{ label: '去创建', onExecute: () => setOpen(true) }} batchAction={{ label: '删除公告', danger: true, onExecute: async (ids) => { await http.delete('/announcements/batch', { ids: ids.map(Number) }); setVersion((value) => value + 1); } }} rowActions={(row) => { const status = String(row.status ?? ''); return <Space size="small">{status === 'DRAFT' ? <Popconfirm title="确认发布此公告？" onConfirm={() => void changeStatus(Number(row.id), 'publish')}><Button size="small">发布</Button></Popconfirm> : null}{status === 'PUBLISHING' ? <Popconfirm title="确认撤回此公告？" onConfirm={() => void changeStatus(Number(row.id), 'revoke')}><Button size="small" danger>撤回</Button></Popconfirm> : null}</Space>; }} />
     <ResourceFormModal title="新建公告" open={open} onCancel={() => setOpen(false)} onSubmit={async (values) => { await http.post('/announcements', values); feedback.success('公告草稿已创建'); setOpen(false); setVersion((value) => value + 1); }} fields={[{ key: 'title', label: '标题', required: true, maxLength: 200, width: 'wide' }, { key: 'content', label: '内容', type: 'textarea', maxLength: 10000 }]} />
   </>;
 }
@@ -958,7 +971,7 @@ function Backups() {
       const result = await http.get<{ data?: Array<RecordValue> }>('/backups?page=1&pageSize=50', { active: true });
       setBackupOptions((result.data ?? [])
         .filter((row) => row.status === 'SUCCEEDED')
-        .map((row) => ({ label: `#${String(row.id)} ${String(row.taskType ?? '')}（${row.finishedAt ? formatBeijingDateTime(String(row.finishedAt)) : '—'}）`, value: Number(row.id) })));
+        .map((row) => ({ label: `#${String(row.id)} ${formatEnumLabel('backupType', row.taskType)}（${row.finishedAt ? formatBeijingDateTime(String(row.finishedAt)) : '—'}）`, value: Number(row.id) })));
     } catch (error) {
       feedback.error(error, '备份列表加载失败');
     } finally {
@@ -1024,8 +1037,8 @@ function Backups() {
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Tabs
       items={[
-        { key: 'backups', label: '数据备份', children: <DataTable key={`backups-${version}`} title="数据备份" service="platform" endpoint="/backups" pageKey="backstage-backups" columns={[{ key: 'taskType', title: '类型' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'backupTime', title: '备份时间' }, { key: 'finishedAt', title: '完成时间' }]} actions={<Space><ConfirmAction title="确认立即备份？" description="将立即触发一次数据备份任务。" okText="立即备份" onConfirm={() => void immediateBackup()}><Button icon={<ReloadOutlined />}>立即备份</Button></ConfirmAction>{user?.isSuperAdmin ? <Button danger onClick={() => { setRestoreOpen(true); setRestoreStep('form'); setPrecheck(null); }}>恢复</Button> : null}</Space>} /> },
-        { key: 'restores', label: '恢复记录', children: <DataTable key={`restores-${version}`} title="恢复记录" service="platform" endpoint="/restores" pageKey="backstage-restores" columns={[{ key: 'backupId', title: '来源备份' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'initiatedAt', title: '发起时间' }, { key: 'finishedAt', title: '完成时间' }]} /> },
+        { key: 'backups', label: '数据备份', children: <DataTable key={`backups-${version}`} title="数据备份" service="platform" endpoint="/backups" pageKey="backstage-backups" columns={BACKUP_COLUMNS} actions={<Space><ConfirmAction title="确认立即备份？" description="将立即触发一次数据备份任务。" okText="立即备份" onConfirm={() => void immediateBackup()}><Button icon={<ReloadOutlined />}>立即备份</Button></ConfirmAction>{user?.isSuperAdmin ? <Button danger onClick={() => { setRestoreOpen(true); setRestoreStep('form'); setPrecheck(null); }}>恢复</Button> : null}</Space>} /> },
+        { key: 'restores', label: '恢复记录', children: <DataTable key={`restores-${version}`} title="恢复记录" service="platform" endpoint="/restores" pageKey="backstage-restores" columns={RESTORE_COLUMNS} /> },
       ]}
     />
     <Drawer title="数据库恢复" open={restoreOpen} onClose={() => { setRestoreOpen(false); setRestoreStep('form'); setPrecheck(null); form.resetFields(); }} width="min(92vw, 620px)">
@@ -1109,14 +1122,14 @@ function HealthStatusPage() {
     </Card>
     <Card title="磁盘状态" size="small">
       <Space size="middle">
-        <Tag color={disk.status === 'OK' ? 'green' : disk.status === 'WARN' ? 'orange' : 'red'}>{DISK_STATUS_LABELS[String(disk.status ?? '')] ?? String(disk.status ?? '—')}</Tag>
+        <Tag color={disk.status === 'OK' ? 'green' : disk.status === 'WARN' ? 'orange' : 'red'}>{formatEnumLabel('diskStatus', disk.status)}</Tag>
         <Typography.Text>{disk.usageRatio === null || disk.usageRatio === undefined ? '使用率不可测' : `最高使用率 ${String(disk.usageRatio)}`}</Typography.Text>
       </Space>
     </Card>
     <Card title="按模块与任务类型" size="small" styles={{ body: { padding: 0 } }}>
       <Table<RecordValue> size="small" rowKey={(row) => `${String(row.module)}-${String(row.taskType)}`} pagination={false} dataSource={byModuleAndType} locale={{ emptyText: '暂无任务分组数据' }} scroll={{ x: 'max-content' }} columns={[
-        { key: 'module', title: '模块', dataIndex: 'module' },
-        { key: 'taskType', title: '任务类型', dataIndex: 'taskType' },
+        { key: 'module', title: '模块', dataIndex: 'module', render: (value: unknown) => formatEnumLabel('backgroundTaskModule', value) },
+        { key: 'taskType', title: '任务类型', dataIndex: 'taskType', render: (value: unknown) => formatEnumLabel('backgroundTaskType', value) },
         { key: 'pendingEnqueue', title: '待入队', dataIndex: 'pendingEnqueue', width: 90 },
         { key: 'queued', title: '排队中', dataIndex: 'queued', width: 90 },
         { key: 'running', title: '执行中', dataIndex: 'running', width: 90 },

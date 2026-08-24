@@ -1,5 +1,5 @@
 import { DataTable } from '../../components/DataTable';
-import { catalogFunctionOptions } from '../../permission/catalog';
+import { catalogFunctionLabel, catalogFunctionOptions } from '../../permission/catalog';
 
 /** 我的操作日志（base PRD §6）：仅展示当前账号的操作记录，支持按系统/功能/操作/时间筛选与导出。 */
 export function OperationLogsSection() {
@@ -11,9 +11,9 @@ export function OperationLogsSection() {
       pageKey="me-operation-logs"
       columns={[
         { key: 'createdAt', title: '时间', sortable: true },
-        { key: 'system', title: '系统', sortable: true },
-        { key: 'feature', title: '功能', sortable: true },
-        { key: 'actionType', title: '操作', sortable: true },
+        { key: 'system', title: '系统', enumKind: 'systemCode', sortable: true },
+        { key: 'feature', title: '功能', render: (value: unknown) => catalogFunctionLabel(value), sortable: true },
+        { key: 'actionType', title: '操作', enumKind: 'operationAction', sortable: true },
         { key: 'summary', title: '摘要', sortable: true },
       ]}
       filterFields={[
