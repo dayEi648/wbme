@@ -3,6 +3,7 @@ import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
+import { ConfirmAction } from '../../components/ConfirmAction';
 import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag } from '../../components/DataTable';
 import { ResourceFormModal } from '../../components/ResourceFormModal';
@@ -394,9 +395,9 @@ function UserManagement() {
             <Descriptions bordered column={1} size="small" items={userDetailItems(detail)} />
             <Space wrap>
               <Button onClick={() => setEditing(true)}>编辑资料</Button>
-              {detail.status === 'PENDING_ACTIVATION' ? <Button onClick={() => void issueActivation()}>生成激活邀请</Button> : null}
-              {detail.status === 'ACTIVE' ? <Button onClick={() => void issueReset()}>生成密码重置邀请</Button> : null}
-              {detail.accountLocked === true ? <Button danger onClick={() => void unlock()}>解除登录锁定</Button> : null}
+              {detail.status === 'PENDING_ACTIVATION' ? <ConfirmAction title="确认生成激活邀请？" description="将生成一次性激活链接，请通过安全渠道转交给目标员工。" okText="生成" onConfirm={() => void issueActivation()}><Button>生成激活邀请</Button></ConfirmAction> : null}
+              {detail.status === 'ACTIVE' ? <ConfirmAction title="确认生成密码重置邀请？" description="将生成一次性密码重置链接，请通过安全渠道转交给目标员工。" okText="生成" onConfirm={() => void issueReset()}><Button>生成密码重置邀请</Button></ConfirmAction> : null}
+              {detail.accountLocked === true ? <ConfirmAction title="确认解除登录锁定？" description="解除后该账号可立即重新尝试登录。" okText="解除锁定" danger onConfirm={() => void unlock()}><Button danger>解除登录锁定</Button></ConfirmAction> : null}
               {user?.isSuperAdmin ? detail.isSuperAdmin === true
                 ? <Popconfirm title="确认将该用户降级为普通员工？" onConfirm={() => void toggleSuperAdmin(false)}><Button danger>降级超管</Button></Popconfirm>
                 : <Popconfirm title="确认任命该用户为超级管理员？" onConfirm={() => void toggleSuperAdmin(true)}><Button>任命超管</Button></Popconfirm>
@@ -841,23 +842,17 @@ function SystemStatusTab() {
         unCheckedChildren="即将上线"
         loading={updatingCode === system.code}
         disabled={updatingCode !== null}
-        onChange={(checked) => {
-          if (checked) {
-            void changeStatus(system.code, 'OPEN');
-          }
+        onChange={() => {
+          // 状态变更统一由外层确认框的 onConfirm 触发，避免确认前直接切换。
         }}
       />;
       return <Card
         key={system.code}
         size="small"
         title={system.name}
-        extra={isOpen ? <Popconfirm
-          title={`确认关闭“${system.name}”？`}
-          okText="设为即将上线"
-          cancelText="取消"
-          okButtonProps={{ danger: true }}
-          onConfirm={() => void changeStatus(system.code, 'COMING_SOON')}
-        >{switchControl}</Popconfirm> : switchControl}
+        extra={isOpen
+          ? <ConfirmAction title={`确认关闭“${system.name}”？`} description="关闭后该业务系统入口将变为“即将上线”。" okText="设为即将上线" danger onConfirm={() => void changeStatus(system.code, 'COMING_SOON')}>{switchControl}</ConfirmAction>
+          : <ConfirmAction title={`确认开放“${system.name}”？`} description="开放后该业务系统入口可被有权限的用户进入。" okText="设为开放" onConfirm={() => void changeStatus(system.code, 'OPEN')}>{switchControl}</ConfirmAction>}
         styles={{ body: { display: 'none' } }}
       />;
     })}
@@ -1007,7 +1002,7 @@ function Backups() {
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Tabs
       items={[
-        { key: 'backups', label: '数据备份', children: <DataTable key={`backups-${version}`} title="数据备份" service="platform" endpoint="/backups" pageKey="backstage-backups" columns={[{ key: 'taskType', title: '类型' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'backupTime', title: '备份时间' }, { key: 'finishedAt', title: '完成时间' }]} actions={<Space><Button icon={<ReloadOutlined />} onClick={() => void immediateBackup()}>立即备份</Button>{user?.isSuperAdmin ? <Button danger onClick={() => { setRestoreOpen(true); setRestoreStep('form'); setPrecheck(null); }}>恢复</Button> : null}</Space>} /> },
+        { key: 'backups', label: '数据备份', children: <DataTable key={`backups-${version}`} title="数据备份" service="platform" endpoint="/backups" pageKey="backstage-backups" columns={[{ key: 'taskType', title: '类型' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'backupTime', title: '备份时间' }, { key: 'finishedAt', title: '完成时间' }]} actions={<Space><ConfirmAction title="确认立即备份？" description="将立即触发一次数据备份任务。" okText="立即备份" onConfirm={() => void immediateBackup()}><Button icon={<ReloadOutlined />}>立即备份</Button></ConfirmAction>{user?.isSuperAdmin ? <Button danger onClick={() => { setRestoreOpen(true); setRestoreStep('form'); setPrecheck(null); }}>恢复</Button> : null}</Space>} /> },
         { key: 'restores', label: '恢复记录', children: <DataTable key={`restores-${version}`} title="恢复记录" service="platform" endpoint="/restores" pageKey="backstage-restores" columns={[{ key: 'backupId', title: '来源备份' }, { key: 'status', title: '状态', render: (value: unknown) => <StatusTag value={value} /> }, { key: 'initiatedAt', title: '发起时间' }, { key: 'finishedAt', title: '完成时间' }]} /> },
       ]}
     />

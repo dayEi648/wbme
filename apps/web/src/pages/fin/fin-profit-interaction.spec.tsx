@@ -11,7 +11,7 @@ import { ProfitAnalysis } from './FinPage';
  */
 
 vi.mock('../../request/feedback', () => ({
-  useFeedback: () => ({ success: vi.fn(), error: vi.fn() }),
+  useFeedback: () => ({ success: vi.fn(), error: vi.fn(), confirm: vi.fn(() => Promise.resolve(true)), confirmDanger: vi.fn(() => Promise.resolve(true)) }),
 }));
 
 vi.mock('../../request/session', () => ({

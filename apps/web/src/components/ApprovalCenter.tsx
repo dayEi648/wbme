@@ -1,6 +1,7 @@
 import { Button, Card, Descriptions, Drawer, Form, Input, Popconfirm, Space, Spin, Table, Timeline, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { DataTable, StatusTag } from './DataTable';
+import { ConfirmAction } from './ConfirmAction';
 import { formatBeijingDateTime } from './display-format';
 import { useFeedback } from '../request/feedback';
 import { http, type ApiService } from '../request/http';
@@ -269,7 +270,7 @@ export function ApprovalCenter({ title, service, pageKey }: ApprovalCenterProps)
           {actionTimeline}
           <Form form={form} layout="vertical"><Form.Item name="opinion" label="处理意见（驳回必填）"><Input.TextArea maxLength={500} rows={3} /></Form.Item></Form>
           <Space wrap>
-            {current?.status === 'PENDING' ? <><Button type="primary" onClick={() => void process('APPROVE')}>批准</Button><Button danger onClick={() => void process('REJECT')}>驳回</Button></> : null}
+            {current?.status === 'PENDING' ? <><ConfirmAction title="确认批准该申请？" description="批准后申请进入下一处理状态。" okText="批准" onConfirm={() => void process('APPROVE')}><Button type="primary">批准</Button></ConfirmAction><ConfirmAction title="确认驳回该申请？" description="驳回后申请结束，请确认已填写驳回原因。" okText="驳回" danger onConfirm={() => void process('REJECT')}><Button danger>驳回</Button></ConfirmAction></> : null}
             {canCancel && current?.status === 'PENDING' ? <Popconfirm title="确认取消该待审批申请？" onConfirm={() => void cancel()}><Button>取消申请</Button></Popconfirm> : null}
             <Button disabled={currentIndex === 0} onClick={() => setCurrentIndex((value) => value === null ? value : value - 1)}>上一条</Button>
             <Button disabled={currentIndex === null || currentIndex >= rows.length - 1} onClick={() => setCurrentIndex((value) => value === null ? value : value + 1)}>下一条</Button>

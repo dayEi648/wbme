@@ -11,7 +11,8 @@ const httpMock = vi.hoisted(() => ({
 const feedbackMock = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
-  confirmDanger: vi.fn(),
+  confirm: vi.fn(() => Promise.resolve(true)),
+  confirmDanger: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock('../request/http', () => ({ http: httpMock }));
@@ -103,6 +104,7 @@ describe('菜单管理 Tab', () => {
     fireEvent.click(screen.getByRole('button', { name: /新建分组/ }));
     fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     fireEvent.click(screen.getByLabelText('删除分组 新分组'));
+    fireEvent.click(screen.getByRole('button', { name: /删\s*除$/ }));
     expect(screen.getByText('有未保存的修改')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));

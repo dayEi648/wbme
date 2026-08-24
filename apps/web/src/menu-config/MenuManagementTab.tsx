@@ -3,6 +3,7 @@ import { Button, Input, Modal, Space, Spin, Tree, Typography } from 'antd';
 import type { TreeDataNode, TreeProps } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { NavigationItem } from '../components/AppShell';
+import { ConfirmAction } from '../components/ConfirmAction';
 import { useFeedback } from '../request/feedback';
 import { http } from '../request/http';
 import {
@@ -202,17 +203,16 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
               }}
             />
             {canDelete ? (
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                aria-label={`删除分组 ${displayName}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleDeleteGroup(ref.kind === 'group' ? ref.nodeKey : '');
-                }}
-              />
+              <ConfirmAction title={`确认删除分组“${displayName}”？`} description="仅可删除空分组；删除后未保存前可通过不保存放弃本次修改。" okText="删除" danger onConfirm={() => handleDeleteGroup(ref.kind === 'group' ? ref.nodeKey : '')}>
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label={`删除分组 ${displayName}`}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </ConfirmAction>
             ) : null}
           </Space>
         </div>
@@ -343,6 +343,14 @@ export function MenuManagementTab({ systemCode, defaults, onSaved }: MenuManagem
 
   const handleSave = async () => {
     if (!state) {
+      return;
+    }
+    const confirmed = await feedback.confirm({
+      title: '确认保存菜单配置？',
+      content: '保存后将对本系统所有用户生效。',
+      okText: '保存',
+    });
+    if (!confirmed) {
       return;
     }
     setSaving(true);

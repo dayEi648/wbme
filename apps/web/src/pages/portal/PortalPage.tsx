@@ -3,6 +3,7 @@ import { BellOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HistoryNavButtons } from '../../components/HistoryNavButtons';
+import { ConfirmAction } from '../../components/ConfirmAction';
 import { ApiError, http } from '../../request/http';
 import { useFeedback } from '../../request/feedback';
 import { useSession } from '../../request/session';
@@ -63,9 +64,11 @@ export default function PortalPage() {
           <Button icon={<UserOutlined />} onClick={() => navigate('/me')}>
             个人中心
           </Button>
-          <Button icon={<LogoutOutlined />} onClick={handleLogout}>
-            退出
-          </Button>
+          <ConfirmAction title="确认退出登录？" description="退出后需要重新登录才能访问系统。" okText="退出登录" onConfirm={() => void handleLogout()}>
+            <Button icon={<LogoutOutlined />}>
+              退出
+            </Button>
+          </ConfirmAction>
         </Space>
       </div>
 

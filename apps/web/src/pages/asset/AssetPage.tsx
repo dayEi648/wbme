@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import { AppShell, type NavigationItem } from '../../components/AppShell';
+import { ConfirmAction } from '../../components/ConfirmAction';
 import { ApprovalCenter } from '../../components/ApprovalCenter';
 import { DataTable, StatusTag, type DataColumn } from '../../components/DataTable';
 import { PageTabs } from '../../components/PageTabs';
@@ -843,13 +844,16 @@ function QrCreateModal({
 /** 打印二维码：从 canvas 提取图片并打开打印窗口（asset PRD §11 重新展示和打印同一张有效二维码）。 */
 function PrintQrButton({ value, label }: { value: string; label: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const handlePrint = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    openQrPrintWindow(label, canvas.toDataURL('image/png'));
+  };
   return <Space direction="vertical" size={4} style={{ alignItems: 'center' }}>
     <div style={{ display: 'none' }}><QRCodeCanvas value={value} size={240} ref={canvasRef} /></div>
-    <Button size="small" onClick={() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      openQrPrintWindow(label, canvas.toDataURL('image/png'));
-    }}>打印</Button>
+    <ConfirmAction title="确认打印二维码？" description="将打开打印窗口输出当前二维码。" okText="打印" onConfirm={handlePrint}>
+      <Button size="small">打印</Button>
+    </ConfirmAction>
   </Space>;
 }
 

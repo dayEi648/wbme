@@ -3,6 +3,7 @@ import { Button, Card, Divider, Flex, Form, Input, Modal, Space, Tag, Typography
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFeedback } from '../../request/feedback';
+import { ConfirmAction } from '../../components/ConfirmAction';
 import { ApiError, http } from '../../request/http';
 import { useSession } from '../../request/session';
 
@@ -112,9 +113,11 @@ export function SecuritySection() {
       extra: hasDingtalkBinding ? (
         <Tag color="success">已绑定</Tag>
       ) : (
-        <Button loading={binding} onClick={() => void startBindDingtalk()}>
-          绑定钉钉
-        </Button>
+        <ConfirmAction title="确认绑定钉钉？" description="将跳转至钉钉授权页完成账号绑定。" okText="去绑定" onConfirm={() => void startBindDingtalk()}>
+          <Button loading={binding}>
+            绑定钉钉
+          </Button>
+        </ConfirmAction>
       ),
     },
   ];

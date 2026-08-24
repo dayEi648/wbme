@@ -2,11 +2,21 @@ import { App as AntApp } from 'antd';
 import { createContext, useContext, type ReactNode } from 'react';
 import { ApiError } from './http';
 
+/** 通用确认弹窗参数（与 Ant Design modal.confirm 对齐，但只暴露业务常用字段）。 */
+export interface ConfirmOptions {
+  title: ReactNode;
+  content?: ReactNode;
+  okText?: string;
+  cancelText?: string;
+  danger?: boolean;
+}
+
 /** 统一页面反馈接口（主 PRD §10.5）。 */
 interface FeedbackContextValue {
   success: (content: string) => void;
   info: (content: string) => void;
   error: (error: unknown, fallback?: string) => void;
+  confirm: (options: ConfirmOptions) => Promise<boolean>;
   confirmDanger: (title: string, content: ReactNode, okText?: string) => Promise<boolean>;
 }
 
@@ -41,18 +51,21 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
       }
       void message.error(fallback);
     },
-    confirmDanger(title, content, okText = '确认操作') {
+    confirm({ title, content, okText = '确认', cancelText = '取消', danger = false }) {
       return new Promise<boolean>((resolve) => {
         modal.confirm({
           title,
           content,
           okText,
-          cancelText: '取消',
-          okButtonProps: { danger: true },
+          cancelText,
+          okButtonProps: danger ? { danger: true } : undefined,
           onOk: () => resolve(true),
           onCancel: () => resolve(false),
         });
       });
+    },
+    confirmDanger(title, content, okText = '确认操作') {
+      return this.confirm({ title, content, okText, danger: true });
     },
   };
 

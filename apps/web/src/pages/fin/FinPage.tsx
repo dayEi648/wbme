@@ -740,6 +740,32 @@ export function ProfitAnalysis() {
     setRedoStack((stack) => stack.slice(0, -1));
     await applyUndoEntry(entry, false);
   };
+  const confirmUndo = async () => {
+    const entry = undoStack[undoStack.length - 1];
+    if (!entry) return;
+    const confirmed = await feedback.confirm({
+      title: '确认撤销上次编辑？',
+      content: `将把“${entry.rowName}”的「${PROJECT_FIELD_LABELS[entry.field] ?? entry.field}」恢复为编辑前值。`,
+      okText: '撤销',
+    });
+    if (!confirmed) {
+      return;
+    }
+    await doUndo();
+  };
+  const confirmRedo = async () => {
+    const entry = redoStack[redoStack.length - 1];
+    if (!entry) return;
+    const confirmed = await feedback.confirm({
+      title: '确认重做上次撤销？',
+      content: `将重新应用“${entry.rowName}”的「${PROJECT_FIELD_LABELS[entry.field] ?? entry.field}」编辑后值。`,
+      okText: '重做',
+    });
+    if (!confirmed) {
+      return;
+    }
+    await doRedo();
+  };
 
   // 全局撤销/重做快捷键：⌘Z / Ctrl+Z（撤销）、⌘⇧Z / Ctrl+Y（重做），并提供工具栏按钮
   useEffect(() => {
@@ -780,7 +806,7 @@ export function ProfitAnalysis() {
   };
 
   /** 清除全部筛选/排序条件（有未保存内容时先确认放弃）。 */
-  const clearAllConditions = () => {
+  const clearAllConditions = async () => {
     const run = () => {
       const emptyTree = createEmptyProfitFilterTree();
       setAppliedFilterTree(emptyTree);
@@ -788,7 +814,19 @@ export function ProfitAnalysis() {
       setPage(1);
       void load(1, pageSize, emptyTree, []);
     };
-    confirmDiscard('当前有未保存的编辑内容（草稿或保存失败），清除全部条件将放弃这些内容，确定继续吗？', run);
+    if (hasUnsavedContent()) {
+      confirmDiscard('当前有未保存的编辑内容（草稿或保存失败），清除全部条件将放弃这些内容，确定继续吗？', run);
+      return;
+    }
+    const confirmed = await feedback.confirm({
+      title: '确认清除全部筛选/排序条件？',
+      content: '当前查询条件将被清空。',
+      okText: '清除',
+    });
+    if (!confirmed) {
+      return;
+    }
+    run();
   };
 
   /** 翻页/改页大小（有未保存内容时先确认放弃；fin PRD §4：翻页不得无提示离开）。 */
@@ -803,6 +841,14 @@ export function ProfitAnalysis() {
 
   /** 利润分析导出（页头操作区）；「导出已筛选」携带当前筛选条件（批次 6-5）。 */
   const exportFile = async (scope: 'all' | 'filtered') => {
+    const confirmed = await feedback.confirm({
+      title: scope === 'all' ? '确认导出全部数据？' : '确认导出已筛选数据？',
+      content: '将按当前权限范围生成 Excel 文件并开始下载。',
+      okText: '导出',
+    });
+    if (!confirmed) {
+      return;
+    }
     try {
       const query = scope === 'filtered' ? buildProfitQuery(appliedFilterTree, appliedSorts) : '';
       const blob = await download(`/profit/excel/export/${scope}${query}`, { service: 'fin', active: true });
@@ -927,8 +973,8 @@ export function ProfitAnalysis() {
         {appliedFilterCount > 0 || appliedSorts.length > 0 ? (
           <Button type="link" onClick={clearAllConditions}>清除全部条件</Button>
         ) : null}
-        <Button icon={<UndoOutlined />} disabled={undoStack.length === 0} onClick={() => void doUndo()}>撤销</Button>
-        <Button icon={<RedoOutlined />} disabled={redoStack.length === 0} onClick={() => void doRedo()}>重做</Button>
+        <Button icon={<UndoOutlined />} disabled={undoStack.length === 0} onClick={() => void confirmUndo()}>撤销</Button>
+        <Button icon={<RedoOutlined />} disabled={redoStack.length === 0} onClick={() => void confirmRedo()}>重做</Button>
         {canEdit ? <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入</Button> : null}
         <Button icon={<DownloadOutlined />} onClick={() => void exportFile('all')}>导出全部</Button>
         <Button icon={<ExportOutlined />} onClick={() => void exportFile('filtered')}>导出已筛选</Button>

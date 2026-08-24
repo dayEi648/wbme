@@ -354,14 +354,26 @@ export function DataTable({
     })();
   }, [columns, pageKey, service]);
 
-  const resizeColumn = (key: string, width: number) => {
+  const resizeColumn = async (key: string, width: number) => {
+    const confirmed = await feedback.confirm({
+      title: '确认保存列宽？',
+      content: '列宽调整将作为个人表格偏好保存。',
+      okText: '保存',
+    });
+    if (!confirmed) {
+      return;
+    }
     const nextWidths = { ...columnWidths, [key]: width };
     setColumnWidths(nextWidths);
-    void http.put(
-      `/me/table-prefs/${pageKey}/column-setting`,
-      { content: { visibleKeys, columnWidths: nextWidths, columnFixed } },
-      { service },
-    ).catch((error) => feedback.error(error, '保存列宽失败'));
+    try {
+      await http.put(
+        `/me/table-prefs/${pageKey}/column-setting`,
+        { content: { visibleKeys, columnWidths: nextWidths, columnFixed } },
+        { service },
+      );
+    } catch (error) {
+      feedback.error(error, '保存列宽失败');
+    }
   };
 
   const tableColumns: TableColumnsType<RecordValue> = [
@@ -425,6 +437,14 @@ export function DataTable({
   };
 
   const saveColumns = async (nextKeys: string[], nextWidths = columnWidths, nextFixed = columnFixed) => {
+    const confirmed = await feedback.confirm({
+      title: '确认保存列设置？',
+      content: '列显隐、顺序、宽度和固定位置的调整将作为个人表格偏好保存。',
+      okText: '保存',
+    });
+    if (!confirmed) {
+      return;
+    }
     setVisibleKeys(nextKeys);
     setColumnWidths(nextWidths);
     setColumnFixed(nextFixed);
@@ -463,6 +483,14 @@ export function DataTable({
   /** 下载全部或当前筛选范围；不使用当前页数据，始终由服务端导出完整权限范围。 */
   const exportRows = async (scope: 'all' | 'filtered') => {
     if (!exportConfig) return;
+    const confirmed = await feedback.confirm({
+      title: scope === 'all' ? '确认导出全部数据？' : '确认导出已筛选数据？',
+      content: '将按当前权限范围生成 Excel 文件并开始下载。',
+      okText: '导出',
+    });
+    if (!confirmed) {
+      return;
+    }
     try {
       const endpoint = scope === 'all' ? exportConfig.allEndpoint : exportConfig.filteredEndpoint ?? exportConfig.allEndpoint;
       const params = buildListParams({ includePagination: false, includeConditions: scope === 'filtered' });
@@ -485,7 +513,15 @@ export function DataTable({
   };
 
   /** 应用筛选预设（桌面「使用预设」下拉与移动端「更多」菜单共用同一套状态迁移）；兼容新旧两种 content 形状。 */
-  const applyPreset = (preset: FilterPreset) => {
+  const applyPreset = async (preset: FilterPreset) => {
+    const confirmed = await feedback.confirm({
+      title: `确认使用预设“${preset.name}”？`,
+      content: '将替换当前筛选和排序条件。',
+      okText: '使用',
+    });
+    if (!confirmed) {
+      return;
+    }
     const { tree, sorts: presetSorts } = normalizePresetContent(preset.content);
     setActivePresetId(preset.id);
     setAppliedFilterTree(tree);
@@ -494,7 +530,18 @@ export function DataTable({
   };
 
   /** 清除工具栏全部已应用条件（筛选/排序/预设），桌面「清除全部条件」与移动端「更多」菜单共用。 */
-  const clearAllConditions = () => {
+  const clearAllConditions = async () => {
+    if (appliedFilterCount === 0 && appliedSorts.length === 0) {
+      return;
+    }
+    const confirmed = await feedback.confirm({
+      title: '确认清除全部筛选/排序条件？',
+      content: '当前查询条件将被清空。',
+      okText: '清除',
+    });
+    if (!confirmed) {
+      return;
+    }
     setAppliedFilterTree({ id: crypto.randomUUID(), logic: 'AND', children: [] });
     setAppliedSorts([]);
     setActivePresetId(undefined);
@@ -502,7 +549,15 @@ export function DataTable({
   };
 
   /** 标签栏单条移除：树内删空后保留的空行由序列化剪枝静默清理（见 removeConditionFromTree）。 */
-  const removeAppliedCondition = (conditionId: string) => {
+  const removeAppliedCondition = async (conditionId: string) => {
+    const confirmed = await feedback.confirm({
+      title: '确认移除该筛选条件？',
+      content: '仅移除当前这一条筛选条件。',
+      okText: '移除',
+    });
+    if (!confirmed) {
+      return;
+    }
     setAppliedFilterTree((current) => removeConditionFromTree(current, conditionId, filterFields));
     setPage(1);
   };
@@ -541,7 +596,7 @@ export function DataTable({
     { key: 'columns', icon: <SettingOutlined />, label: '列设置', onClick: () => setColumnOpen(true) },
     { key: 'preset-save', label: '保存预设', onClick: () => setPresetOpen(true) },
     presets.length > 0
-      ? { key: 'preset-apply', label: '使用预设', children: presets.map((preset) => ({ key: `preset-${preset.id}`, label: preset.name, onClick: () => applyPreset(preset) })) }
+      ? { key: 'preset-apply', label: '使用预设', children: presets.map((preset) => ({ key: `preset-${preset.id}`, label: preset.name, onClick: () => void applyPreset(preset) })) }
       : { key: 'preset-apply-empty', label: '使用预设（暂无已保存）', disabled: true },
     { key: 'preset-manage', label: '管理预设', disabled: presets.length === 0, onClick: () => setPresetManageOpen(true) },
     ...(exportConfig
@@ -593,7 +648,7 @@ export function DataTable({
             onChange={(id: number | undefined) => {
               const preset = presets.find((item) => item.id === id);
               if (preset) {
-                applyPreset(preset);
+                void applyPreset(preset);
               } else {
                 setActivePresetId(undefined);
               }
@@ -633,7 +688,7 @@ export function DataTable({
               onClose={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                removeAppliedCondition(condition.id);
+                void removeAppliedCondition(condition.id);
               }}
             >
               {formatConditionTag(condition)}
@@ -679,7 +734,7 @@ export function DataTable({
           </Empty>
         ) : rows.length === 0 ? (
           <Empty description={appliedFilterCount > 0 ? '无符合条件的数据' : '暂无数据'}>
-            {appliedFilterCount > 0 ? <Button onClick={() => { setAppliedFilterTree({ id: crypto.randomUUID(), logic: 'AND', children: [] }); setActivePresetId(undefined); setPage(1); }}>清除全部筛选条件</Button> : emptyAction ? <Button type="primary" onClick={emptyAction.onExecute}>{emptyAction.label}</Button> : null}
+            {appliedFilterCount > 0 ? <Button onClick={() => void clearAllConditions()}>清除全部筛选条件</Button> : emptyAction ? <Button type="primary" onClick={emptyAction.onExecute}>{emptyAction.label}</Button> : null}
           </Empty>
         ) : (
           <>

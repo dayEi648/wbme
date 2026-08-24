@@ -137,7 +137,7 @@ function SettingSection({ id, title, keys, settings, labels, units, presentation
   labels?: Record<string, string>;
   units?: Record<string, string>;
   presentations?: Record<string, SystemSettingPresentation>;
-  onSave: (keys: string[]) => Promise<void>;
+  onSave: (keys: string[], title: string) => Promise<void>;
   saving: boolean;
   extra?: ReactNode;
 }) {
@@ -146,7 +146,7 @@ function SettingSection({ id, title, keys, settings, labels, units, presentation
     .filter((setting): setting is SystemSettingItem => Boolean(setting));
 
   return (
-    <Card id={id} title={title} size="small" style={{ marginBottom: 24, scrollMarginTop: 24 }} extra={<Button type="primary" size="small" loading={saving} onClick={() => void onSave(keys)}>保存</Button>}>
+    <Card id={id} title={title} size="small" style={{ marginBottom: 24, scrollMarginTop: 24 }} extra={<Button type="primary" size="small" loading={saving} onClick={() => void onSave(keys, title)}>保存</Button>}>
       {items.length === 0 ? null : (
         <Row gutter={[16, 0]}>
           {items.map((item) => {
@@ -220,7 +220,7 @@ export function SystemSettingsPage({ service, endpoint, groups, labels, units, p
     })();
   }, [endpoint, feedback, form, presentations, service]);
 
-  const saveKeys = async (sectionId: string, keys: string[]) => {
+  const saveKeys = async (sectionId: string, keys: string[], title: string) => {
     let values: Record<string, string | number>;
     try {
       values = await form.validateFields(keys);
@@ -228,6 +228,14 @@ export function SystemSettingsPage({ service, endpoint, groups, labels, units, p
       if (!isFormValidationFailure(error)) {
         feedback.error(error, '设置校验失败');
       }
+      return;
+    }
+    const confirmed = await feedback.confirm({
+      title: `确认保存「${title}」设置？`,
+      content: '保存后立即生效。',
+      okText: '保存',
+    });
+    if (!confirmed) {
       return;
     }
     setSavingSectionId(sectionId);
@@ -267,7 +275,7 @@ export function SystemSettingsPage({ service, endpoint, groups, labels, units, p
                 labels={labels}
                 units={units}
                 presentations={presentations}
-                onSave={(keys) => saveKeys(group.id, group.saveKeys ?? keys)}
+                onSave={(keys, title) => saveKeys(group.id, group.saveKeys ?? keys, title)}
                 saving={savingSectionId === group.id}
                 extra={group.renderExtra?.({ form, settings })}
               />

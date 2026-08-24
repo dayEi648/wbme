@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useFeedback } from '../request/feedback';
 import { useSession } from '../request/session';
 import { HistoryNavButtons } from './HistoryNavButtons';
+import { ConfirmAction } from './ConfirmAction';
 
 const { Header, Sider, Content } = Layout;
 
@@ -196,7 +197,9 @@ export function AppShell({ systemName, homePath, items, children }: AppShellProp
             <Button type="text" icon={<UserOutlined />} onClick={() => navigate('/me')}>
               {user?.name ?? '个人中心'}
             </Button>
-            <Button type="text" icon={<LogoutOutlined />} aria-label="退出登录" onClick={() => void handleLogout()} />
+            <ConfirmAction title="确认退出登录？" description="退出后需要重新登录才能访问系统。" okText="退出登录" onConfirm={() => void handleLogout()}>
+              <Button type="text" icon={<LogoutOutlined />} aria-label="退出登录" />
+            </ConfirmAction>
           </Space>
         </Header>
         <Content style={{ padding: screens.lg ? 16 : 12, maxWidth: 1680, width: '100%', margin: '0 auto' }}>

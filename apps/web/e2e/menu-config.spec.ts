@@ -52,6 +52,7 @@ test.describe('菜单管理', () => {
     await page.locator('.ant-modal').getByRole('button', { name: '确 定' }).click();
     await expect(tree.getByText(RENAMED)).toBeVisible();
     await page.getByRole('button', { name: '保 存' }).click();
+    await page.locator('.ant-modal-confirm').getByRole('button', { name: '保 存' }).click();
     await expect(page.getByText('菜单配置已保存，对本系统所有用户生效')).toBeVisible({ timeout: 15_000 });
 
     // sidebar 即时生效：运维监控分组下出现新名称
@@ -83,6 +84,7 @@ test.describe('菜单管理', () => {
     await page.getByRole('button', { name: '下移 审批中心' }).click();
     await expect(page.getByText('有未保存的修改')).toBeVisible();
     await page.getByRole('button', { name: '保 存' }).click();
+    await page.locator('.ant-modal-confirm').getByRole('button', { name: '保 存' }).click();
     await expect(page.getByText('菜单配置已保存，对本系统所有用户生效')).toBeVisible({ timeout: 15_000 });
 
     expect(await topLevelMenuTexts(page)).toEqual(['系统首页', '用户与权限', '审批中心', '内容与配置', '运维监控']);
