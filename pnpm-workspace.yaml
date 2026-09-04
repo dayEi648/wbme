@@ -2,6 +2,10 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+overrides:
+  archiver: 5.3.2
+ignoredBuiltDependencies:
+  - '@scarf/scarf'
 allowBuilds:
   '@prisma/engines': true
   prisma: true

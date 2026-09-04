@@ -87,7 +87,14 @@ test.describe('菜单管理', () => {
     await page.locator('.ant-modal-confirm').getByRole('button', { name: '保 存' }).click();
     await expect(page.getByText('菜单配置已保存，对本系统所有用户生效')).toBeVisible({ timeout: 15_000 });
 
-    expect(await topLevelMenuTexts(page)).toEqual(['系统首页', '用户与权限', '审批中心', '内容与配置', '运维监控']);
+    // 保存成功通知先于当前页面重新拉取并合并菜单配置；轮询最终渲染顺序，避免读取到旧导航的瞬时状态。
+    await expect.poll(() => topLevelMenuTexts(page), { timeout: 15_000 }).toEqual([
+      '系统首页',
+      '用户与权限',
+      '审批中心',
+      '内容与配置',
+      '运维监控',
+    ]);
   });
 
   test('层级调整生效：分组任意嵌套（三级分组）后 sidebar 按新层级渲染', async ({ page }) => {

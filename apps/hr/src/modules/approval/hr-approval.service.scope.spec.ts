@@ -105,6 +105,18 @@ function mockDepartmentAccess(): void {
   }));
 }
 
+/** 岗位变更审批为公司档，用于验证其批准副作用；不受部门快照测试干扰。 */
+function mockCompanyPositionAccess(): void {
+  mockedGetAccess.mockImplementation(async (_prisma, _userId, code) => ({
+    registered: true,
+    systemCode: 'HR',
+    systemName: 'hr',
+    systemOpen: true,
+    allowed: code === ORG_STRUCTURE_FUNCTION_CODE,
+    dataScope: code === ORG_STRUCTURE_FUNCTION_CODE ? 'COMPANY' : null,
+  }));
+}
+
 describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -295,7 +307,7 @@ describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
       );
     });
 
-    it('批准副作用：APPROVE 时注入的 sideEffect.apply 在事务内被调用', async () => {
+    it('加班批准不调用岗位变更副作用，仍完成状态迁移与审批动作写入', async () => {
       mockDepartmentAccess();
       const prisma = makePrisma();
       vi.mocked(prisma.client.hrApprovalRequest.findUnique).mockResolvedValue(headRow);
@@ -308,20 +320,40 @@ describe('HrApprovalService 部门闭包与批准副作用（T6）', () => {
 
       await service.process(1, 'APPROVE', 5);
 
+      expect(apply).not.toHaveBeenCalled();
+      expect(prisma.client.hrApprovalRequest.updateMany).toHaveBeenCalledOnce();
+      expect(prisma.client.hrApprovalAction.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ action: 'APPROVE', actorId: 5 }) }),
+      );
+    });
+
+    it('岗位变更批准时在事务内调用副作用', async () => {
+      mockCompanyPositionAccess();
+      const prisma = makePrisma();
+      vi.mocked(prisma.client.hrApprovalRequest.findUnique).mockResolvedValue({
+        ...headRow,
+        requestType: 'POSITION_CHANGE',
+      } as never);
+      const apply = vi.fn().mockResolvedValue(undefined);
+      const sideEffect = { apply } as ApprovalSideEffect;
+      const service = makeService(prisma, undefined, sideEffect);
+
+      await service.process(1, 'APPROVE', 5);
+
       expect(apply).toHaveBeenCalledOnce();
       const [tx, head, processorId] = apply.mock.calls[0] as [unknown, unknown, number];
-      expect(head).toMatchObject({ id: 1, requestType: 'OVERTIME' });
+      expect(head).toMatchObject({ id: 1, requestType: 'POSITION_CHANGE' });
       expect(processorId).toBe(5);
       expect(tx).toBeDefined();
     });
 
     it('批准副作用抛错 → 状态迁移被回滚（updateMany 不产生审批动作）', async () => {
-      mockDepartmentAccess();
+      mockCompanyPositionAccess();
       const prisma = makePrisma();
-      vi.mocked(prisma.client.hrApprovalRequest.findUnique).mockResolvedValue(headRow);
-      vi.mocked(prisma.client.overtimeItem.findMany).mockResolvedValue([
-        { departmentSnapshot: [{ id: 1, name: '部门一' }] } as never,
-      ]);
+      vi.mocked(prisma.client.hrApprovalRequest.findUnique).mockResolvedValue({
+        ...headRow,
+        requestType: 'POSITION_CHANGE',
+      } as never);
       const sideEffect = {
         apply: vi.fn().mockRejectedValue(new Error('前置校验失败：员工已改为多部门')),
       } as ApprovalSideEffect;

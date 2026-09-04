@@ -298,9 +298,10 @@ export class HrApprovalService {
     });
     throwIfTransitionLost(updated.count);
 
-    // 批准业务副作用（POSITION_CHANGE 组织生效；OVERTIME 无副作用）。
+    // 批准业务副作用仅适用于岗位变更：加班批准没有额外写入。
     // 副作用校验抛错 → 事务回滚 → 申请保持待审批（主 PRD §3.2 批准前重校验）。
-    if (action === 'APPROVE' && this.sideEffect) {
+    // 不能让加班单进入 PositionApplicationService，否则其不存在岗位变更明细会错误地返回 404。
+    if (action === 'APPROVE' && head.requestType === 'POSITION_CHANGE' && this.sideEffect) {
       await this.sideEffect.apply(tx, head, processorId);
     }
 
