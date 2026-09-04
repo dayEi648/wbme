@@ -8,7 +8,7 @@
  */
 import type { RemoteOptionSource } from './selectors/remote-options';
 
-export type FilterFieldType = 'text' | 'enum' | 'number' | 'date' | 'remote' | 'tree';
+export type FilterFieldType = 'text' | 'enum' | 'number' | 'date' | 'time' | 'remote' | 'tree';
 
 export interface FilterField {
   key: string;
@@ -73,6 +73,7 @@ export const NO_VALUE_OPERATORS: ReadonlySet<string> = new Set([
   'TODAY',
   'THIS_WEEK',
   'THIS_MONTH',
+  'THIS_YEAR',
   'LAST_7_DAYS',
   'LAST_30_DAYS',
 ]);
@@ -115,10 +116,20 @@ export const OPERATOR_OPTIONS: Readonly<Record<FilterFieldType, Array<{ label: s
     { label: '今天', value: 'TODAY' },
     { label: '本周', value: 'THIS_WEEK' },
     { label: '本月', value: 'THIS_MONTH' },
+    { label: '本年', value: 'THIS_YEAR' },
     { label: '过去 7 天', value: 'LAST_7_DAYS' },
     { label: '过去 30 天', value: 'LAST_30_DAYS' },
     { label: '为空', value: 'IS_EMPTY' },
     { label: '不为空', value: 'IS_NOT_EMPTY' },
+  ],
+  time: [
+    { label: '等于', value: 'EQUALS' },
+    { label: '不等于', value: 'NOT_EQUALS' },
+    { label: '早于', value: 'LESS_THAN' },
+    { label: '晚于', value: 'GREATER_THAN' },
+    { label: '不早于', value: 'GREATER_THAN_OR_EQUAL' },
+    { label: '不晚于', value: 'LESS_THAN_OR_EQUAL' },
+    { label: '介于', value: 'BETWEEN' },
   ],
   remote: [
     { label: '等于', value: 'EQUALS' },
@@ -140,6 +151,7 @@ export const DEFAULT_OPERATOR_BY_TYPE: Readonly<Record<FilterFieldType, string>>
   enum: 'EQUALS',
   number: 'EQUALS',
   date: 'EQUALS',
+  time: 'EQUALS',
   remote: 'EQUALS',
   tree: 'EQUALS',
 };
@@ -162,6 +174,7 @@ export function defaultOperatorFor(field: FilterField | undefined): string {
 /** 数字/日期值格式（validateFilterTree 校验「部分填写」行用）。 */
 const NUMBER_VALUE_PATTERN = /^-?\d+(?:\.\d+)?$/;
 const DATE_VALUE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_VALUE_PATTERN = /^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/;
 
 export function isFilterGroup(node: FilterCondition | FilterConditionGroup): node is FilterConditionGroup {
   return 'children' in node;
@@ -286,6 +299,7 @@ export function validateFilterTree(root: FilterConditionGroup, fields: FilterFie
   const isValueFormatValid = (type: FilterFieldType, value: string): boolean => {
     if (type === 'number') return NUMBER_VALUE_PATTERN.test(value.trim());
     if (type === 'date') return DATE_VALUE_PATTERN.test(value.trim());
+    if (type === 'time') return TIME_VALUE_PATTERN.test(value.trim());
     return true;
   };
   for (const condition of flattenConditions(root)) {
@@ -306,7 +320,7 @@ export function validateFilterTree(root: FilterConditionGroup, fields: FilterFie
         continue;
       }
       if (!isValueFormatValid(type, condition.value) || !isValueFormatValid(type, condition.valueEnd ?? '')) {
-        errors.push(`「${fieldTitle}」的值格式不正确（${type === 'number' ? '需为数字' : '需为 YYYY-MM-DD 日期'}）`);
+        errors.push(`「${fieldTitle}」的值格式不正确（${valueFormatDescription(type)}）`);
       }
       continue;
     }
@@ -314,10 +328,17 @@ export function validateFilterTree(root: FilterConditionGroup, fields: FilterFie
       continue;
     }
     if (!isValueFormatValid(type, condition.value)) {
-      errors.push(`「${fieldTitle}」的值格式不正确（${type === 'number' ? '需为数字' : '需为 YYYY-MM-DD 日期'}）`);
+      errors.push(`「${fieldTitle}」的值格式不正确（${valueFormatDescription(type)}）`);
     }
   }
   return errors;
+}
+
+function valueFormatDescription(type: FilterFieldType): string {
+  if (type === 'number') return '需为数字';
+  if (type === 'date') return '需为 YYYY-MM-DD 日期';
+  if (type === 'time') return '需为 HH:mm 时间';
+  return '格式不正确';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

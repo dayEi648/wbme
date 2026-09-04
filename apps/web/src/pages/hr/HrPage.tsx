@@ -1,4 +1,5 @@
-import { Button, Card, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, Space, Table, Tabs, TimePicker, Typography } from 'antd';
+import { Button, Card, Checkbox, DatePicker, Descriptions, Drawer, Dropdown, Form, Input, Space, Tabs, TimePicker, Typography, type MenuProps } from 'antd';
+import { ExportOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
@@ -14,9 +15,10 @@ import { MenuManagementTab } from '../../menu-config/MenuManagementTab';
 import { useSystemMenuConfig } from '../../menu-config/useSystemMenuConfig';
 import { RemoteSelect } from '../../components/selectors/RemoteSelect';
 import { departmentLeaderEmployeesSource, departmentTreeSource, overtimeEmployeesSource, positionsSource } from '../../components/selectors';
+import { type FilterField } from '../../components/advanced-filter';
 import { enumOptions } from '../../components/enum-display';
 import { useFeedback } from '../../request/feedback';
-import { http } from '../../request/http';
+import { download, http } from '../../request/http';
 import { useSession } from '../../request/session';
 
 type RecordValue = Record<string, unknown>;
@@ -315,26 +317,17 @@ function OvertimeApply() {
 /** 我的加班：月度汇总（中文标签）+ 本人加班记录；待审批批次在审批中心统一处理。 */
 function OvertimeMine() {
   const feedback = useFeedback();
-  const [summary, setSummary] = useState<{ items?: Array<RecordValue>; totalMinutes?: number; totalHours?: number } | null>(null);
-  useEffect(() => { void http.get<{ items?: Array<RecordValue>; totalMinutes?: number; totalHours?: number }>('/overtime/mine/summary', { service: 'hr', active: true }).then(setSummary).catch((error) => feedback.error(error, '加班汇总加载失败')); }, [feedback]);
-  const items = Array.isArray(summary?.items) ? summary.items : [];
+  const [summary, setSummary] = useState<{ dayCount?: number; totalMinutes?: number; totalHours?: number } | null>(null);
+  useEffect(() => { void http.get<{ dayCount?: number; totalMinutes?: number; totalHours?: number }>('/overtime/mine/summary', { service: 'hr', active: true }).then(setSummary).catch((error) => feedback.error(error, '加班汇总加载失败')); }, [feedback]);
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     {summary ? <Card size="small" title="本月加班汇总">
       <Space size={32} wrap>
         <div><Typography.Text type="secondary">累计加班</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalHours ?? '—')} 小时</div></div>
         <div><Typography.Text type="secondary">累计分钟</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalMinutes ?? '—')} 分钟</div></div>
-        <div><Typography.Text type="secondary">加班天数</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{items.length} 天</div></div>
+        <div><Typography.Text type="secondary">加班天数</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.dayCount ?? '—')} 天</div></div>
       </Space>
     </Card> : null}
-    <Card size="small" title="每日明细" styles={{ body: { padding: 0 } }}>
-      <Table<RecordValue> size="small" rowKey={(row) => String(row.overtimeDate)} pagination={false} dataSource={items} locale={{ emptyText: '本月暂无已批准加班' }} columns={[
-        { key: 'overtimeDate', title: '日期', dataIndex: 'overtimeDate' },
-        { key: 'hours', title: '小时', dataIndex: 'hours' },
-        { key: 'minutes', title: '分钟', dataIndex: 'minutes' },
-        { key: 'dateType', title: '日期类型', dataIndex: 'dateType', render: (value: unknown) => <StatusTag value={value} enumKind="holidayDateType" /> },
-      ]} />
-    </Card>
-    <DataTable title="我的加班记录" service="hr" endpoint="/overtime/mine" pageKey="hr-overtime-mine-history" columns={[{ key: 'applicationNo', title: '申请编号' }, { key: 'overtimeDate', title: '日期', sortable: true }, { key: 'minutes', title: '分钟', sortable: true }, { key: 'hours', title: '小时', sortable: true }, { key: 'dateType', title: '日期类型', enumKind: 'holidayDateType' }, { key: 'reason', title: '事由' }]} filterFields={[{ key: 'month', title: '月份', type: 'text' }]} />
+    <DataTable title="我的加班记录" service="hr" endpoint="/overtime/mine" pageKey="hr-overtime-mine-history" columns={[{ key: 'applicationNo', title: '申请编号' }, { key: 'overtimeDate', title: '日期', sortable: true }, { key: 'minutes', title: '分钟', sortable: true }, { key: 'hours', title: '小时', sortable: true }, { key: 'dateType', title: '日期类型', enumKind: 'holidayDateType' }, { key: 'reason', title: '事由' }]} filterFields={[{ key: 'month', title: '月份', type: 'text', operators: ['EQUALS'] }]} />
   </Space>;
 }
 
@@ -377,30 +370,61 @@ function HrSettings({ onMenuSaved }: { onMenuSaved: () => void }) {
   </Card>;
 }
 
-/** 加班历史：页头统计条 + 员工月度统计；明细时间按 HH:mm 展示（批次 4-12）。 */
+const OVERTIME_HISTORY_COLUMNS: DataColumn[] = [
+  { key: 'applicationNo', title: '申请编号', width: 160 },
+  { key: 'employeeName', title: '加班员工', width: 120 },
+  { key: 'departmentNames', title: '部门', width: 180 },
+  { key: 'positionName', title: '岗位', width: 140 },
+  { key: 'overtimeDate', title: '加班日期', width: 130 },
+  { key: 'timeRange', title: '加班时段', width: 150 },
+  { key: 'hours', title: '时长（小时）', type: 'number', width: 120 },
+  { key: 'applicantName', title: '申请人', width: 120 },
+  { key: 'processorName', title: '审批人', width: 120 },
+  { key: 'status', title: '审批状态', width: 120, render: (value: unknown) => <StatusTag value={value} enumKind="approvalStatus" /> },
+];
+
+/** 加班历史与导出共用的完整筛选字段；字段未在列中展示并不代表不能安全筛选。 */
+const OVERTIME_HISTORY_FILTER_FIELDS: FilterField[] = [
+  { key: 'employeeName', title: '加班员工', type: 'text' },
+  { key: 'applicantName', title: '申请人', type: 'text' },
+  { key: 'submitterName', title: '提交人', type: 'text' },
+  { key: 'departmentId', title: '部门', type: 'tree', remote: departmentTreeSource, operators: ['EQUALS'] },
+  { key: 'positionName', title: '岗位', type: 'text' },
+  { key: 'overtimeDate', title: '加班日期', type: 'date' },
+  { key: 'startTime', title: '开始时间', type: 'time' },
+  { key: 'endTime', title: '结束时间', type: 'time' },
+  { key: 'dateType', title: '日期类型', type: 'enum', options: enumOptions('holidayDateType') },
+  { key: 'isBackfill', title: '是否补交', type: 'enum', options: [{ label: '是', value: 'YES' }, { label: '否', value: 'NO' }] },
+  { key: 'reason', title: '加班事由', type: 'text' },
+  { key: 'processorName', title: '审批人', type: 'text' },
+  { key: 'approvalTime', title: '审批时间', type: 'date' },
+];
+
+/** 加班历史：明细表完整展示人员、组织、申请与审批信息；导出直接复用本表已生效筛选。 */
 function OvertimeRecords() {
   const feedback = useFeedback();
   const [summary, setSummary] = useState<RecordValue | null>(null);
-  const [detail, setDetail] = useState<RecordValue[]>([]);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<RecordValue | null>(null);
   useEffect(() => { void http.get<RecordValue>('/overtime/records/summary', { service: 'hr', active: true }).then(setSummary).catch((error) => feedback.error(error, '加班管理汇总加载失败')); }, [feedback]);
-  const openDetail = async (row: RecordValue) => {
-    const userId = Number(row.id);
-    if (!Number.isInteger(userId)) return;
-    setDetailOpen(true);
-    setDetailLoading(true);
-    try {
-      const month = typeof row.month === 'string' ? `?month=${encodeURIComponent(row.month)}` : '';
-      const result = await http.get<{ data: RecordValue[] }>(`/overtime/records/${userId}${month}`, { service: 'hr', active: true });
-      setDetail(result.data);
-    } catch (error) {
-      setDetail([]);
-      feedback.error(error, '加班明细加载失败');
-    } finally {
-      setDetailLoading(false);
-    }
-  };
+  const detailItems = selectedRecord ? [
+    { label: '申请编号', children: displayHistoryValue(selectedRecord.applicationNo) },
+    { label: '加班员工', children: displayHistoryValue(selectedRecord.employeeName) },
+    { label: '部门', children: displayHistoryValue(selectedRecord.departmentNames) },
+    { label: '岗位', children: displayHistoryValue(selectedRecord.positionName) },
+    { label: '加班日期', children: displayHistoryValue(selectedRecord.overtimeDate) },
+    { label: '开始时间', children: displayHistoryValue(selectedRecord.startTime) },
+    { label: '结束时间', children: displayHistoryValue(selectedRecord.endTime) },
+    { label: '时长', children: `${displayHistoryValue(selectedRecord.hours)} 小时` },
+    { label: '日期类型', children: <StatusTag value={selectedRecord.dateType} enumKind="holidayDateType" /> },
+    { label: '是否补交', children: selectedRecord.isBackfill === true ? '是' : '否' },
+    { label: '加班事由', children: displayHistoryValue(selectedRecord.reason) },
+    { label: '申请人', children: displayHistoryValue(selectedRecord.applicantName) },
+    { label: '提交人', children: displayHistoryValue(selectedRecord.submitterName) },
+    { label: '申请提交时间', children: displayHistoryValue(selectedRecord.submittedAt) },
+    { label: '审批人', children: displayHistoryValue(selectedRecord.processorName) },
+    { label: '审批时间', children: displayHistoryValue(selectedRecord.processedAt) },
+    { label: '审批状态', children: <StatusTag value={selectedRecord.status} enumKind="approvalStatus" /> },
+  ] : [];
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     {summary ? <Card size="small" title="当前月度汇总">
       <Space size={32} wrap>
@@ -409,16 +433,53 @@ function OvertimeRecords() {
         <div><Typography.Text type="secondary">累计分钟</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalMinutes ?? '—')} 分钟</div></div>
       </Space>
     </Card> : null}
-    <DataTable title="加班历史记录" service="hr" endpoint="/overtime/records" pageKey="hr-overtime-records" columns={[{ key: 'name', title: '员工', sortable: true }, { key: 'minutes', title: '分钟', sortable: true }, { key: 'hours', title: '小时', sortable: true }, { key: 'count', title: '次数', sortable: true }]} filterFields={[{ key: 'month', title: '月份', type: 'text', operators: ['EQUALS'] }, { key: 'keyword', title: '员工关键字', type: 'text' }]} exportConfig={{ allEndpoint: '/overtime/records/export', filename: 'overtime-records.xlsx' }} rowActions={(row) => <Button size="small" onClick={() => void openDetail(row)}>明细</Button>} />
-    <Drawer title="加班明细" open={detailOpen} onClose={() => setDetailOpen(false)} width="min(92vw, 620px)" loading={detailLoading}>
-      {detail.length > 0 ? <Table<RecordValue> size="small" rowKey={(row) => String(row.id ?? row.applicationNo ?? row.overtimeDate)} dataSource={detail} pagination={false} locale={{ emptyText: '暂无已批准加班明细' }} columns={[
-        { key: 'overtimeDate', title: '日期', render: (value: unknown, row: RecordValue) => String(row.overtime_date ?? row.overtimeDate ?? value ?? '—') },
-        { key: 'timeRange', title: '时间段', render: (_: unknown, row: RecordValue) => `${toClock(row.start_minute ?? row.startMinute)} - ${toClock(row.end_minute ?? row.endMinute)}` },
-        { key: 'minutes', title: '分钟', render: (value: unknown, row: RecordValue) => String(row.minutes ?? value ?? '—') },
-        { key: 'reason', title: '事由', render: (value: unknown, row: RecordValue) => String(row.reason ?? value ?? '—') },
-      ]} /> : !detailLoading ? <Typography.Text type="secondary">暂无已批准加班明细。</Typography.Text> : null}
+    <DataTable
+      title="加班历史记录"
+      service="hr"
+      endpoint="/overtime/records"
+      pageKey="hr-overtime-records"
+      columns={OVERTIME_HISTORY_COLUMNS}
+      filterFields={OVERTIME_HISTORY_FILTER_FIELDS}
+      actions={({ filters }) => <OvertimeExportControls filters={filters} />}
+      rowActions={(row) => <Button size="small" onClick={() => setSelectedRecord(row)}>详情</Button>}
+    />
+    <Drawer title="加班记录详情" open={selectedRecord !== null} onClose={() => setSelectedRecord(null)} width="min(92vw, 620px)">
+      <Descriptions bordered column={1} size="small" items={detailItems} />
     </Drawer>
   </Space>;
+}
+
+type OvertimeExportKind = 'records' | 'statistics';
+
+/** 加班导出直接复用历史表当前已生效的筛选，不维护第二套条件。 */
+function OvertimeExportControls({ filters }: { filters?: string }) {
+  const feedback = useFeedback();
+  const startExport = (kind: OvertimeExportKind) => {
+    const endpoint = kind === 'records' ? '/overtime/records/export' : '/overtime/records/statistics/export';
+    const filename = kind === 'records' ? '加班记录.xlsx' : '加班统计.xlsx';
+    const label = kind === 'records' ? '加班记录' : '加班统计';
+    const params = filters ? `?filters=${encodeURIComponent(filters)}` : '';
+    void download(`${endpoint}${params}`, { service: 'hr', active: true })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+        feedback.success(filters ? `${label}已按当前筛选导出` : `${label}导出已开始`);
+      })
+      .catch((error) => feedback.error(error, `${label}导出失败`));
+  };
+  const menu: MenuProps['items'] = [
+    { key: 'records', label: '导出加班记录', onClick: () => startExport('records') },
+    { key: 'statistics', label: '导出加班统计', onClick: () => startExport('statistics') },
+  ];
+  return (
+    <Dropdown menu={{ items: menu }} trigger={['click']}>
+      <Button icon={<ExportOutlined />}>导出</Button>
+    </Dropdown>
+  );
 }
 
 function mapDepartmentEditValues(row: RecordValue): Record<string, unknown> {
@@ -439,6 +500,11 @@ function mapDepartmentEditValues(row: RecordValue): Record<string, unknown> {
   };
 }
 
+/** 历史详情字段空值统一显示为破折号，避免泄露技术性的 null/undefined。 */
+function displayHistoryValue(value: unknown): string {
+  return value === null || value === undefined || value === '' ? '—' : String(value);
+}
+
 /** 将表单的 HH:mm 转为后端约定的当日分钟数；仅结束时间允许 24:00。 */
 function toMinute(value: string, allowEndOfDay = false): number | null {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
@@ -449,13 +515,4 @@ function toMinute(value: string, allowEndOfDay = false): number | null {
     return allowEndOfDay && hour === 24 && minute === 0 ? 1_440 : null;
   }
   return hour * 60 + minute;
-}
-
-/** 后端分钟数 → HH:mm（24:00 表示为 24:00）。 */
-function toClock(value: unknown): string {
-  const minutes = Number(value);
-  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1_440) return String(value ?? '—');
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }

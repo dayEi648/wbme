@@ -330,17 +330,20 @@ model OvertimeItem {
   userId             Int      @map("user_id")
   userName           String   @map("user_name")
   departmentSnapshot Json     @map("department_snapshot")
+  positionIdSnapshot Int?     @map("position_id_snapshot")
+  positionNameSnapshot String? @map("position_name_snapshot")
   overtimeDate       DateTime @map("overtime_date") @db.Date
   startMinute        Int      @map("start_minute")
   endMinute          Int      @map("end_minute")
   reason             String
   holidaySnapshot    Json     @map("holiday_snapshot")
+  isBackfill         Boolean  @default(false) @map("is_backfill")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   request HrApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@unique([requestId, userId])
-  @@index([userId, overtimeDate])
+  @@index([userId, overtimeDate(sort: Desc), id(sort: Desc)], map: "overtime_items_user_id_overtime_date_id_idx")
   @@map("overtime_items")
   @@schema("hr")
 }

@@ -69,7 +69,7 @@ describe('PaginationQueryDto（结构化表格查询）', () => {
   });
 
   it('接受无值操作符传空字符串的载荷', async () => {
-    for (const operator of ['IS_EMPTY', 'IS_NOT_EMPTY', 'TODAY', 'THIS_WEEK', 'THIS_MONTH', 'LAST_7_DAYS', 'LAST_30_DAYS']) {
+    for (const operator of ['IS_EMPTY', 'IS_NOT_EMPTY', 'TODAY', 'THIS_WEEK', 'THIS_MONTH', 'THIS_YEAR', 'LAST_7_DAYS', 'LAST_30_DAYS']) {
       const dto = plainToInstance(PaginationQueryDto, {
         filters: JSON.stringify({ logic: 'AND', conditions: [{ field: 'createdAt', operator, value: '' }] }),
       });

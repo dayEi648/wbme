@@ -149,11 +149,14 @@
 | `user_id` | `integer` | NOT NULL | 加班员工 |
 | `user_name` | `text` | NOT NULL | 姓名快照 |
 | `department_snapshot` | `jsonb` | NOT NULL | 提交时部门快照 `[{id, name}]` |
+| `position_id_snapshot` | `integer` | 可空 | 提交时岗位 ID 快照；未设置岗位时为空 |
+| `position_name_snapshot` | `text` | 可空 | 提交时岗位名称快照；历史记录不依赖可变岗位档案 |
 | `overtime_date` | `date` | NOT NULL | 加班日期（自然日） |
 | `start_minute` | `integer` | NOT NULL | 开始分钟（0-1439） |
 | `end_minute` | `integer` | NOT NULL | 结束分钟（1-1440，`24:00`=1440） |
 | `reason` | `text` | NOT NULL | 事由 |
 | `holiday_snapshot` | `jsonb` | NOT NULL | 节假日判断快照：`{date_type, source, digest, fetched_at}` |
+| `is_backfill` | `boolean` | NOT NULL，默认 `false` | 提交时是否属于补交加班 |
 | `created_at` | `timestamptz` | NOT NULL `DEFAULT now()` | |
 
 - CHECK：`start_minute >= 0`、`start_minute < end_minute`、`end_minute <= 1440`

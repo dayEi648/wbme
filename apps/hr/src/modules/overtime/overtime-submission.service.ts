@@ -126,6 +126,8 @@ export class OvertimeSubmissionService {
               userId: targetUserId,
               userName: target.name,
               departmentSnapshot: target.departments as Prisma.InputJsonValue,
+              positionIdSnapshot: target.positionId,
+              positionNameSnapshot: target.positionName,
               overtimeDate: toDbDate(dto.overtimeDate),
               startMinute: dto.startMinute,
               endMinute: dto.endMinute,
@@ -136,6 +138,7 @@ export class OvertimeSubmissionService {
                 digest: holiday.digest,
                 fetchedAt: holiday.fetchedAt,
               } as Prisma.InputJsonValue,
+              isBackfill: isBackfillSubmission(dto.overtimeDate),
             },
           });
         }
@@ -288,22 +291,35 @@ export class OvertimeSubmissionService {
     }
   }
 
-  /** 加载目标员工姓名与部门快照（提交时快照） */
+  /** 加载目标员工姓名、部门和岗位（提交时快照）；历史导出不得依赖可变的当前组织信息。 */
   private async loadTarget(
     tx: Prisma.TransactionClient,
     targetUserId: number,
-  ): Promise<{ name: string; departments: Array<{ id: number; name: string }> }> {
-    const rows = await tx.$queryRaw<Array<{ name: string; department_id: number; department_name: string }>>`
-      SELECT ua.name, uo.department_id, uo.department_name
+  ): Promise<{ name: string; departments: Array<{ id: number; name: string }>; positionId: number | null; positionName: string | null }> {
+    const rows = await tx.$queryRaw<Array<{
+      name: string;
+      department_id: number | null;
+      department_name: string | null;
+      position_id: number | null;
+      position_name: string | null;
+    }>>`
+      SELECT ua.name, uo.department_id, uo.department_name, up.position_id, p.name AS position_name
       FROM backstage.user_accounts ua
       LEFT JOIN hr.user_org uo ON uo.user_id = ua.user_id
+      LEFT JOIN hr.user_positions up ON up.user_id = ua.user_id
+      LEFT JOIN hr.positions p ON p.id = up.position_id
       WHERE ua.user_id = ${targetUserId}
     `;
     const name = rows[0]?.name ?? '';
     const departments = rows
-      .filter((row) => row.department_id !== null)
+      .filter((row): row is typeof row & { department_id: number; department_name: string } => row.department_id !== null && row.department_name !== null)
       .map((row) => ({ id: row.department_id, name: row.department_name }));
-    return { name, departments };
+    return {
+      name,
+      departments,
+      positionId: rows[0]?.position_id ?? null,
+      positionName: rows[0]?.position_name ?? null,
+    };
   }
 
   /** 员工当前直接归属部门 id 列表（非闭包；代提范围校验用） */
@@ -319,6 +335,18 @@ export class OvertimeSubmissionService {
 function toDbDate(date: string): Date {
   const [year, month, day] = date.split('-').map(Number);
   return new Date(Date.UTC(year!, month! - 1, day!));
+}
+
+/** 是否补交以提交当日（北京时间）晚于加班日判定，并随明细固化，避免后续时区或设置变化改写历史。 */
+function isBackfillSubmission(overtimeDate: string): boolean {
+  const todayParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => todayParts.find((item) => item.type === type)?.value ?? '';
+  return overtimeDate < `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 /** 分钟 → HH:mm（如 18*60 → "18:00"；1440 → "24:00"） */

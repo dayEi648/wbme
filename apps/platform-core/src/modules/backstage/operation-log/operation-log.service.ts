@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, frameworkErrors, OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
+import { BusinessException, formatExportEnumLabel, frameworkErrors, OPERATION_LOG_VIEW_FUNCTION_CODE } from '@wbme/contracts';
 import { buildTableSqlQuery, collectTableFilterFields, getGrantedFunction, getRequestContext, normalizeTableFilters, RedisService, runExport } from '@wbme/server';
 import type { TableFilterTreeGroup, TableFilterTreeNode } from '@wbme/server';
 import type { Response } from 'express';
@@ -159,9 +159,9 @@ export class OperationLogService {
       columns: [
         { header: 'ID', value: (row) => row.id },
         { header: '操作人', value: (row) => row.operator_name },
-        { header: '系统', value: (row) => row.system },
+        { header: '系统', value: (row) => formatExportEnumLabel('systemCode', row.system) },
         { header: '功能', value: (row) => row.feature },
-        { header: '动作', value: (row) => row.action_type },
+        { header: '动作', value: (row) => formatExportEnumLabel('operationAction', row.action_type) },
         { header: '摘要', value: (row) => row.summary },
         { header: '时间', value: (row) => row.created_at?.toISOString?.() ?? String(row.created_at) },
       ],

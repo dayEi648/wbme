@@ -11,6 +11,7 @@ import {
   AssetScheduleDto,
   AssetUpdateDto,
   MyAssetQueryDto,
+  formatExportEnumLabel,
   assetErrors,
   frameworkErrors,
 } from '@wbme/contracts';
@@ -135,7 +136,7 @@ export class AssetService {
         { header: '规格型号', value: (row) => row.specModel ?? '' },
         { header: '金额(元)', value: (row) => row.amount },
         { header: '入库时间', value: (row) => (row.purchaseAt ? row.purchaseAt.toISOString().slice(0, 10) : '') },
-        { header: '使用状态', value: (row) => row.usageStatus },
+        { header: '使用状态', value: (row) => formatExportEnumLabel('assetStatus', row.usageStatus) },
         { header: '归属', value: (row) => (row.ownership === 'COMPANY' ? '公司自有' : row.ownerName ?? '合作方') },
         { header: '所属部门', value: (row) => row.departmentName ?? '' },
         { header: '责任人', value: (row) => row.responsibleUserName ?? '' },

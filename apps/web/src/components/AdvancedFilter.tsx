@@ -1,4 +1,4 @@
-import { Button, DatePicker, Drawer, Grid, Input, InputNumber, Modal, Segmented, Select, Space } from 'antd';
+import { Button, DatePicker, Drawer, Grid, Input, InputNumber, Modal, Segmented, Select, Space, TimePicker } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -42,10 +42,11 @@ const FIELD_TYPE_GROUP_LABEL: Readonly<Record<FilterFieldType, string>> = {
   enum: '选项',
   number: '数字',
   date: '日期',
+  time: '时间',
   remote: '关联',
   tree: '树形',
 };
-const FIELD_TYPE_GROUP_ORDER: FilterFieldType[] = ['text', 'enum', 'number', 'date', 'remote', 'tree'];
+const FIELD_TYPE_GROUP_ORDER: FilterFieldType[] = ['text', 'enum', 'number', 'date', 'time', 'remote', 'tree'];
 
 /**
  * 条件行下拉统一最小宽度兜底：Modal 打开动画（缩放）期间点击 Select 时，
@@ -217,6 +218,28 @@ export function AdvancedFilter({ open, fields, appliedTree, onApply, onCancel }:
           onChange={(value) => patchCondition(condition.id, { value: value ? value.format(DATE_FORMAT) : '' })}
         />
       );
+    }
+    if (type === 'time') {
+      const timeValue = (value: string | undefined) => value && value !== '24:00' ? dayjs(value, 'HH:mm') : null;
+      const timeInput = (value: string | undefined, onChange: (next: string) => void) => (
+        <TimePicker
+          style={{ width: '100%' }}
+          format="HH:mm"
+          needConfirm={false}
+          placeholder="选择时间"
+          value={timeValue(value)}
+          onChange={(next) => onChange(next?.format('HH:mm') ?? '')}
+        />
+      );
+      if (condition.operator === 'BETWEEN') {
+        return (
+          <Space.Compact style={{ flex: 1 }}>
+            <div style={{ width: '50%' }}>{timeInput(condition.value, (value) => patchCondition(condition.id, { value }))}</div>
+            <div style={{ width: '50%' }}>{timeInput(condition.valueEnd, (value) => patchCondition(condition.id, { valueEnd: value }))}</div>
+          </Space.Compact>
+        );
+      }
+      return <div style={{ flex: 1 }}>{timeInput(condition.value, (value) => patchCondition(condition.id, { value }))}</div>;
     }
     if (type === 'enum') {
       // 函数形式 options 按当前草稿条件动态生成（如「功能」随已选「系统」联动，主 PRD §3.3）

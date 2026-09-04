@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessException, frameworkErrors, PaginationQueryDto } from '@wbme/contracts';
+import { BusinessException, formatExportEnumLabel, frameworkErrors, PaginationQueryDto } from '@wbme/contracts';
 import { desensitizeErrorSample } from '@wbme/logging';
 import { buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, RedisService, runExport } from '@wbme/server';
 import type { Response } from 'express';
@@ -302,7 +302,7 @@ export class SystemLogService {
       filename: 'error-logs.xlsx',
       columns: [
         { header: '日志编号', value: (row) => row.id },
-        { header: '级别', value: (row) => row.level },
+        { header: '级别', value: (row) => formatExportEnumLabel('logLevel', row.level) },
         { header: '服务', value: (row) => row.service },
         { header: '来源', value: (row) => row.source },
         { header: '错误分类', value: (row) => row.error_category },
@@ -312,7 +312,7 @@ export class SystemLogService {
         { header: '最后发生', value: (row) => row.last_seen_at?.toISOString?.() ?? String(row.last_seen_at) },
         { header: '发生次数', value: (row) => row.occurrence_count },
         { header: '安全摘要', value: (row) => buildExportSummary(row.sample) },
-        { header: '状态', value: (row) => row.status },
+        { header: '状态', value: (row) => formatExportEnumLabel('errorStatus', row.status) },
         { header: '处理人', value: (row) => row.handled_by ?? '' },
         { header: '处理时间', value: (row) => row.handled_at?.toISOString?.() ?? '' },
       ],
@@ -368,10 +368,10 @@ export class SystemLogService {
       filename: 'security-logs.xlsx',
       columns: [
         { header: '日志编号', value: (row) => row.id },
-        { header: '事件类型', value: (row) => row.event_type },
+        { header: '事件类型', value: (row) => formatExportEnumLabel('securityEventType', row.event_type) },
         { header: '操作者', value: (row) => `${row.actor_name ?? ''}（${row.actor_id ?? ''}）` },
         { header: '目标用户', value: (row) => (row.target_user_id === null ? '' : `${row.target_user_name ?? ''}（${row.target_user_id}）`) },
-        { header: '结果', value: (row) => row.result },
+        { header: '结果', value: (row) => formatExportEnumLabel('securityResult', row.result) },
         { header: '原因', value: (row) => row.reason ?? '' },
         { header: '来源 IP', value: (row) => row.source_ip ?? '' },
         { header: '时间', value: (row) => row.created_at?.toISOString?.() ?? String(row.created_at) },

@@ -20,6 +20,7 @@ export type TableOperator =
   | 'TODAY'
   | 'THIS_WEEK'
   | 'THIS_MONTH'
+  | 'THIS_YEAR'
   | 'LAST_7_DAYS'
   | 'LAST_30_DAYS';
 
@@ -53,7 +54,7 @@ export type TablePrismaField =
   | {
       /** 多字段仅适用于文本筛选，表示同一关键字匹配其中任意字段。 */
       prismaField: string | readonly string[];
-      type: 'text' | 'number' | 'enum' | 'date';
+      type: 'text' | 'number' | 'enum' | 'date' | 'time';
       /**
        * 自定义谓词拦截器：为特殊取值提供非标准编译（如一个筛选值对应多个数据值）。
        * 返回 undefined 表示该条件仍走标准编译；返回的对象直接作为该条件的 Prisma 片段。
@@ -61,7 +62,7 @@ export type TablePrismaField =
       compile?: (context: TableConditionContext) => Record<string, unknown> | undefined;
     }
   | {
-      type: 'text' | 'number' | 'enum' | 'date';
+      type: 'text' | 'number' | 'enum' | 'date' | 'time';
       /**
        * 自定义谓词编译：字段没有可映射的 Prisma 列（如按当前用户派生的范围谓词）。
        * 必须覆盖全部允许的操作符并返回 Prisma 片段；返回 undefined 抛出「不支持操作符」，
@@ -132,7 +133,7 @@ export interface TableInMemoryField<Row> {
 const VALUELESS_OPERATORS: ReadonlySet<TableOperator> = new Set(['IS_EMPTY', 'IS_NOT_EMPTY']);
 
 /** 相对日期操作符：同样无值，按 Asia/Shanghai 日历日在服务端求值。 */
-const RELATIVE_DATE_OPERATORS: ReadonlySet<TableOperator> = new Set(['TODAY', 'THIS_WEEK', 'THIS_MONTH', 'LAST_7_DAYS', 'LAST_30_DAYS']);
+const RELATIVE_DATE_OPERATORS: ReadonlySet<TableOperator> = new Set(['TODAY', 'THIS_WEEK', 'THIS_MONTH', 'THIS_YEAR', 'LAST_7_DAYS', 'LAST_30_DAYS']);
 
 /** 一天的毫秒数；上海时区无夏令时，日期平移可直接按毫秒计算。 */
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -392,7 +393,7 @@ function compileCondition(
     if (operation === 'EQUALS') return forEachField((field) => ({ [field]: value }));
     if (operation === 'NOT_EQUALS') return forEachField((field) => ({ [field]: { not: value } }));
   }
-  if (definition.type === 'number') {
+  if (definition.type === 'number' || definition.type === 'time') {
     if (operation === 'EQUALS') return forEachField((field) => ({ [field]: value }));
     if (operation === 'NOT_EQUALS') return forEachField((field) => ({ [field]: { not: value } }));
     if (operation === 'GREATER_THAN') return forEachField((field) => ({ [field]: { gt: value } }));
@@ -401,7 +402,7 @@ function compileCondition(
     if (operation === 'LESS_THAN_OR_EQUAL') return forEachField((field) => ({ [field]: { lte: value } }));
     if (operation === 'BETWEEN') {
       if (!condition.valueEnd) throw validationError(`字段 ${condition.field} 缺少区间结束值`);
-      const end = scalarValue(condition.valueEnd, 'number');
+      const end = scalarValue(condition.valueEnd, definition.type);
       if (typeof value !== 'number' || typeof end !== 'number' || end < value) throw validationError(`字段 ${condition.field} 的数值区间不合法`);
       return forEachField((field) => ({ [field]: { gte: value, lte: end } }));
     }
@@ -472,7 +473,7 @@ function compileSqlCondition(
     if (condition.operator === 'EQUALS') return `${column} = ${parameter}`;
     if (condition.operator === 'NOT_EQUALS') return `${column} <> ${parameter}`;
   }
-  if (definition.type === 'number') {
+  if (definition.type === 'number' || definition.type === 'time') {
     const operationSql: Partial<Record<TableOperator, string>> = {
       EQUALS: '=',
       NOT_EQUALS: '<>',
@@ -485,7 +486,7 @@ function compileSqlCondition(
     if (operator) return `${column} ${operator} ${parameter}`;
     if (condition.operator === 'BETWEEN') {
       if (!condition.valueEnd) throw validationError(`字段 ${condition.field} 缺少区间结束值`);
-      const end = scalarValue(condition.valueEnd, 'number');
+      const end = scalarValue(condition.valueEnd, definition.type);
       if (typeof value !== 'number' || typeof end !== 'number' || end < value) throw validationError(`字段 ${condition.field} 的数值区间不合法`);
       return `${column} >= ${parameter} AND ${column} <= ${nextParam(end)}`;
     }
@@ -544,7 +545,7 @@ function matchesMemoryCondition<Row>(
     if (condition.operator === 'EQUALS') return String(actual ?? '') === expected;
     if (condition.operator === 'NOT_EQUALS') return String(actual ?? '') !== expected;
   }
-  if (definition.type === 'number') {
+  if (definition.type === 'number' || definition.type === 'time') {
     const left = typeof actual === 'number' ? actual : Number(actual);
     if (!Number.isFinite(left) || typeof expected !== 'number') return false;
     if (condition.operator === 'EQUALS') return left === expected;
@@ -555,7 +556,7 @@ function matchesMemoryCondition<Row>(
     if (condition.operator === 'LESS_THAN_OR_EQUAL') return left <= expected;
     if (condition.operator === 'BETWEEN') {
       if (!condition.valueEnd) throw validationError(`字段 ${condition.field} 缺少区间结束值`);
-      const end = scalarValue(condition.valueEnd, 'number');
+      const end = scalarValue(condition.valueEnd, definition.type);
       if (typeof end !== 'number' || end < expected) throw validationError(`字段 ${condition.field} 的数值区间不合法`);
       return left >= expected && left <= end;
     }
@@ -585,7 +586,7 @@ function compareMemoryValues(
 ): number {
   if (left === null || left === undefined) return right === null || right === undefined ? 0 : 1;
   if (right === null || right === undefined) return -1;
-  if (type === 'number') return Number(left) - Number(right);
+  if (type === 'number' || type === 'time') return Number(left) - Number(right);
   if (type === 'date') {
     const leftDate = memoryDate(left);
     const rightDate = memoryDate(right);
@@ -614,6 +615,12 @@ function scalarValue(value: string, type: TablePrismaField['type']): string | nu
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) throw validationError('数值筛选值不合法');
     return parsed;
+  }
+  if (type === 'time') {
+    const match = /^(?:([01]\d|2[0-3]):([0-5]\d)|(24):00)$/.exec(value);
+    if (!match) throw validationError('时间筛选值必须为 HH:mm');
+    if (match[3] === '24') return 1_440;
+    return Number(match[1]) * 60 + Number(match[2]);
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw validationError('日期筛选值必须为 YYYY-MM-DD');
   const parsed = shanghaiDayStart(value);
@@ -645,6 +652,10 @@ function relativeDateRange(operator: TableOperator, now: Date): { gte: Date; lt:
     const month = Number(today.slice(5, 7));
     const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
     return { gte: shanghaiDayStart(`${today.slice(0, 7)}-01`), lt: shanghaiDayStart(nextMonth) };
+  }
+  if (operator === 'THIS_YEAR') {
+    const year = Number(today.slice(0, 4));
+    return { gte: shanghaiDayStart(`${year}-01-01`), lt: shanghaiDayStart(`${year + 1}-01-01`) };
   }
   if (operator === 'LAST_7_DAYS') return { gte: new Date(start.getTime() - 6 * DAY_MS), lt: nextDay(start) };
   if (operator === 'LAST_30_DAYS') return { gte: new Date(start.getTime() - 29 * DAY_MS), lt: nextDay(start) };

@@ -44,6 +44,7 @@ export * from './dto/disposal.dto';
 export * from './dto/qr.dto';
 export * from './dto/fin.dto';
 export * from './enums/common';
+export * from './export-enum-label';
 export * from './permission/catalog';
 
 export * from './money';

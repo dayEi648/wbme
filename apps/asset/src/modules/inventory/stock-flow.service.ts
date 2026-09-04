@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Response } from 'express';
-import { INVENTORY_MANAGE_FUNCTION_CODE, StockFlowQueryDto } from '@wbme/contracts';
+import { formatExportEnumLabel, INVENTORY_MANAGE_FUNCTION_CODE, StockFlowQueryDto } from '@wbme/contracts';
 import { buildTablePrismaQuery, buildTableSqlQuery, collectTableFilterFields, normalizeTableFilters, RedisService, runExport, type TableSqlField } from '@wbme/server';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
@@ -180,15 +180,15 @@ export class StockFlowService {
       filename: 'stock-flows.xlsx',
       columns: [
         { header: '流水ID', value: (row) => row.id },
-        { header: '类型', value: (row) => row.flowType },
-        { header: '方向', value: (row) => row.direction },
+        { header: '类型', value: (row) => formatExportEnumLabel('stockFlowType', row.flowType) },
+        { header: '方向', value: (row) => formatExportEnumLabel('flowDirection', row.direction) },
         { header: '品种', value: (row) => row.consumableName },
         { header: '规格', value: (row) => row.spec },
         { header: '库位', value: (row) => row.warehousePath },
         { header: '数量', value: (row) => row.qty },
         { header: '变动前账面', value: (row) => row.bookBefore },
         { header: '变动后账面', value: (row) => row.bookAfter },
-        { header: '业务来源', value: (row) => row.refType ?? '' },
+        { header: '业务来源', value: (row) => formatExportEnumLabel('stockFlowReference', row.refType) },
         { header: '操作人', value: (row) => row.operatorName },
         { header: '发生时间', value: (row) => row.createdAt.toISOString() },
       ],

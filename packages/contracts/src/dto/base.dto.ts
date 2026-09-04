@@ -52,6 +52,7 @@ const TABLE_FILTER_OPERATORS = new Set([
   'TODAY',
   'THIS_WEEK',
   'THIS_MONTH',
+  'THIS_YEAR',
   'LAST_7_DAYS',
   'LAST_30_DAYS',
 ]);

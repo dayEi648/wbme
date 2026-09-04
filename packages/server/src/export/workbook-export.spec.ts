@@ -2,7 +2,7 @@ import { PassThrough } from 'node:stream';
 import { inflateRawSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import { sanitizeExportCell } from './export-cell-sanitize';
-import { runExport } from './workbook-export';
+import { runExport, type ExportSheetOptions } from './workbook-export';
 
 interface ZipEntry {
   name: string;
@@ -69,7 +69,10 @@ function createResponseCapture(): {
   return { response: stream as never, completed, headers };
 }
 
-async function exportRows(rows: Array<{ employeeName: string }>): Promise<{ archive: Buffer; headers: Map<string, string> }> {
+async function exportRows(
+  rows: Array<{ employeeName: string }>,
+  sheet?: ExportSheetOptions,
+): Promise<{ archive: Buffer; headers: Map<string, string> }> {
   const capture = createResponseCapture();
   await runExport<{ employeeName: string }>({
     userId: 1,
@@ -83,6 +86,7 @@ async function exportRows(rows: Array<{ employeeName: string }>): Promise<{ arch
       { header: '员工姓名', value: (row) => row.employeeName },
       { header: '加班日期', value: () => '2026-09-04' },
     ],
+    sheet,
     fetchCount: async () => rows.length,
     fetchRows: async (_tx, offset, limit) => rows.slice(offset, offset + limit),
     transaction: async (callback) => callback({}),
@@ -151,5 +155,24 @@ describe('runExport', () => {
 
     expect(sheetXml).toContain('测试员工');
     expect(sheetXml).toContain('2026-09-04');
+  });
+
+  it('报表可设置浅色表头、冻结首行、筛选和列宽', async () => {
+    const { archive } = await exportRows([{ employeeName: '测试员工' }], {
+      name: '加班记录',
+      columnWidths: [18, 14],
+      freezeHeader: true,
+      autoFilter: true,
+      headerFillArgb: 'FFD9EAD3',
+    });
+    const entries = expectValidWorkbookArchive(archive);
+    const sheetXml = entries.get('xl/worksheets/sheet1.xml')?.content ?? '';
+    const stylesXml = entries.get('xl/styles.xml')?.content ?? '';
+
+    expect(sheetXml).toContain('<autoFilter');
+    expect(sheetXml).toContain('<pane');
+    expect(sheetXml).toContain('width="18"');
+    expect(entries.get('xl/workbook.xml')?.content).toContain('加班记录');
+    expect(stylesXml).toContain('FFD9EAD3');
   });
 });

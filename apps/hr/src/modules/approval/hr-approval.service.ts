@@ -15,6 +15,7 @@ import {
 } from '@wbme/approval';
 import {
   BusinessException,
+  formatExportEnumLabel,
   OVERTIME_APPROVAL_FUNCTION_CODE,
   ORG_STRUCTURE_FUNCTION_CODE,
   ApprovalListQueryDto,
@@ -455,10 +456,10 @@ export class HrApprovalService {
       filename: 'hr-approvals.xlsx',
       columns: [
         { header: '申请编号', value: (row) => row.application_no },
-        { header: '申请类型', value: (row) => row.request_type },
+        { header: '申请类型', value: (row) => formatExportEnumLabel('hrRequestType', row.request_type) },
         { header: '申请人', value: (row) => row.applicant_name },
         { header: '处理人', value: (row) => row.processor_name ?? '' },
-        { header: '状态', value: (row) => row.status },
+        { header: '状态', value: (row) => formatExportEnumLabel('approvalStatus', row.status) },
         { header: '处理意见', value: (row) => row.opinion ?? '' },
         { header: '提交时间', value: (row) => row.submitted_at?.toISOString() ?? '' },
         { header: '处理时间', value: (row) => row.processed_at?.toISOString() ?? '' },

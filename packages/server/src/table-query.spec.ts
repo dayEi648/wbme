@@ -435,6 +435,9 @@ describe('相对日期操作符', () => {
     expect(compile('THIS_MONTH')).toEqual({
       AND: [{ createdAt: { gte: new Date('2026-07-31T16:00:00.000Z'), lt: new Date('2026-08-31T16:00:00.000Z') } }],
     });
+    expect(compile('THIS_YEAR')).toEqual({
+      AND: [{ createdAt: { gte: new Date('2025-12-31T16:00:00.000Z'), lt: new Date('2026-12-31T16:00:00.000Z') } }],
+    });
     // 含今天共 7 个自然日：2026-08-15 至 2026-08-22
     expect(compile('LAST_7_DAYS')).toEqual({
       AND: [{ createdAt: { gte: new Date('2026-08-14T16:00:00.000Z'), lt: new Date('2026-08-21T16:00:00.000Z') } }],

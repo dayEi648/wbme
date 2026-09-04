@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ApprovalListQueryDto } from '@wbme/contracts';
-import { BusinessException, createPaginationResponse, frameworkErrors, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
+import { BusinessException, createPaginationResponse, formatExportEnumLabel, frameworkErrors, USER_MANAGE_FUNCTION_CODE } from '@wbme/contracts';
 import { buildTablePrismaQuery, collectTableFilterFields, normalizeTableFilters, runExport, RedisService } from '@wbme/server';
 import { SETTING_KEYS, SettingsService } from '../settings/settings.service';
 import type { Response } from 'express';
@@ -88,9 +88,9 @@ export class ApprovalCenterService {
       filename: 'approval-requests.xlsx',
       columns: [
         { header: '审批号', value: (row) => row.applicationNo },
-        { header: '类型', value: (row) => row.requestType },
+        { header: '类型', value: (row) => formatExportEnumLabel('profileRequestType', row.requestType) },
         { header: '申请人', value: (row) => row.applicantName },
-        { header: '状态', value: (row) => row.status },
+        { header: '状态', value: (row) => formatExportEnumLabel('approvalStatus', row.status) },
         { header: '提交时间', value: (row) => row.submittedAt?.toISOString() ?? '' },
         { header: '处理人', value: (row) => row.processorName ?? '' },
         { header: '处理时间', value: (row) => row.processedAt?.toISOString() ?? '' },

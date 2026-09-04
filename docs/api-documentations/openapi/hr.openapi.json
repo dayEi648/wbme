@@ -2500,7 +2500,7 @@
             "description": ""
           }
         },
-        "summary": "个人视图：本人已批准加班记录（隐含本人历史；分页）。\n\nmonth 是由 overtimeDate 派生的文本字段，全部文本操作符经内存编译器解释；\n个人明细量级小，权限约束（本人 + 已批准）与默认排序仍在数据库层完成。\nfilters 存在时以树为准、具名 month 让位；否则具名 month 合成为「等于」条件。",
+        "summary": "个人视图：本人已批准加班记录（隐含本人历史；分页）。\n\n筛选、排序、总数与分页均在数据库完成，避免先读取该员工的全部历史记录。\n月份条件只接受等于并编译为日期范围，使 user_id + overtime_date 索引可用。",
         "tags": [
           "Overtime"
         ]
@@ -2629,7 +2629,7 @@
             "description": ""
           }
         },
-        "summary": "管理视图：员工列表 + 月度统计（加班历史记录功能，DEPARTMENT 闭包/COMPANY）",
+        "summary": "管理视图：已批准加班明细列表（筛选与导出共用同一权限范围和筛选语义）。",
         "tags": [
           "Overtime"
         ]
@@ -2763,6 +2763,95 @@
           }
         },
         "summary": "管理视图导出（runExport 流式；导出完成写 EXPORT 操作日志）",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
+    "/api/v1/overtime/records/statistics/export": {
+      "get": {
+        "operationId": "OvertimeController_exportStatistics",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "月份（YYYY-MM）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（姓名等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "按部门过滤",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "管理视图统计导出：与加班记录列表和导出共用权限范围及当前筛选条件。",
         "tags": [
           "Overtime"
         ]

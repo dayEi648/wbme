@@ -2,14 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors } from '@wbme/contracts';
 import { PrismaService } from '../../prisma.service';
 
-/** 月度汇总行（按日分组） */
-export interface DailyOvertimeSummary {
-  overtimeDate: string;
-  minutes: number;
-  hours: number;
-  dateType: string;
-}
-
 /** 员工月度统计行（管理视图） */
 export interface EmployeeMonthlyStat {
   userId: number;
@@ -31,37 +23,32 @@ export class OvertimeSummaryService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
-   * 个人月度汇总（已批准明细按日分组）。
+   * 个人月度汇总。
+   *
+   * 汇总卡片只需要天数和时长，不读取每日明细，避免无上限的按日结果集进入页面。
    *
    * @param userId 员工 id
    * @param month YYYY-MM（缺省=本月）
-   * @returns 按日汇总（含日期类型快照）
+   * @returns 加班天数、累计分钟与累计小时
    */
-  async summaryMine(userId: number, month?: string): Promise<{ items: DailyOvertimeSummary[]; totalMinutes: number; totalHours: number }> {
+  async summaryMine(userId: number, month?: string): Promise<{ dayCount: number; totalMinutes: number; totalHours: number }> {
     const { start, end } = monthRange(month);
     const rows = await this.prisma.client.$queryRaw<
-      Array<{ overtime_date: Date; minutes: bigint; date_type: string }>
+      Array<{ day_count: bigint; total_minutes: bigint }>
     >`
-      SELECT oi.overtime_date,
-             SUM(oi.end_minute - oi.start_minute)::bigint AS minutes,
-             (oi.holiday_snapshot->>'dateType')::text AS date_type
+      SELECT COUNT(DISTINCT oi.overtime_date)::bigint AS day_count,
+             COALESCE(SUM(oi.end_minute - oi.start_minute), 0)::bigint AS total_minutes
       FROM hr.overtime_items oi
       INNER JOIN hr.approval_requests r ON r.id = oi.request_id
       WHERE r.status = 'APPROVED'
         AND oi.user_id = ${userId}
         AND oi.overtime_date >= ${start}::date
         AND oi.overtime_date < ${end}::date
-      GROUP BY oi.overtime_date, oi.holiday_snapshot->>'dateType'
-      ORDER BY oi.overtime_date
     `;
-    const items = rows.map((row) => ({
-      overtimeDate: formatDbDate(row.overtime_date),
-      minutes: Number(row.minutes),
-      hours: minutesToHours(Number(row.minutes)),
-      dateType: row.date_type,
-    }));
-    const totalMinutes = items.reduce((sum, item) => sum + item.minutes, 0);
-    return { items, totalMinutes, totalHours: minutesToHours(totalMinutes) };
+    const row = rows[0];
+    const dayCount = Number(row?.day_count ?? 0);
+    const totalMinutes = Number(row?.total_minutes ?? 0);
+    return { dayCount, totalMinutes, totalHours: minutesToHours(totalMinutes) };
   }
 
   /**
@@ -162,12 +149,4 @@ function currentMonth(): string {
     month: '2-digit',
   }).formatToParts(now);
   return `${parts.find((p) => p.type === 'year')?.value}-${parts.find((p) => p.type === 'month')?.value}`;
-}
-
-/** Date → YYYY-MM-DD（UTC 日历值；@db.Date 读取无时区偏移） */
-function formatDbDate(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }

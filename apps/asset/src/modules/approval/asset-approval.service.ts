@@ -17,6 +17,7 @@ import {
 import {
   BusinessException,
   CONSUMABLE_APPROVAL_FUNCTION_CODE,
+  formatExportEnumLabel,
   ApprovalListQueryDto,
   approvalErrors,
   frameworkErrors,
@@ -817,9 +818,9 @@ export class AssetApprovalService {
       filename: 'asset-approvals.xlsx',
       columns: [
         { header: '申请编号', value: (row) => row.applicationNo },
-        { header: '申请类型', value: (row) => row.requestType },
+        { header: '申请类型', value: (row) => formatExportEnumLabel('assetRequestType', row.requestType) },
         { header: '申请人', value: (row) => row.applicantName },
-        { header: '状态', value: (row) => row.status },
+        { header: '状态', value: (row) => formatExportEnumLabel('approvalStatus', row.status) },
         { header: '提交时间', value: (row) => row.submittedAt?.toISOString() ?? '' },
         { header: '审批人', value: (row) => row.processorName ?? '' },
         { header: '处理时间', value: (row) => row.processedAt?.toISOString() ?? '' },

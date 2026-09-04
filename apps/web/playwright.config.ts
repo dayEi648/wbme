@@ -13,6 +13,11 @@ import { loadEnvFile } from 'node:process';
  * - reuseExistingServer：本地已起服务时直接复用，CI 由 webServer 拉起。
  */
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const platformCorePort = process.env.E2E_PLATFORM_CORE_PORT ?? process.env.PLATFORM_CORE_PORT ?? '43001';
+const assetPort = process.env.E2E_ASSET_PORT ?? process.env.ASSET_PORT ?? '43002';
+const hrPort = process.env.E2E_HR_PORT ?? process.env.HR_PORT ?? '43003';
+const finPort = process.env.E2E_FIN_PORT ?? process.env.FIN_PORT ?? '43004';
+const webPort = process.env.E2E_WEB_PORT ?? process.env.WEB_PORT ?? '45173';
 
 // 加载仓库根 .env（本地开发：服务启动所需机密与连接串；CI 由环境变量注入）
 try {
@@ -31,7 +36,7 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? [['github'], ['list']] : [['list']],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:45173',
+    baseURL: process.env.E2E_BASE_URL ?? `http://127.0.0.1:${webPort}`,
     trace: 'on-first-retry',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
@@ -39,42 +44,43 @@ export default defineConfig({
     // 本地已运行（pnpm dev）时复用；CI 无进程时自动启动（cwd = 仓库根）
     {
       command: 'node apps/platform-core/dist/main.js',
-      url: 'http://127.0.0.1:43001/healthz',
+      url: `http://127.0.0.1:${platformCorePort}/healthz`,
       cwd: repoRoot,
       reuseExistingServer: true,
       timeout: 120_000,
-      env: { PLATFORM_CORE_PORT: '43001' },
+      env: { PLATFORM_CORE_PORT: platformCorePort },
     },
     {
       command: 'node apps/asset/dist/main.js',
-      url: 'http://127.0.0.1:43002/healthz',
+      url: `http://127.0.0.1:${assetPort}/healthz`,
       cwd: repoRoot,
       reuseExistingServer: true,
       timeout: 120_000,
-      env: { ASSET_PORT: '43002' },
+      env: { ASSET_PORT: assetPort },
     },
     {
       command: 'node apps/hr/dist/main.js',
-      url: 'http://127.0.0.1:43003/healthz',
+      url: `http://127.0.0.1:${hrPort}/healthz`,
       cwd: repoRoot,
       reuseExistingServer: true,
       timeout: 120_000,
-      env: { HR_PORT: '43003' },
+      env: { HR_PORT: hrPort },
     },
     {
       command: 'node apps/fin/dist/main.js',
-      url: 'http://127.0.0.1:43004/healthz',
+      url: `http://127.0.0.1:${finPort}/healthz`,
       cwd: repoRoot,
       reuseExistingServer: true,
       timeout: 120_000,
-      env: { FIN_PORT: '43004' },
+      env: { FIN_PORT: finPort },
     },
     {
       command: 'pnpm --filter @wbme/web dev --host 127.0.0.1',
-      url: 'http://127.0.0.1:45173',
+      url: `http://127.0.0.1:${webPort}`,
       cwd: repoRoot,
       reuseExistingServer: true,
       timeout: 120_000,
+      env: { WEB_PORT: webPort },
     },
   ],
   outputDir: 'e2e-results',

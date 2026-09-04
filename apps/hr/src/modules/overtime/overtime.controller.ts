@@ -11,7 +11,15 @@ import {
   OVERTIME_HISTORY_FUNCTION_CODE,
   frameworkErrors,
 } from '@wbme/contracts';
-import { CurrentUser, EXPORT_TIMEOUT_MS, filterAndSortTableRows, RequestTimeout } from '@wbme/server';
+import {
+  buildTableSqlQuery,
+  collectTableFilterFields,
+  CurrentUser,
+  EXPORT_TIMEOUT_MS,
+  normalizeTableFilters,
+  RequestTimeout,
+  type TableSqlField,
+} from '@wbme/server';
 import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
@@ -20,16 +28,72 @@ import { DepartmentClosureService } from '../../shared/department-closure.servic
 import { loadHrOperationLogOperator } from '../../shared/hr-operation-log.util';
 import { HolidayAdapter } from '../holiday/holiday.adapter';
 import { HrApprovalService } from '../approval/hr-approval.service';
-import { assertMonthEqualsOnly, extractMonthEqualsValue } from './month-filter';
+import { assertMonthEqualsOnly } from './month-filter';
 import { OvertimeExportService } from './overtime-export.service';
 import { OvertimeSubmissionService } from './overtime-submission.service';
 import { OvertimeSummaryService } from './overtime-summary.service';
+
+/** 个人加班记录的受控 SQL 字段；月份仅接受等于，以便编译为可索引的日期范围。 */
+const OVERTIME_MINE_TABLE_FIELDS: Readonly<Record<string, TableSqlField>> = {
+  id: { column: 'oi.id', type: 'number' },
+  month: {
+    type: 'text',
+    compile: ({ condition, value, nextParam }) => {
+      if (condition.operator !== 'EQUALS' || typeof value !== 'string') {
+        return undefined;
+      }
+      const { start, end } = monthRangeOf(value);
+      return `oi.overtime_date >= ${nextParam(start)}::date AND oi.overtime_date < ${nextParam(end)}::date`;
+    },
+  },
+  overtimeDate: { column: 'oi.overtime_date', type: 'date' },
+  minutes: { column: '(oi.end_minute - oi.start_minute)', type: 'number' },
+  hours: { column: '((oi.end_minute - oi.start_minute) / 60.0)', type: 'number' },
+};
+
+interface OvertimeMineDatabaseRow {
+  id: number;
+  application_no: string;
+  overtime_date: Date;
+  start_minute: number;
+  end_minute: number;
+  reason: string;
+  date_type: string | null;
+}
+
+/** 构建个人加班记录的参数化查询片段；所有动态条件均经过字段白名单和占位符绑定。 */
+export function buildOvertimeMineListQuery(
+  userId: number,
+  query: Pick<OvertimeMineQueryDto, 'month' | 'filters' | 'sorts'>,
+): { whereSql: string; params: Array<string | number | Date>; orderBySql: string } {
+  const structuredFields = query.filters ? collectTableFilterFields(normalizeTableFilters(query.filters)) : new Set<string>();
+  if (query.filters) {
+    assertMonthEqualsOnly(query.filters);
+  }
+  const conditions = [`oi.user_id = $1`, `r.status = 'APPROVED'`];
+  const params: Array<string | number | Date> = [userId];
+  if (query.month && !structuredFields.has('month')) {
+    const { start, end } = monthRangeOf(query.month);
+    params.push(start, end);
+    conditions.push(`oi.overtime_date >= $${params.length - 1}::date AND oi.overtime_date < $${params.length}::date`);
+  }
+  const tableQuery = buildTableSqlQuery(query, OVERTIME_MINE_TABLE_FIELDS, { parameterOffset: params.length });
+  if (tableQuery.whereSql) {
+    conditions.push(tableQuery.whereSql);
+    params.push(...tableQuery.params);
+  }
+  return {
+    whereSql: `WHERE ${conditions.join(' AND ')}`,
+    params,
+    orderBySql: tableQuery.orderBySql ?? 'oi.overtime_date DESC, oi.id DESC',
+  };
+}
 
 /**
  * 加班管理（hr PRD §3）：
  * 统一表单提交（"加班申请"本人档 / "代交加班"部门公司档）、取消（提交人/代提人）、
  * 个人视图（本人已批准记录 + 月度汇总，隐含本人历史）、
- * 管理视图（"加班历史记录"功能：员工列表 + 月度统计 + 下钻 + 导出）。
+ * 管理视图（"加班历史记录"功能：明细列表 + 月度统计 + 导出）。
  */
 @Controller('overtime')
 export class OvertimeController {
@@ -136,51 +200,47 @@ export class OvertimeController {
   /**
    * 个人视图：本人已批准加班记录（隐含本人历史；分页）。
    *
-   * month 是由 overtimeDate 派生的文本字段，全部文本操作符经内存编译器解释；
-   * 个人明细量级小，权限约束（本人 + 已批准）与默认排序仍在数据库层完成。
-   * filters 存在时以树为准、具名 month 让位；否则具名 month 合成为「等于」条件。
+   * 筛选、排序、总数与分页均在数据库完成，避免先读取该员工的全部历史记录。
+   * 月份条件只接受等于并编译为日期范围，使 user_id + overtime_date 索引可用。
    */
   @Get('mine')
   async mine(@CurrentUser() userId: number, @Query() query: OvertimeMineQueryDto): Promise<unknown> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const rows = await this.prisma.client.overtimeItem.findMany({
-      where: { userId, request: { status: 'APPROVED' } },
-      orderBy: [{ overtimeDate: 'desc' }, { id: 'desc' }],
-      // 申请编号取审批头（与提交/导出/审批中心口径一致；row.requestId 为数字批次 id）
-      include: { request: { select: { applicationNo: true } } },
-    });
-    const items = rows.map((row) => ({
-      id: row.id,
-      overtimeDate: formatDate(row.overtimeDate),
-      month: formatDate(row.overtimeDate).slice(0, 7),
-      startMinute: row.startMinute,
-      endMinute: row.endMinute,
-      minutes: row.endMinute - row.startMinute,
-      hours: Math.round(((row.endMinute - row.startMinute) / 60) * 100) / 100,
-      reason: row.reason,
-      dateType: (row.holidaySnapshot as { dateType?: string })?.dateType ?? null,
-      applicationNo: row.request?.applicationNo ?? String(row.requestId),
-    }));
-    const filtered = filterAndSortTableRows(
-      items,
-      {
-        filters: query.filters ?? (query.month
-          ? JSON.stringify({ logic: 'AND', conditions: [{ field: 'month', operator: 'EQUALS', value: query.month }] })
-          : undefined),
-        sorts: query.sorts,
-      },
-      {
-        month: { type: 'text', value: (item) => item.month },
-        overtimeDate: { type: 'date', value: (item) => item.overtimeDate },
-        minutes: { type: 'number', value: (item) => item.minutes },
-        hours: { type: 'number', value: (item) => item.hours },
-      },
-    );
-    const total = filtered.length;
+    const { whereSql, params, orderBySql } = buildOvertimeMineListQuery(userId, query);
+    const listParams = [...params, pageSize, (page - 1) * pageSize];
+    const [countRows, rows] = await Promise.all([
+      this.prisma.client.$queryRawUnsafe<Array<{ total: bigint }>>(
+        `SELECT COUNT(*)::bigint AS total
+         FROM hr.overtime_items oi
+         INNER JOIN hr.approval_requests r ON r.id = oi.request_id
+         ${whereSql}`,
+        ...params,
+      ),
+      this.prisma.client.$queryRawUnsafe<OvertimeMineDatabaseRow[]>(
+        `SELECT oi.id, r.application_no, oi.overtime_date, oi.start_minute, oi.end_minute,
+                oi.reason, (oi.holiday_snapshot->>'dateType')::text AS date_type
+         FROM hr.overtime_items oi
+         INNER JOIN hr.approval_requests r ON r.id = oi.request_id
+         ${whereSql}
+         ORDER BY ${orderBySql}
+         LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+        ...listParams,
+      ),
+    ]);
+    const total = Number(countRows[0]?.total ?? 0);
     return {
-      // month 是筛选辅助字段，不出现在响应中
-      data: filtered.slice((page - 1) * pageSize, page * pageSize).map(({ month: _month, ...item }) => item),
+      data: rows.map((row) => ({
+        id: row.id,
+        applicationNo: row.application_no,
+        overtimeDate: formatDate(row.overtime_date),
+        startMinute: row.start_minute,
+        endMinute: row.end_minute,
+        minutes: row.end_minute - row.start_minute,
+        hours: Math.round(((row.end_minute - row.start_minute) / 60) * 100) / 100,
+        reason: row.reason,
+        dateType: row.date_type,
+      })),
       pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) },
     };
   }
@@ -191,43 +251,13 @@ export class OvertimeController {
     return this.summary.summaryMine(userId, query.month);
   }
 
-  /** 管理视图：员工列表 + 月度统计（加班历史记录功能，DEPARTMENT 闭包/COMPANY） */
+  /** 管理视图：已批准加班明细列表（筛选与导出共用同一权限范围和筛选语义）。 */
   @Get('records')
   async records(@CurrentUser() userId: number, @Query() query: OvertimeManageQueryDto): Promise<unknown> {
-    const userIds = await this.filterHistoryScopeByDepartment(await this.resolveHistoryScope(userId), query.departmentId);
+    const userIds = await this.resolveHistoryUserIds(userId);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    // 月份是单月聚合维度：树中月份条件必须是唯一「等于」；有效月份树优先、具名让位
-    if (query.filters) {
-      assertMonthEqualsOnly(query.filters);
-    }
-    const month = (query.filters ? extractMonthEqualsValue(query.filters) : undefined) ?? query.month;
-    const stats = await this.summary.statsForUsers(userIds, month);
-    const filtered = filterAndSortTableRows(
-      stats,
-      query.filters ? query : {
-        ...query,
-        filters: query.keyword
-          ? JSON.stringify({ logic: 'AND', conditions: [{ field: 'keyword', operator: 'CONTAINS', value: query.keyword }] })
-          : undefined,
-      },
-      {
-        id: { type: 'number', value: (item) => item.userId },
-        userId: { type: 'number', value: (item) => item.userId },
-        name: { type: 'text', value: (item) => item.name },
-        keyword: { type: 'text', value: (item) => item.name },
-        month: { type: 'text', value: () => month ?? '' },
-        minutes: { type: 'number', value: (item) => item.minutes },
-        hours: { type: 'number', value: (item) => item.hours },
-        count: { type: 'number', value: (item) => item.count },
-      },
-    );
-    const total = filtered.length;
-    const items = filtered.slice((page - 1) * pageSize, page * pageSize);
-    return {
-      data: items.map((item) => ({ ...item, id: item.userId, month: month ?? null })),
-      pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) },
-    };
+    return this.exportService.listRecords(userIds, { month: query.month, keyword: query.keyword, departmentId: query.departmentId, filters: query.filters }, page, pageSize);
   }
 
   /** 管理月度汇总（全体范围内员工合计） */
@@ -247,8 +277,8 @@ export class OvertimeController {
     @Query() query: OvertimeManageQueryDto,
     @Res() res: Response,
   ): Promise<void> {
-    const userIds = await this.filterHistoryScopeByDepartment(await this.resolveHistoryScope(userId), query.departmentId);
-    await this.exportService.export(userId, userIds, { month: query.month, keyword: query.keyword, filters: query.filters }, res);
+    const userIds = await this.resolveHistoryUserIds(userId);
+    await this.exportService.exportRecords(userId, userIds, { month: query.month, keyword: query.keyword, departmentId: query.departmentId, filters: query.filters }, res);
     const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
     await this.prisma.client.hrOperationLog.create({
       data: {
@@ -259,6 +289,30 @@ export class OvertimeController {
         feature: OVERTIME_HISTORY_FUNCTION_CODE,
         actionType: 'EXPORT',
         summary: '导出了加班历史记录',
+      },
+    });
+  }
+
+  /** 管理视图统计导出：与加班记录列表和导出共用权限范围及当前筛选条件。 */
+  @Get('records/statistics/export')
+  @RequestTimeout(EXPORT_TIMEOUT_MS)
+  async exportStatistics(
+    @CurrentUser() userId: number,
+    @Query() query: OvertimeManageQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const userIds = await this.resolveHistoryUserIds(userId);
+    await this.exportService.exportStatistics(userId, userIds, { month: query.month, keyword: query.keyword, departmentId: query.departmentId, filters: query.filters }, res);
+    const operator = await loadHrOperationLogOperator(this.prisma.client, userId);
+    await this.prisma.client.hrOperationLog.create({
+      data: {
+        operatorId: operator.id,
+        operatorName: operator.name,
+        operatorDepartments: operator.departments as object,
+        system: 'HR',
+        feature: OVERTIME_HISTORY_FUNCTION_CODE,
+        actionType: 'EXPORT',
+        summary: '导出了加班统计',
       },
     });
   }
@@ -314,6 +368,11 @@ export class OvertimeController {
       WHERE department_id = ${departmentId} AND user_id = ANY(${[...userIds] as number[]})
     `;
     return new Set(rows.map((row) => row.user_id));
+  }
+
+  /** 历史列表和导出始终先按功能数据范围授权，筛选条件仅由参数化报表查询解释。 */
+  private async resolveHistoryUserIds(userId: number): Promise<Set<number>> {
+    return this.resolveHistoryScope(userId);
   }
 }
 

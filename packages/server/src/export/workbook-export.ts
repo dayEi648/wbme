@@ -28,6 +28,17 @@ export interface ExportColumn<T> {
   value: (row: T) => string | number | boolean | null | undefined;
 }
 
+/** 可选的轻量报表样式；仅用于表头、冻结行、筛选和列宽，避免大导出逐单元格套样式。 */
+export interface ExportSheetOptions {
+  /** 工作表名称；报表可指定面向用户的中文名称。 */
+  name?: string;
+  columnWidths?: readonly number[];
+  freezeHeader?: boolean;
+  autoFilter?: boolean;
+  /** ARGB，例如浅绿色 `FFD9EAD3`。 */
+  headerFillArgb?: string;
+}
+
 /** runExport 入参 */
 export interface RunExportOptions<T> {
   userId: number;
@@ -35,6 +46,7 @@ export interface RunExportOptions<T> {
   maxRows: number;
   filename: string;
   columns: ExportColumn<T>[];
+  sheet?: ExportSheetOptions;
   /** 在 REPEATABLE READ 事务内统计行数 */
   fetchCount: (tx: unknown) => Promise<number>;
   /** 在同事务内分页拉取行（offset 从 0 起） */
@@ -83,9 +95,26 @@ export async function runExport<T>(options: RunExportOptions<T>): Promise<void> 
         options.res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         options.res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(options.filename)}"`);
 
-        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: options.res, useStyles: false });
-        const sheet = workbook.addWorksheet('Export');
-        sheet.addRow(options.columns.map((col) => col.header)).commit();
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: options.res, useStyles: options.sheet !== undefined });
+        const sheet = workbook.addWorksheet(
+          options.sheet?.name ?? 'Export',
+          options.sheet?.freezeHeader ? { views: [{ state: 'frozen', ySplit: 1 }] } : undefined,
+        );
+        if (options.sheet?.columnWidths) {
+          sheet.columns = options.columns.map((_, index) => ({ width: options.sheet?.columnWidths?.[index] ?? 16 }));
+        }
+        if (options.sheet?.autoFilter) {
+          sheet.autoFilter = { from: 'A1', to: `${excelColumnName(options.columns.length)}1` };
+        }
+        const header = sheet.addRow(options.columns.map((col) => col.header));
+        if (options.sheet?.headerFillArgb) {
+          header.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: options.sheet?.headerFillArgb } };
+            cell.font = { bold: true };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          });
+        }
+        header.commit();
 
         const batchSize = 500;
         for (let offset = 0; offset < total; offset += batchSize) {
@@ -105,4 +134,16 @@ export async function runExport<T>(options: RunExportOptions<T>): Promise<void> 
     // 仅当锁仍是本请求持有时才释放（原子比较删除）
     await options.redis.eval(RELEASE_LOCK_LUA, 1, lockKey, lockToken);
   }
+}
+
+/** 1-based 列号 → Excel 列名；导出列数已受应用固定白名单约束。 */
+function excelColumnName(index: number): string {
+  let number = index;
+  let value = '';
+  while (number > 0) {
+    const remainder = (number - 1) % 26;
+    value = String.fromCharCode(65 + remainder) + value;
+    number = Math.floor((number - 1) / 26);
+  }
+  return value;
 }

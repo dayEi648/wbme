@@ -147,6 +147,8 @@ describeDb('加班提交（T6-5）', () => {
     expect(head?.status).toBe('PENDING');
     const items = await prisma.client.overtimeItem.findMany({ where: { requestId: result.requestId } });
     expect(items.length).toBe(1);
+    expect(typeof items[0]?.isBackfill).toBe('boolean');
+    expect(items[0]?.positionNameSnapshot).toBeNull();
     const snapshot = items[0]!.holidaySnapshot as { dateType?: string; source?: string };
     expect(snapshot.dateType).toBeTruthy();
     expect(snapshot.source).toBeTruthy();
@@ -285,6 +287,7 @@ describeDb('加班提交（T6-5）', () => {
   it('个人月度汇总：分钟精度、小时两位小数', async () => {
     // 上一用例已批准 18:00-20:00（120 分钟）
     const summary = await submissionSubmitSummary(operatorUserId);
+    expect(summary.dayCount).toBeGreaterThanOrEqual(1);
     expect(summary.totalMinutes).toBeGreaterThanOrEqual(120);
     expect(summary.totalHours).toBeCloseTo(summary.totalMinutes / 60, 2);
   });
@@ -301,10 +304,10 @@ describeDb('加班提交（T6-5）', () => {
   });
 
   /** 汇总辅助（复用 OvertimeSummaryService） */
-  async function submissionSubmitSummary(userId: number): Promise<{ totalMinutes: number; totalHours: number }> {
+  async function submissionSubmitSummary(userId: number): Promise<{ dayCount: number; totalMinutes: number; totalHours: number }> {
     const summaryService = new OvertimeSummaryService(prisma);
     const result = await summaryService.summaryMine(userId);
-    return { totalMinutes: result.totalMinutes, totalHours: result.totalHours };
+    return { dayCount: result.dayCount, totalMinutes: result.totalMinutes, totalHours: result.totalHours };
   }
 });
 

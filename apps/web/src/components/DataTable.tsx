@@ -80,6 +80,12 @@ interface PaginatedResponse {
   pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
 }
 
+/** 页面操作区可读取当前已生效筛选，避免同一列表额外维护第二套筛选状态。 */
+export interface DataTableActionContext {
+  /** 已经裁剪空条件后的筛选树 JSON；无筛选时为 undefined。 */
+  filters?: string;
+}
+
 export interface DataTableProps {
   title: string;
   service: ApiService;
@@ -87,8 +93,11 @@ export interface DataTableProps {
   pageKey: string;
   columns: DataColumn[];
   filterFields?: FilterField[];
-  /** 页面权限已由父级判断后的操作区；列表本身仍由后端授权。 */
-  actions?: ReactNode;
+  /**
+   * 页面权限已由父级判断后的操作区；列表本身仍由后端授权。
+   * 渲染函数可接收当前已生效的筛选树，用于让关联操作（例如导出）精确复用列表查询条件。
+   */
+  actions?: ReactNode | ((context: DataTableActionContext) => ReactNode);
   /** 行主键字段，默认 id。 */
   rowKey?: string;
   /** 行单击事件（移动端卡片与桌面端共用）。 */
@@ -254,9 +263,14 @@ export function DataTable({
   const [presetForm] = Form.useForm<{ name: string }>();
   const [renamePresetForm] = Form.useForm<{ name: string }>();
 
+  const appliedFilterPayload = useMemo(() => buildFilterTreePayload(appliedFilterTree), [appliedFilterTree]);
+  const serializedAppliedFilters = useMemo(
+    () => (appliedFilterPayload ? JSON.stringify(appliedFilterPayload) : undefined),
+    [appliedFilterPayload],
+  );
   const queryKey = useMemo(
-    () => JSON.stringify({ page, pageSize, filters: buildFilterTreePayload(appliedFilterTree) ?? null, sorts: appliedSorts }),
-    [page, pageSize, appliedFilterTree, appliedSorts],
+    () => JSON.stringify({ page, pageSize, filters: appliedFilterPayload ?? null, sorts: appliedSorts }),
+    [page, pageSize, appliedFilterPayload, appliedSorts],
   );
   const visibleColumns = useMemo(
     () => visibleKeys.map((key) => columns.find((column) => column.key === key)).filter((column): column is DataColumn => Boolean(column)),
@@ -280,9 +294,8 @@ export function DataTable({
       return params;
     }
 
-    const filterPayload = buildFilterTreePayload(appliedFilterTree);
-    if (filterPayload) {
-      params.set('filters', JSON.stringify(filterPayload));
+    if (serializedAppliedFilters) {
+      params.set('filters', serializedAppliedFilters);
       // 仅「等于」条件可无损镜像为既有白名单具名参数（供尚未解析 filters 的接口联调）；
       // 其余操作符（不等于/包含等）镜像成等号会扭曲语义，一律只走 filters 负载。
       for (const condition of appliedConditions) {
@@ -393,6 +406,7 @@ export function DataTable({
     })),
     ...(rowActions ? [{ key: '__actions', title: '操作', fixed: 'right' as const, render: (_: unknown, row: RecordValue) => <span onClick={(event) => event.stopPropagation()}>{rowActions(row)}</span> }] : []),
   ];
+  const renderedActions = typeof actions === 'function' ? actions({ filters: serializedAppliedFilters }) : actions;
 
   const refreshPresets = async () => {
     const result = await http.get<{ items: FilterPreset[] }>(`/me/table-prefs/${pageKey}/filter-presets`, { service });
@@ -624,7 +638,7 @@ export function DataTable({
               筛选{appliedFilterCount > 0 ? `（${appliedFilterCount}）` : ''}
             </Button>
           ) : null}
-          {actions}
+          {renderedActions}
           <Dropdown menu={{ items: moreMenuItems }} trigger={['click']} placement="bottomLeft">
             <Button icon={<MoreOutlined />}>更多</Button>
           </Dropdown>
@@ -675,7 +689,7 @@ export function DataTable({
               清除全部条件
             </Button>
           ) : null}
-          {actions}
+          {renderedActions}
         </Space>
       </div>
 

@@ -57,8 +57,8 @@ function expectDefined<T>(value: T | undefined): T {
 }
 
 describe('OPERATOR_OPTIONS 运算符矩阵', () => {
-  it('覆盖全部 6 种字段类型', () => {
-    expect(Object.keys(OPERATOR_OPTIONS).sort()).toEqual(['date', 'enum', 'number', 'remote', 'text', 'tree']);
+  it('覆盖全部 7 种字段类型', () => {
+    expect(Object.keys(OPERATOR_OPTIONS).sort()).toEqual(['date', 'enum', 'number', 'remote', 'text', 'time', 'tree']);
   });
 
   it('文本：等于/不等于/包含/不包含/开头是/结尾是/为空/不为空', () => {
@@ -83,7 +83,13 @@ describe('OPERATOR_OPTIONS 运算符矩阵', () => {
 
   it('日期：比较 + 介于 + 相对日期 + 为空/不为空', () => {
     expect(OPERATOR_OPTIONS.date.map((option) => option.value)).toEqual([
-      'EQUALS', 'NOT_EQUALS', 'BEFORE', 'AFTER', 'BETWEEN', 'TODAY', 'THIS_WEEK', 'THIS_MONTH', 'LAST_7_DAYS', 'LAST_30_DAYS', 'IS_EMPTY', 'IS_NOT_EMPTY',
+      'EQUALS', 'NOT_EQUALS', 'BEFORE', 'AFTER', 'BETWEEN', 'TODAY', 'THIS_WEEK', 'THIS_MONTH', 'THIS_YEAR', 'LAST_7_DAYS', 'LAST_30_DAYS', 'IS_EMPTY', 'IS_NOT_EMPTY',
+    ]);
+  });
+
+  it('时间：比较与介于', () => {
+    expect(OPERATOR_OPTIONS.time.map((option) => option.value)).toEqual([
+      'EQUALS', 'NOT_EQUALS', 'LESS_THAN', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL', 'LESS_THAN_OR_EQUAL', 'BETWEEN',
     ]);
   });
 
@@ -91,7 +97,8 @@ describe('OPERATOR_OPTIONS 运算符矩阵', () => {
     expect(DEFAULT_OPERATOR_BY_TYPE.text).toBe('CONTAINS');
     expect(DEFAULT_OPERATOR_BY_TYPE.number).toBe('EQUALS');
     expect(DEFAULT_OPERATOR_BY_TYPE.date).toBe('EQUALS');
-    expect([...NO_VALUE_OPERATORS].sort()).toEqual(['IS_EMPTY', 'IS_NOT_EMPTY', 'LAST_30_DAYS', 'LAST_7_DAYS', 'THIS_MONTH', 'THIS_WEEK', 'TODAY']);
+    expect(DEFAULT_OPERATOR_BY_TYPE.time).toBe('EQUALS');
+    expect([...NO_VALUE_OPERATORS].sort()).toEqual(['IS_EMPTY', 'IS_NOT_EMPTY', 'LAST_30_DAYS', 'LAST_7_DAYS', 'THIS_MONTH', 'THIS_WEEK', 'THIS_YEAR', 'TODAY']);
   });
 });
 

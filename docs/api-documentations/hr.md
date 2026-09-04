@@ -105,12 +105,13 @@
 | `POST` | `/overtime/applications` | 提交加班批次（幂等；`OvertimeSubmitDto`：overtimeDate YYYY-MM-DD、startMinute 0-1439、endMinute 1-1440（24:00=1440）、reason≤500、userIds 1~100 去重且至少 1 人；全有或全无——任一失败 `OVERTIME_BATCH_REJECTED` + 逐人原因，零写入；代交公司档范围为全部在职员工（不做部门闭包收缩）、部门档为代提人部门闭包；日期窗口=人事配置提前申请/补交窗口；节假日快照随明细保存） |
 | `POST` | `/overtime/applications/{id}/cancel` | 取消本人/代提待审批批次（批准或驳回后不能取消；幂等键重试返回原结果，取消写操作日志） |
 | `GET` | `/overtime/applications/mine` | 本人提交或代交的待审批加班批次（month 筛选 + 分页；无审批权限也可查看并通过上述取消接口完成闭环） |
-| `GET` | `/overtime/mine` | 个人已批准记录（month 筛选 + 分页；含日期类型/时长） |
-| `GET` | `/overtime/mine/summary` | 个人月度汇总（分钟精度；小时=分钟÷60 两位小数） |
-| `GET` | `/overtime/records` | 管理视图：员工月度统计（DEPARTMENT 闭包/COMPANY；keyword/month/departmentId 与结构化筛选、多级排序） |
+| `GET` | `/overtime/mine` | 个人已批准记录（数据库侧 month 筛选、排序与分页；含日期类型/时长） |
+| `GET` | `/overtime/mine/summary` | 个人月度汇总（`dayCount`、`totalMinutes`、`totalHours`；分钟精度，小时=分钟÷60 两位小数） |
+| `GET` | `/overtime/records` | 管理视图：已批准加班明细分页。列表与导出共用同一授权范围和结构化筛选：加班员工、申请人/提交人、申请时部门/岗位、加班日期（区间/本周/本月/本年）、起止时间、日期类型、补交状态、事由、审批人/时间；部门始终匹配申请时快照。 |
 | `GET` | `/overtime/records/summary` | 管理月度汇总（范围内员工合计） |
 | `GET` | `/overtime/records/{userId}` | 管理视图下钻：当前权限范围内指定员工的已批准加班明细（month/departmentId） |
-| `GET` | `/overtime/records/export` | 管理导出（runExport：Redis 互斥 + REPEATABLE READ + 120s 超时；行数上限=平台设置 export.max.rows；导出完成写 EXPORT 操作日志） |
+| `GET` | `/overtime/records/export` | 导出加班记录：始终复用加班历史记录页面当前已生效的筛选条件；中文表头、文件名、工作表、北京时间、岗位/补交快照。 |
+| `GET` | `/overtime/records/statistics/export` | 导出加班统计：复用同一页面筛选，按员工汇总工作日、休息日、节假日、总小时和记录数。 |
 
 加班审批在统一审批中心处理（见 approval-center.md）：`overtime_approval` 功能（部门/公司档），
 DEPARTMENT 档按部门闭包过滤待办；驳回必须填写原因；待审批批次只有提交人（或代提人）可取消。
