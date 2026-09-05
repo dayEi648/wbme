@@ -864,7 +864,7 @@ export class HrApprovalService {
     closure: ReadonlySet<number>,
     scoped: { overtime: boolean; position: boolean },
   ): Promise<number[]> {
-    // 空闭包（无部门审批人）守卫：与 overtime-summary 的 statsForUsers 对齐，避免 $queryRaw 空数组参数
+    // 空闭包（无部门审批人）守卫：避免 $queryRaw 接收无意义的空数组参数
     if (closure.size === 0) {
       return [];
     }

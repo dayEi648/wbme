@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
 import { formatTime } from './overtime-submission.service';
-import { minutesToHours } from './overtime-summary.service';
+import { minutesToHours, OVERTIME_DATE_TYPE_SQL_LITERALS } from './overtime-statistics';
 
 /** 报表筛选白名单：所有客户端值通过参数绑定，部门仅匹配申请时已保存的部门快照。 */
 const OVERTIME_REPORT_FILTER_FIELDS: Readonly<Record<string, TableSqlField>> = {
@@ -115,6 +115,18 @@ interface OvertimeStatisticsExportRow {
   record_count: bigint;
 }
 
+/** 统计页面行：将数据库的 bigint 分钟数转换为可安全 JSON 序列化的小时数。 */
+export interface OvertimeStatisticsRecord {
+  employeeName: string;
+  positionNames: string;
+  departmentNames: string;
+  workdayHours: number;
+  restDayHours: number;
+  holidayHours: number;
+  totalHours: number;
+  recordCount: number;
+}
+
 /** 加班报表的轻量样式：匹配历史报表的浅绿色表头，同时避免逐单元格复杂样式。 */
 const OVERTIME_REPORT_SHEET_STYLE = {
   freezeHeader: true,
@@ -154,6 +166,30 @@ export class OvertimeExportService {
     });
     return {
       data: rows.map(toHistoryRecord),
+      pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  /**
+   * 加班统计列表：按员工聚合后再分页，避免把全部明细读取到服务端或浏览器中计算。
+   * 与统计导出共用相同的授权范围和筛选 SQL，确保页面数字可直接与导出文件核对。
+   */
+  async listStatistics(
+    userIds: ReadonlySet<number>,
+    query: OvertimeReportQuery,
+    page: number,
+    pageSize: number,
+  ): Promise<{ data: OvertimeStatisticsRecord[]; pagination: { page: number; pageSize: number; totalItems: number; totalPages: number } }> {
+    const report = buildOvertimeReportSql(userIds, query);
+    const { total, rows } = await this.transaction(async (tx) => {
+      const [total, rows] = await Promise.all([
+        this.countStatisticsRows(tx, report),
+        this.fetchStatisticsRows(tx, report, (page - 1) * pageSize, pageSize),
+      ]);
+      return { total, rows };
+    });
+    return {
+      data: rows.map(toStatisticsRecord),
       pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) },
     };
   }
@@ -319,9 +355,9 @@ export class OvertimeExportService {
         SELECT scoped.user_name,
                COALESCE(STRING_AGG(DISTINCT NULLIF(filtered.position_name_snapshot, ''), '、'), MAX(scoped.position_name)) AS position_names,
                COALESCE(STRING_AGG(DISTINCT NULLIF(filtered.department_names, ''), '、'), MAX(scoped.department_names)) AS department_names,
-               COALESCE(SUM(CASE WHEN filtered.date_type IN ('WORKDAY', 'ADJUSTED_WORKDAY') THEN filtered.minutes ELSE 0 END), 0)::bigint AS workday_minutes,
-               COALESCE(SUM(CASE WHEN filtered.date_type = 'WEEKEND' THEN filtered.minutes ELSE 0 END), 0)::bigint AS weekend_minutes,
-               COALESCE(SUM(CASE WHEN filtered.date_type IN ('HOLIDAY', 'ADJUSTED_HOLIDAY') THEN filtered.minutes ELSE 0 END), 0)::bigint AS holiday_minutes,
+               COALESCE(SUM(CASE WHEN filtered.date_type IN (${OVERTIME_DATE_TYPE_SQL_LITERALS.workday}) THEN filtered.minutes ELSE 0 END), 0)::bigint AS workday_minutes,
+               COALESCE(SUM(CASE WHEN filtered.date_type IN (${OVERTIME_DATE_TYPE_SQL_LITERALS.restDay}) THEN filtered.minutes ELSE 0 END), 0)::bigint AS weekend_minutes,
+               COALESCE(SUM(CASE WHEN filtered.date_type IN (${OVERTIME_DATE_TYPE_SQL_LITERALS.holiday}) THEN filtered.minutes ELSE 0 END), 0)::bigint AS holiday_minutes,
                COALESCE(SUM(filtered.minutes), 0)::bigint AS total_minutes,
                COUNT(filtered.user_id)::bigint AS record_count
         FROM scoped
@@ -346,9 +382,9 @@ export class OvertimeExportService {
       SELECT MAX(user_name) AS user_name,
              STRING_AGG(DISTINCT NULLIF(position_name_snapshot, ''), '、') AS position_names,
              STRING_AGG(DISTINCT NULLIF(department_names, ''), '、') AS department_names,
-             COALESCE(SUM(CASE WHEN date_type IN ('WORKDAY', 'ADJUSTED_WORKDAY') THEN minutes ELSE 0 END), 0)::bigint AS workday_minutes,
-             COALESCE(SUM(CASE WHEN date_type = 'WEEKEND' THEN minutes ELSE 0 END), 0)::bigint AS weekend_minutes,
-             COALESCE(SUM(CASE WHEN date_type IN ('HOLIDAY', 'ADJUSTED_HOLIDAY') THEN minutes ELSE 0 END), 0)::bigint AS holiday_minutes,
+             COALESCE(SUM(CASE WHEN date_type IN (${OVERTIME_DATE_TYPE_SQL_LITERALS.workday}) THEN minutes ELSE 0 END), 0)::bigint AS workday_minutes,
+             COALESCE(SUM(CASE WHEN date_type IN (${OVERTIME_DATE_TYPE_SQL_LITERALS.restDay}) THEN minutes ELSE 0 END), 0)::bigint AS weekend_minutes,
+             COALESCE(SUM(CASE WHEN date_type IN (${OVERTIME_DATE_TYPE_SQL_LITERALS.holiday}) THEN minutes ELSE 0 END), 0)::bigint AS holiday_minutes,
              COALESCE(SUM(minutes), 0)::bigint AS total_minutes,
              COUNT(*)::bigint AS record_count
       FROM filtered
@@ -405,7 +441,21 @@ export function buildOvertimeReportSql(userIds: ReadonlySet<number>, query: Over
     whereSql: `WHERE ${where.join(' AND ')}`,
     params,
     userIds: scopedUserIds,
-    includeZeroStatistics: !query.keyword && !cohortFilterFields.some((field) => fields.has(field)),
+    includeZeroStatistics: !query.keyword && query.departmentId === undefined && !cohortFilterFields.some((field) => fields.has(field)),
+  };
+}
+
+/** 将聚合行转换为用户界面所需的安全数字和语义化字段名。 */
+function toStatisticsRecord(row: OvertimeStatisticsExportRow): OvertimeStatisticsRecord {
+  return {
+    employeeName: row.user_name,
+    positionNames: row.position_names ?? '未记录',
+    departmentNames: row.department_names ?? '未记录',
+    workdayHours: minutesToHours(Number(row.workday_minutes)),
+    restDayHours: minutesToHours(Number(row.weekend_minutes)),
+    holidayHours: minutesToHours(Number(row.holiday_minutes)),
+    totalHours: minutesToHours(Number(row.total_minutes)),
+    recordCount: Number(row.record_count),
   };
 }
 

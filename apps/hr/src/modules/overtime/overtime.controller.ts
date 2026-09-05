@@ -93,7 +93,7 @@ export function buildOvertimeMineListQuery(
  * 加班管理（hr PRD §3）：
  * 统一表单提交（"加班申请"本人档 / "代交加班"部门公司档）、取消（提交人/代提人）、
  * 个人视图（本人已批准记录 + 月度汇总，隐含本人历史）、
- * 管理视图（"加班历史记录"功能：明细列表 + 月度统计 + 导出）。
+ * 管理视图（"加班历史记录"功能：明细列表、按员工加班统计和分别导出）。
  */
 @Controller('overtime')
 export class OvertimeController {
@@ -260,13 +260,13 @@ export class OvertimeController {
     return this.exportService.listRecords(userIds, { month: query.month, keyword: query.keyword, departmentId: query.departmentId, filters: query.filters }, page, pageSize);
   }
 
-  /** 管理月度汇总（全体范围内员工合计） */
-  @Get('records/summary')
-  async recordsSummary(@CurrentUser() userId: number, @Query() query: OvertimeManageSummaryDto): Promise<unknown> {
-    const userIds = await this.filterHistoryScopeByDepartment(await this.resolveHistoryScope(userId), query.departmentId);
-    const stats = await this.summary.statsForUsers(userIds, query.month);
-    const totalMinutes = stats.reduce((sum, item) => sum + item.minutes, 0);
-    return { employeeCount: stats.length, totalMinutes, totalHours: Math.round((totalMinutes / 60) * 100) / 100 };
+  /** 管理视图：按员工的加班统计列表，筛选和导出均复用同一个安全查询基集。 */
+  @Get('records/statistics')
+  async statistics(@CurrentUser() userId: number, @Query() query: OvertimeManageQueryDto): Promise<unknown> {
+    const userIds = await this.resolveHistoryUserIds(userId);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    return this.exportService.listStatistics(userIds, { month: query.month, keyword: query.keyword, departmentId: query.departmentId, filters: query.filters }, page, pageSize);
   }
 
   /** 管理视图导出（runExport 流式；导出完成写 EXPORT 操作日志） */

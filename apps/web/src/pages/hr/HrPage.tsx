@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, DatePicker, Descriptions, Drawer, Dropdown, Form, Input, Space, Tabs, TimePicker, Typography, type MenuProps } from 'antd';
+import { Button, Card, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, Space, Tabs, TimePicker, Typography } from 'antd';
 import { ExportOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
@@ -105,6 +105,7 @@ export default function HrPage() {
           { key: 'apply', label: '加班申请', permission: ['overtime_apply', 'proxy_overtime'], children: <OvertimeApply /> },
           { key: 'mine', label: '我的加班', permission: 'overtime_apply', children: <OvertimeMine /> },
           { key: 'history', label: '历史记录', permission: 'overtime_history', children: <OvertimeRecords /> },
+          { key: 'statistics', label: '加班统计', permission: 'overtime_history', children: <OvertimeStatistics /> },
         ]} />;
       case 'overtime-apply':
         return <Navigate to="/hr/overtime" replace />;
@@ -112,6 +113,8 @@ export default function HrPage() {
         return <Navigate to="/hr/overtime?tab=mine" replace />;
       case 'overtime-records':
         return <Navigate to="/hr/overtime?tab=history" replace />;
+      case 'overtime-statistics':
+        return <Navigate to="/hr/overtime?tab=statistics" replace />;
       case 'approval':
         return <ApprovalCenter title="人事审批中心" service="hr" pageKey="hr-approval" />;
       case 'settings':
@@ -317,13 +320,21 @@ function OvertimeApply() {
 /** 我的加班：月度汇总（中文标签）+ 本人加班记录；待审批批次在审批中心统一处理。 */
 function OvertimeMine() {
   const feedback = useFeedback();
-  const [summary, setSummary] = useState<{ dayCount?: number; totalMinutes?: number; totalHours?: number } | null>(null);
-  useEffect(() => { void http.get<{ dayCount?: number; totalMinutes?: number; totalHours?: number }>('/overtime/mine/summary', { service: 'hr', active: true }).then(setSummary).catch((error) => feedback.error(error, '加班汇总加载失败')); }, [feedback]);
+  const [summary, setSummary] = useState<{
+    dayCount?: number;
+    workdayHours?: number;
+    restDayHours?: number;
+    holidayHours?: number;
+    totalHours?: number;
+  } | null>(null);
+  useEffect(() => { void http.get<typeof summary>('/overtime/mine/summary', { service: 'hr', active: true }).then(setSummary).catch((error) => feedback.error(error, '加班汇总加载失败')); }, [feedback]);
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
     {summary ? <Card size="small" title="本月加班汇总">
       <Space size={32} wrap>
-        <div><Typography.Text type="secondary">累计加班</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalHours ?? '—')} 小时</div></div>
-        <div><Typography.Text type="secondary">累计分钟</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalMinutes ?? '—')} 分钟</div></div>
+        <div><Typography.Text type="secondary">工作日加班</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.workdayHours ?? '—')} 小时</div></div>
+        <div><Typography.Text type="secondary">休息日加班</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.restDayHours ?? '—')} 小时</div></div>
+        <div><Typography.Text type="secondary">节假日加班</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.holidayHours ?? '—')} 小时</div></div>
+        <div><Typography.Text type="secondary">合计</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalHours ?? '—')} 小时</div></div>
         <div><Typography.Text type="secondary">加班天数</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.dayCount ?? '—')} 天</div></div>
       </Space>
     </Card> : null}
@@ -383,9 +394,9 @@ const OVERTIME_HISTORY_COLUMNS: DataColumn[] = [
   { key: 'status', title: '审批状态', width: 120, render: (value: unknown) => <StatusTag value={value} enumKind="approvalStatus" /> },
 ];
 
-/** 加班历史与导出共用的完整筛选字段；字段未在列中展示并不代表不能安全筛选。 */
+/** 加班历史、统计和对应导出共用的完整筛选字段；字段未在列中展示并不代表不能安全筛选。 */
 const OVERTIME_HISTORY_FILTER_FIELDS: FilterField[] = [
-  { key: 'employeeName', title: '加班员工', type: 'text' },
+  { key: 'employeeName', title: '员工姓名', type: 'text' },
   { key: 'applicantName', title: '申请人', type: 'text' },
   { key: 'submitterName', title: '提交人', type: 'text' },
   { key: 'departmentId', title: '部门', type: 'tree', remote: departmentTreeSource, operators: ['EQUALS'] },
@@ -400,12 +411,9 @@ const OVERTIME_HISTORY_FILTER_FIELDS: FilterField[] = [
   { key: 'approvalTime', title: '审批时间', type: 'date' },
 ];
 
-/** 加班历史：明细表完整展示人员、组织、申请与审批信息；导出直接复用本表已生效筛选。 */
+/** 加班历史：明细表完整展示人员、组织、申请与审批信息；仅导出当前筛选后的明细。 */
 function OvertimeRecords() {
-  const feedback = useFeedback();
-  const [summary, setSummary] = useState<RecordValue | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<RecordValue | null>(null);
-  useEffect(() => { void http.get<RecordValue>('/overtime/records/summary', { service: 'hr', active: true }).then(setSummary).catch((error) => feedback.error(error, '加班管理汇总加载失败')); }, [feedback]);
   const detailItems = selectedRecord ? [
     { label: '申请编号', children: displayHistoryValue(selectedRecord.applicationNo) },
     { label: '加班员工', children: displayHistoryValue(selectedRecord.employeeName) },
@@ -426,13 +434,6 @@ function OvertimeRecords() {
     { label: '审批状态', children: <StatusTag value={selectedRecord.status} enumKind="approvalStatus" /> },
   ] : [];
   return <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    {summary ? <Card size="small" title="当前月度汇总">
-      <Space size={32} wrap>
-        <div><Typography.Text type="secondary">覆盖员工</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.employeeCount ?? '—')} 人</div></div>
-        <div><Typography.Text type="secondary">累计加班</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalHours ?? '—')} 小时</div></div>
-        <div><Typography.Text type="secondary">累计分钟</Typography.Text><div style={{ fontSize: 20, fontWeight: 600 }}>{String(summary.totalMinutes ?? '—')} 分钟</div></div>
-      </Space>
-    </Card> : null}
     <DataTable
       title="加班历史记录"
       service="hr"
@@ -440,7 +441,7 @@ function OvertimeRecords() {
       pageKey="hr-overtime-records"
       columns={OVERTIME_HISTORY_COLUMNS}
       filterFields={OVERTIME_HISTORY_FILTER_FIELDS}
-      actions={({ filters }) => <OvertimeExportControls filters={filters} />}
+      actions={({ filters }) => <OvertimeExportControl kind="records" filters={filters} />}
       rowActions={(row) => <Button size="small" onClick={() => setSelectedRecord(row)}>详情</Button>}
     />
     <Drawer title="加班记录详情" open={selectedRecord !== null} onClose={() => setSelectedRecord(null)} width="min(92vw, 620px)">
@@ -449,15 +450,39 @@ function OvertimeRecords() {
   </Space>;
 }
 
+const OVERTIME_STATISTICS_COLUMNS: DataColumn[] = [
+  { key: 'employeeName', title: '姓名', width: 120 },
+  { key: 'positionNames', title: '岗位', width: 140 },
+  { key: 'departmentNames', title: '部门', width: 180 },
+  { key: 'workdayHours', title: '工作日加班（小时）', type: 'number', width: 160 },
+  { key: 'restDayHours', title: '休息日加班（小时）', type: 'number', width: 160 },
+  { key: 'holidayHours', title: '节假日加班（小时）', type: 'number', width: 160 },
+  { key: 'totalHours', title: '合计（小时）', type: 'number', width: 130 },
+  { key: 'recordCount', title: '记录数', type: 'number', width: 100 },
+];
+
+/** 按员工聚合的管理视图；列表和导出以同一组筛选为准，便于人事核对数据。 */
+function OvertimeStatistics() {
+  return <DataTable
+    title="加班统计"
+    service="hr"
+    endpoint="/overtime/records/statistics"
+    pageKey="hr-overtime-statistics"
+    columns={OVERTIME_STATISTICS_COLUMNS}
+    filterFields={OVERTIME_HISTORY_FILTER_FIELDS}
+    actions={({ filters }) => <OvertimeExportControl kind="statistics" filters={filters} />}
+  />;
+}
+
 type OvertimeExportKind = 'records' | 'statistics';
 
-/** 加班导出直接复用历史表当前已生效的筛选，不维护第二套条件。 */
-function OvertimeExportControls({ filters }: { filters?: string }) {
+/** 加班导出直接复用所在页面当前已生效的筛选，不维护第二套条件。 */
+function OvertimeExportControl({ kind, filters }: { kind: OvertimeExportKind; filters?: string }) {
   const feedback = useFeedback();
-  const startExport = (kind: OvertimeExportKind) => {
-    const endpoint = kind === 'records' ? '/overtime/records/export' : '/overtime/records/statistics/export';
-    const filename = kind === 'records' ? '加班记录.xlsx' : '加班统计.xlsx';
-    const label = kind === 'records' ? '加班记录' : '加班统计';
+  const endpoint = kind === 'records' ? '/overtime/records/export' : '/overtime/records/statistics/export';
+  const filename = kind === 'records' ? '加班记录.xlsx' : '加班统计.xlsx';
+  const label = kind === 'records' ? '导出加班记录' : '导出加班统计';
+  const startExport = () => {
     const params = filters ? `?filters=${encodeURIComponent(filters)}` : '';
     void download(`${endpoint}${params}`, { service: 'hr', active: true })
       .then((blob) => {
@@ -467,19 +492,11 @@ function OvertimeExportControls({ filters }: { filters?: string }) {
         link.download = filename;
         link.click();
         URL.revokeObjectURL(url);
-        feedback.success(filters ? `${label}已按当前筛选导出` : `${label}导出已开始`);
+        feedback.success(filters ? `${filename}已按当前筛选导出` : `${filename}导出已开始`);
       })
-      .catch((error) => feedback.error(error, `${label}导出失败`));
+      .catch((error) => feedback.error(error, `${filename}导出失败`));
   };
-  const menu: MenuProps['items'] = [
-    { key: 'records', label: '导出加班记录', onClick: () => startExport('records') },
-    { key: 'statistics', label: '导出加班统计', onClick: () => startExport('statistics') },
-  ];
-  return (
-    <Dropdown menu={{ items: menu }} trigger={['click']}>
-      <Button icon={<ExportOutlined />}>导出</Button>
-    </Dropdown>
-  );
+  return <Button icon={<ExportOutlined />} onClick={startExport}>{label}</Button>;
 }
 
 function mapDepartmentEditValues(row: RecordValue): Record<string, unknown> {

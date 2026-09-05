@@ -49,6 +49,7 @@ describe('buildOvertimeReportSql', () => {
 
     expect(result.whereSql).toContain('oi.department_snapshot @> $2::jsonb');
     expect(result.params).toEqual([[7], JSON.stringify([{ id: 12 }])]);
+    expect(result.includeZeroStatistics).toBe(false);
   });
 });
 
@@ -105,5 +106,48 @@ describe('OvertimeExportService.listRecords', () => {
     const [, userIds, limit, offset] = queryRawUnsafe.mock.calls[1] as [string, number[], number, number];
     expect(userIds).toEqual([7]);
     expect([limit, offset]).toEqual([10, 10]);
+  });
+});
+
+describe('OvertimeExportService.listStatistics', () => {
+  it('按员工分页聚合，并将 bigint 分钟数转换为可安全返回的小时数', async () => {
+    const queryRawUnsafe = vi.fn()
+      .mockResolvedValueOnce([{ total: BigInt(1) }])
+      .mockResolvedValueOnce([{
+        user_name: '张三',
+        position_names: '工程师',
+        department_names: '研发部',
+        workday_minutes: BigInt(90),
+        weekend_minutes: BigInt(120),
+        holiday_minutes: BigInt(30),
+        total_minutes: BigInt(240),
+        record_count: BigInt(3),
+      }]);
+    const prisma = {
+      client: {
+        $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback({ $queryRawUnsafe: queryRawUnsafe }),
+      },
+    } as unknown as PrismaService;
+    const service = new OvertimeExportService(prisma, {} as never);
+
+    const result = await service.listStatistics(new Set([7]), {}, 1, 20);
+
+    expect(result).toEqual({
+      data: [{
+        employeeName: '张三',
+        positionNames: '工程师',
+        departmentNames: '研发部',
+        workdayHours: 1.5,
+        restDayHours: 2,
+        holidayHours: 0.5,
+        totalHours: 4,
+        recordCount: 3,
+      }],
+      pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 },
+    });
+    const [statisticsSql, userIds, limit, offset] = queryRawUnsafe.mock.calls[1] as [string, number[], number, number];
+    expect(statisticsSql).toContain("IN ('WORKDAY', 'ADJUSTED_WORKDAY')");
+    expect(userIds).toEqual([7]);
+    expect([limit, offset]).toEqual([20, 0]);
   });
 });

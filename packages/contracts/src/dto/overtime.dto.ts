@@ -172,7 +172,7 @@ export class OvertimeManageQueryDto extends PaginationQueryDto {
   departmentId?: number;
 }
 
-/** 管理月度汇总查询 */
+/** 管理明细下钻兼容查询（旧接口保留 month/departmentId 参数）。 */
 export class OvertimeManageSummaryDto {
   @ApiProperty({
     description: '月份（YYYY-MM；空 = 当月）',

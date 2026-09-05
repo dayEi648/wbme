@@ -290,6 +290,10 @@ describeDb('加班提交（T6-5）', () => {
     expect(summary.dayCount).toBeGreaterThanOrEqual(1);
     expect(summary.totalMinutes).toBeGreaterThanOrEqual(120);
     expect(summary.totalHours).toBeCloseTo(summary.totalMinutes / 60, 2);
+    expect(summary.workdayMinutes + summary.restDayMinutes + summary.holidayMinutes).toBe(summary.totalMinutes);
+    expect(summary.workdayHours).toBeCloseTo(summary.workdayMinutes / 60, 2);
+    expect(summary.restDayHours).toBeCloseTo(summary.restDayMinutes / 60, 2);
+    expect(summary.holidayHours).toBeCloseTo(summary.holidayMinutes / 60, 2);
   });
 
   it('员工月度明细：minutes 为 number 且整体可 JSON 序列化（BigInt 泄漏回归）', async () => {
@@ -304,10 +308,19 @@ describeDb('加班提交（T6-5）', () => {
   });
 
   /** 汇总辅助（复用 OvertimeSummaryService） */
-  async function submissionSubmitSummary(userId: number): Promise<{ dayCount: number; totalMinutes: number; totalHours: number }> {
+  async function submissionSubmitSummary(userId: number): Promise<{
+    dayCount: number;
+    workdayMinutes: number;
+    workdayHours: number;
+    restDayMinutes: number;
+    restDayHours: number;
+    holidayMinutes: number;
+    holidayHours: number;
+    totalMinutes: number;
+    totalHours: number;
+  }> {
     const summaryService = new OvertimeSummaryService(prisma);
-    const result = await summaryService.summaryMine(userId);
-    return { dayCount: result.dayCount, totalMinutes: result.totalMinutes, totalHours: result.totalHours };
+    return summaryService.summaryMine(userId);
   }
 });
 

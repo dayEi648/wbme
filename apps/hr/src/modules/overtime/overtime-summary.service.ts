@@ -1,22 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessException, frameworkErrors } from '@wbme/contracts';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma.service';
-
-/** 员工月度统计行（管理视图） */
-export interface EmployeeMonthlyStat {
-  userId: number;
-  name: string;
-  minutes: number;
-  hours: number;
-  count: number;
-}
+import { minutesToHours, OVERTIME_DATE_TYPE_SQL_LITERALS } from './overtime-statistics';
 
 /**
  * 加班汇总服务（hr PRD §3）：
  * 展示与汇总以"分钟数 ÷ 60"计算小时并按十进制四舍五入保留两位小数，
  * 数据库保留原始分钟数作为计算依据，避免多次汇总舍入误差。
- * 个人视图=本人已批准记录+月度汇总；管理视图（加班历史记录功能）=
- * 员工列表+月度统计+下钻，数据范围 DEPARTMENT（闭包）或 COMPANY。
+ * 个人视图=本人已批准记录+月度汇总；管理视图的按员工统计由导出服务统一处理，
+ * 以便列表和导出共享相同的筛选、权限和聚合口径。
  */
 @Injectable()
 export class OvertimeSummaryService {
@@ -25,18 +18,40 @@ export class OvertimeSummaryService {
   /**
    * 个人月度汇总。
    *
-   * 汇总卡片只需要天数和时长，不读取每日明细，避免无上限的按日结果集进入页面。
+   * 汇总卡片只需要天数和分类时长，不读取每日明细，避免无上限的按日结果集进入页面。
    *
    * @param userId 员工 id
    * @param month YYYY-MM（缺省=本月）
-   * @returns 加班天数、累计分钟与累计小时
+   * @returns 加班天数，以及工作日、休息日、节假日和合计的分钟/小时
    */
-  async summaryMine(userId: number, month?: string): Promise<{ dayCount: number; totalMinutes: number; totalHours: number }> {
+  async summaryMine(userId: number, month?: string): Promise<{
+    dayCount: number;
+    workdayMinutes: number;
+    workdayHours: number;
+    restDayMinutes: number;
+    restDayHours: number;
+    holidayMinutes: number;
+    holidayHours: number;
+    totalMinutes: number;
+    totalHours: number;
+  }> {
     const { start, end } = monthRange(month);
     const rows = await this.prisma.client.$queryRaw<
-      Array<{ day_count: bigint; total_minutes: bigint }>
+      Array<{
+        day_count: bigint;
+        workday_minutes: bigint;
+        rest_day_minutes: bigint;
+        holiday_minutes: bigint;
+        total_minutes: bigint;
+      }>
     >`
       SELECT COUNT(DISTINCT oi.overtime_date)::bigint AS day_count,
+             COALESCE(SUM(CASE WHEN (oi.holiday_snapshot->>'dateType')::text IN (${Prisma.raw(OVERTIME_DATE_TYPE_SQL_LITERALS.workday)})
+                               THEN oi.end_minute - oi.start_minute ELSE 0 END), 0)::bigint AS workday_minutes,
+             COALESCE(SUM(CASE WHEN (oi.holiday_snapshot->>'dateType')::text IN (${Prisma.raw(OVERTIME_DATE_TYPE_SQL_LITERALS.restDay)})
+                               THEN oi.end_minute - oi.start_minute ELSE 0 END), 0)::bigint AS rest_day_minutes,
+             COALESCE(SUM(CASE WHEN (oi.holiday_snapshot->>'dateType')::text IN (${Prisma.raw(OVERTIME_DATE_TYPE_SQL_LITERALS.holiday)})
+                               THEN oi.end_minute - oi.start_minute ELSE 0 END), 0)::bigint AS holiday_minutes,
              COALESCE(SUM(oi.end_minute - oi.start_minute), 0)::bigint AS total_minutes
       FROM hr.overtime_items oi
       INNER JOIN hr.approval_requests r ON r.id = oi.request_id
@@ -47,45 +62,21 @@ export class OvertimeSummaryService {
     `;
     const row = rows[0];
     const dayCount = Number(row?.day_count ?? 0);
+    const workdayMinutes = Number(row?.workday_minutes ?? 0);
+    const restDayMinutes = Number(row?.rest_day_minutes ?? 0);
+    const holidayMinutes = Number(row?.holiday_minutes ?? 0);
     const totalMinutes = Number(row?.total_minutes ?? 0);
-    return { dayCount, totalMinutes, totalHours: minutesToHours(totalMinutes) };
-  }
-
-  /**
-   * 管理视图员工月度统计（加班历史记录功能；数据范围过滤由调用方传入员工 id 集合）。
-   *
-   * @param userIds 范围内员工 id 集合（DEPARTMENT 闭包或 COMPANY 全量）
-   * @param month YYYY-MM（缺省=本月）
-   * @returns 员工统计列表
-   */
-  async statsForUsers(userIds: ReadonlySet<number>, month?: string): Promise<EmployeeMonthlyStat[]> {
-    if (userIds.size === 0) {
-      return [];
-    }
-    const { start, end } = monthRange(month);
-    const rows = await this.prisma.client.$queryRaw<
-      Array<{ user_id: number; user_name: string; minutes: bigint; count: number }>
-    >`
-      SELECT oi.user_id,
-             MAX(oi.user_name) AS user_name,
-             SUM(oi.end_minute - oi.start_minute)::bigint AS minutes,
-             COUNT(*)::int AS count
-      FROM hr.overtime_items oi
-      INNER JOIN hr.approval_requests r ON r.id = oi.request_id
-      WHERE r.status = 'APPROVED'
-        AND oi.user_id = ANY(${[...userIds] as number[]})
-        AND oi.overtime_date >= ${start}::date
-        AND oi.overtime_date < ${end}::date
-      GROUP BY oi.user_id
-      ORDER BY oi.user_id
-    `;
-    return rows.map((row) => ({
-      userId: row.user_id,
-      name: row.user_name,
-      minutes: Number(row.minutes),
-      hours: minutesToHours(Number(row.minutes)),
-      count: row.count,
-    }));
+    return {
+      dayCount,
+      workdayMinutes,
+      workdayHours: minutesToHours(workdayMinutes),
+      restDayMinutes,
+      restDayHours: minutesToHours(restDayMinutes),
+      holidayMinutes,
+      holidayHours: minutesToHours(holidayMinutes),
+      totalMinutes,
+      totalHours: minutesToHours(totalMinutes),
+    };
   }
 
   /**
@@ -117,14 +108,9 @@ export class OvertimeSummaryService {
       ORDER BY oi.overtime_date, oi.id
     `;
     // minutes 为 ::bigint 列：原样返回会让 res.json() 的 JSON.stringify 抛 TypeError（500），
-    // 与 summaryMine/statsForUsers 同口径转 number
+    // 与 summaryMine 同口径转 number
     return rows.map((row) => ({ ...row, minutes: Number(row.minutes) }));
   }
-}
-
-/** 分钟 → 小时（两位小数，十进制四舍五入；主 PRD §9.11 金额/数值精度约定） */
-export function minutesToHours(minutes: number): number {
-  return Math.round((minutes / 60) * 100) / 100;
 }
 
 /** YYYY-MM → [当月 1 日, 下月 1 日]（Date.UTC 构造，@db.Date 日历值）；非法月份显式抛校验错误（L14，不静默进位） */

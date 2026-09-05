@@ -2768,6 +2768,102 @@
         ]
       }
     },
+    "/api/v1/overtime/records/statistics": {
+      "get": {
+        "operationId": "OvertimeController_statistics",
+        "parameters": [
+          {
+            "description": "页码（从 1 开始）",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "每页条数（服务端接受 10/20/50/100）",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "结构化筛选条件 JSON：树形条件组 { logic: \"AND\"|\"OR\", conditions: [{ field, operator, value, valueEnd? } | 子组] }，子组 { logic: \"AND\"|\"OR\", conditions: [条件] } 仅允许作为根组直接子元素（组嵌套最多 2 层）；兼容旧平铺与旧条件组 { logic: \"OR\", groups: [{ logic: \"AND\", conditions: [...] }] } 形状",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "maxLength": 16000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "多级排序 JSON：[{ field, direction: \"ASC\"|\"DESC\" }]",
+            "in": "query",
+            "name": "sorts",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "月份（YYYY-MM）",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "example": "2026-08",
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键字（姓名等模糊匹配）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "按部门过滤",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "管理视图：按员工的加班统计列表，筛选和导出均复用同一个安全查询基集。",
+        "tags": [
+          "Overtime"
+        ]
+      }
+    },
     "/api/v1/overtime/records/statistics/export": {
       "get": {
         "operationId": "OvertimeController_exportStatistics",
@@ -2852,49 +2948,6 @@
           }
         },
         "summary": "管理视图统计导出：与加班记录列表和导出共用权限范围及当前筛选条件。",
-        "tags": [
-          "Overtime"
-        ]
-      }
-    },
-    "/api/v1/overtime/records/summary": {
-      "get": {
-        "operationId": "OvertimeController_recordsSummary",
-        "parameters": [
-          {
-            "description": "月份（YYYY-MM；空 = 当月）",
-            "in": "query",
-            "name": "month",
-            "required": false,
-            "schema": {
-              "example": "2026-08",
-              "type": "string"
-            }
-          },
-          {
-            "description": "按部门过滤",
-            "in": "query",
-            "name": "departmentId",
-            "required": false,
-            "schema": {
-              "minimum": 1,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "管理月度汇总（全体范围内员工合计）",
         "tags": [
           "Overtime"
         ]
